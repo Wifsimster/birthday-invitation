@@ -290,8 +290,10 @@ export default {
           await navigator.share({ title, text, url });
           return;
         }
-      } catch {
-        return; // user cancelled the native share sheet
+      } catch (err) {
+        // User dismissed the native sheet — done. Any other failure falls
+        // through to the WhatsApp/clipboard fallback below.
+        if (err && err.name === 'AbortError') return;
       }
       // Fallback: WhatsApp share, then clipboard.
       try {

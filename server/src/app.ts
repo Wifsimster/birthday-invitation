@@ -127,7 +127,7 @@ function readTheme(db: Db): string {
   return row?.value ?? DEFAULT_THEME;
 }
 
-const FIELD_PRIORITY = ['name', 'phone', 'attending', 'guests', 'email', 'message'];
+const FIELD_PRIORITY = ['name', 'phone', 'attending', 'guests', 'email', 'dietary_restrictions', 'message'];
 
 // Reduce a zod error to the single French message the API returns, picking the
 // field that matters first (matching the original hand-rolled order).

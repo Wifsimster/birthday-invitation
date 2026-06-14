@@ -123,11 +123,17 @@ export function initSchema(db: Db): Db {
   }
   db.run(`PRAGMA user_version = ${MIGRATIONS.length}`);
 
-  // Back-fill the dietary_restrictions column on databases that predate it.
-  try {
-    db.run('ALTER TABLE rsvp ADD COLUMN dietary_restrictions TEXT');
-  } catch (err) {
-    if (!/duplicate column name/.test((err as Error).message)) throw err;
+  // Back-fill columns on databases that predate them. Idempotent: a
+  // "duplicate column name" just means the column already exists.
+  for (const ddl of [
+    `ALTER TABLE rsvp ADD COLUMN attending TEXT DEFAULT 'yes' CHECK(attending IN ('yes', 'no'))`,
+    'ALTER TABLE rsvp ADD COLUMN dietary_restrictions TEXT'
+  ]) {
+    try {
+      db.run(ddl);
+    } catch (err) {
+      if (!/duplicate column name/.test((err as Error).message)) throw err;
+    }
   }
 
   return db;
