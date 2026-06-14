@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { eventConfig, buildIcs } from './event.js';
 
 // Wrap an async route handler so rejected promises reach the error middleware
 // instead of crashing the process.
@@ -48,7 +49,8 @@ export function createApp(db, options = {}) {
         adminUsername = process.env.ADMIN_USERNAME,
         adminPassword = process.env.ADMIN_PASSWORD,
         trustProxy = Number(process.env.TRUST_PROXY ?? 1),
-        rateLimits = {}
+        rateLimits = {},
+        event = eventConfig()
     } = options;
 
     const app = express();
@@ -107,9 +109,29 @@ export function createApp(db, options = {}) {
         });
     }));
 
+    // Export every RSVP as CSV (admin) — for catering counts, printing, etc.
+    // UTF-8 BOM so spreadsheet apps render accented names correctly.
+    app.get('/api/rsvps/export.csv', basicAuth, asyncHandler(async (req, res) => {
+        const rows = await db.all('SELECT * FROM rsvp ORDER BY created_at DESC, id DESC');
+        res.set('Content-Type', 'text/csv; charset=utf-8');
+        res.set('Content-Disposition', 'attachment; filename="rsvps.csv"');
+        res.send('﻿' + toCsv(rows));
+    }));
+
+    // Calendar invite (guest) generated from the event configuration.
+    app.get('/api/event.ics', (req, res) => {
+        const ics = buildIcs(event);
+        if (!ics) {
+            return res.status(404).json({ error: 'Aucune date d\'événement configurée' });
+        }
+        res.set('Content-Type', 'text/calendar; charset=utf-8');
+        res.set('Content-Disposition', 'attachment; filename="invitation.ics"');
+        res.send(ics);
+    });
+
     // Look up an existing RSVP so a guest can pre-fill / edit their response.
     app.get('/api/rsvp/lookup/:phone', asyncHandler(async (req, res) => {
-        const phone = (req.params.phone || '').trim();
+        const phone = normalizePhone(req.params.phone);
         if (!phone) {
             return res.status(400).json({ error: 'Le numéro de téléphone est requis' });
         }
@@ -136,7 +158,10 @@ export function createApp(db, options = {}) {
             return res.status(400).json({ error: errorMessage });
         }
 
-        const trimmedPhone = phone.trim();
+        const trimmedPhone = normalizePhone(phone);
+        if (!trimmedPhone) {
+            return res.status(400).json({ error: 'Le numéro de téléphone est requis' });
+        }
         const resolvedGuests = attending === 'yes' ? (guests || 1) : 0;
         const trimmedEmail = email ? email.trim() : null;
         const trimmedMessage = message ? message.trim() : null;
@@ -180,7 +205,7 @@ export function createApp(db, options = {}) {
             attending || 'yes',
             name.trim(),
             email ? email.trim() : null,
-            phone.trim(),
+            normalizePhone(phone),
             guests || 1,
             message ? message.trim() : null,
             req.params.id
@@ -215,6 +240,31 @@ export function createApp(db, options = {}) {
     });
 
     return app;
+}
+
+// Normalise a phone number to digits (keeping a leading +) so that the same
+// number entered with different spacing/punctuation matches for lookup, dedupe
+// and update. e.g. "06 12-34.56 78" -> "0612345678".
+function normalizePhone(raw) {
+    if (raw == null) return '';
+    const trimmed = String(raw).trim();
+    const plus = trimmed.startsWith('+') ? '+' : '';
+    return plus + trimmed.replace(/\D/g, '');
+}
+
+// Render RSVP rows as a CSV document (RFC 4180 quoting).
+function toCsv(rows) {
+    const columns = ['id', 'name', 'attending', 'email', 'phone', 'guests', 'message', 'created_at', 'updated_at'];
+    const escape = (value) => {
+        if (value == null) return '';
+        const str = String(value);
+        return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+    const lines = [columns.join(',')];
+    for (const row of rows) {
+        lines.push(columns.map((col) => escape(row[col])).join(','));
+    }
+    return lines.join('\r\n') + '\r\n';
 }
 
 // Shared request validation. Returns an error string, or null when valid.
