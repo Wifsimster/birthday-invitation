@@ -1,28 +1,32 @@
 # Birthday Invitation Backend
 
-This is the Node.js backend server for the birthday invitation app with RSVP functionality.
+This is the Node.js backend server for the birthday invitation app with RSVP
+functionality. It is written in **TypeScript** and run directly by Node's native
+type stripping (`--experimental-strip-types`) — there is no build step.
 
 > **Note:** For complete project documentation, see the main [README.md](../README.md) file.
 
 ## Layout
 
-| File         | Responsibility                                              |
-| ------------ | ----------------------------------------------------------- |
-| `server.js`  | Bootstrap — opens the DB, builds the app, listens, shuts down |
-| `src/app.js` | `createApp(db, options)` factory — all routes and middleware  |
-| `src/db.js`  | Opens SQLite, runs schema/migrations, promise-wraps the handle |
-| `src/event.js` | Reads event env vars; builds the `.ics` calendar invite      |
-| `tests/`     | Vitest, hitting `createApp` over an in-memory database          |
+| File           | Responsibility                                                |
+| -------------- | ------------------------------------------------------------- |
+| `server.ts`    | Bootstrap — opens the DB, builds the app, listens, shuts down |
+| `src/app.ts`   | `createApp(db, options)` factory — routes, middleware, zod validation |
+| `src/db.ts`    | Opens SQLite (better-sqlite3), runs schema/migrations, typed adapter |
+| `src/event.ts` | Reads event env vars; builds the `.ics` calendar invite       |
+| `src/logger.ts`| Shared pino structured logger                                 |
+| `tests/`       | Vitest, hitting `createApp` over an in-memory database         |
 
 The bootstrap and the test suite share the exact same `createApp`, so tests
 cannot drift away from the routes that actually run in production.
 
 ## Features
 
-- SQLite database for storing RSVP data
+- TypeScript throughout, type-checked with `tsc --noEmit` (no emit/bundle)
+- SQLite storage via the synchronous `better-sqlite3` driver
+- **zod** request validation (declarative schema, French error messages)
+- **pino** structured logging (`pino-http` per-request logs)
 - Rate limiting to prevent spam (proxy-aware via `trust proxy`)
-- CORS enabled for frontend communication
-- Input validation and sanitization
 - One RSVP per phone number, normalised to digits so the same number matches
   regardless of spacing/punctuation (re-submitting updates the existing row)
 - CSV export of the guest list and an `.ics` calendar invite
@@ -77,23 +81,21 @@ GET /api/health
 ```
 Returns server status.
 
-## Installation
+## Development
 
-1. Install dependencies:
 ```bash
 cd server
 npm install
+npm run dev        # node --watch, type-stripped TS
+npm start          # node --experimental-strip-types server.ts
+npm run typecheck  # tsc --noEmit
+npm run lint       # eslint (typescript-eslint)
+npm test           # vitest
 ```
 
-2. Start the server:
-```bash
-npm start
-```
-
-For development with auto-reload:
-```bash
-npm run dev
-```
+Requires Node 22+ (for `--experimental-strip-types`). The backend ships as
+TypeScript and is executed as-is — no compile/emit step. CI runs typecheck +
+lint + tests, and builds the Docker image.
 
 ## Database
 

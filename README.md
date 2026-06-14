@@ -28,9 +28,11 @@ Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
   to `dist/` by `npm run build`. Event details are injected at container start into
   `dist/env.js` by [`infra/inject-env.sh`](infra/inject-env.sh) and read via
   `window.ENV`, so the same image works for any event.
-- **Backend** — Express 5 serves both the SPA and the API in a **single process**
+- **Backend** — **TypeScript** (run via Node's native type stripping, no build
+  step). Express 5 serves both the SPA and the API in a **single process**
   (compression, static caching and SPA fallback built in — no reverse proxy or
-  process manager). SQLite storage, rate limiting, Helmet and input validation.
+  process manager). SQLite storage (better-sqlite3), rate limiting, Helmet,
+  **zod** validation and **pino** structured logging.
   Phone number is the guest identity (normalised to digits, so the same number
   matches regardless of spacing/punctuation; one RSVP per phone, re-submitting
   updates it). The host can export the guest list as CSV and guests can download a
@@ -90,23 +92,26 @@ for request/response details and the database schema.
 ```bash
 cd server
 npm install
-npm run dev    # node --watch
-npm test       # vitest (runs against the real app via createApp)
-npm run lint   # eslint
+npm run dev        # node --watch (type-stripped TS)
+npm run typecheck  # tsc --noEmit
+npm test           # vitest (runs against the real app via createApp)
+npm run lint       # eslint (typescript-eslint)
 ```
 
-The server is split for testability:
+The TypeScript server is split for testability:
 
-| File             | Responsibility                                  |
-| ---------------- | ----------------------------------------------- |
-| `server.js`      | Bootstrap: open DB, build app, listen, shutdown |
-| `src/app.js`     | `createApp(db, options)` — routes & middleware  |
-| `src/db.js`      | Open SQLite, schema/migrations, promise wrapper |
-| `tests/`         | Vitest hitting `createApp` over an in-memory DB |
+| File             | Responsibility                                   |
+| ---------------- | ------------------------------------------------ |
+| `server.ts`      | Bootstrap: open DB, build app, listen, shutdown  |
+| `src/app.ts`     | `createApp(db, options)` — routes, zod validation |
+| `src/db.ts`      | Open SQLite (better-sqlite3), schema/migrations  |
+| `src/event.ts`   | Event config + `.ics` calendar invite            |
+| `src/logger.ts`  | pino structured logger                           |
+| `tests/`         | Vitest hitting `createApp` over an in-memory DB  |
 
 Tests exercise the same `createApp` used in production, so they can't drift from
-the real routes. CI runs lint + tests on every push and PR (see
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+the real routes. CI runs typecheck + lint + tests and builds the Docker image on
+every push and PR (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## Frontend development
 

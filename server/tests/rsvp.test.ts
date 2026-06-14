@@ -3,14 +3,14 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import request from 'supertest';
-import { createApp } from '../src/app.js';
-import { openDb, initSchema } from '../src/db.js';
+import { createApp } from '../src/app.ts';
+import { openDb, initSchema, type Db } from '../src/db.ts';
 
 const ADMIN = { username: 'admin', password: 'secret' };
 const authHeader = 'Basic ' + Buffer.from(`${ADMIN.username}:${ADMIN.password}`).toString('base64');
 
 // A complete, valid RSVP payload. Tests override individual fields as needed.
-const validRsvp = (overrides = {}) => ({
+const validRsvp = (overrides: Record<string, unknown> = {}) => ({
     attending: 'yes',
     name: 'John Doe',
     email: 'john@example.com',
@@ -20,8 +20,8 @@ const validRsvp = (overrides = {}) => ({
 });
 
 describe('RSVP API', () => {
-    let app;
-    let db;
+    let app: ReturnType<typeof createApp>;
+    let db: Db;
 
     beforeEach(async () => {
         // A fresh in-memory database per test, wired to the *real* app factory.
@@ -160,7 +160,7 @@ describe('RSVP API', () => {
             }
 
             const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
-            expect(res.body.rsvps.map((r) => r.name)).toEqual(['Third', 'Second', 'First']);
+            expect(res.body.rsvps.map((r: { name: string }) => r.name)).toEqual(['Third', 'Second', 'First']);
         });
     });
 
@@ -261,7 +261,7 @@ describe('RSVP API', () => {
             const withEvent = createApp(db, {
                 adminUsername: ADMIN.username,
                 adminPassword: ADMIN.password,
-                event: { person: 'Léo', age: '5', date: '2025-09-06', time: '15h00 - 17h00', location: 'Chez Léo' }
+                event: { person: 'Léo', age: '5', date: '2025-09-06', time: '15h00 - 17h00', town: '', location: 'Chez Léo' }
             });
 
             const res = await request(withEvent).get('/api/event.ics').expect(200);
@@ -274,14 +274,14 @@ describe('RSVP API', () => {
         });
 
         it('returns 404 when no event date is configured', async () => {
-            const noEvent = createApp(db, { event: { person: 'X', date: '' } });
+            const noEvent = createApp(db, { event: { person: 'X', age: '', date: '', time: '', town: '', location: '' } });
             await request(noEvent).get('/api/event.ics').expect(404);
         });
     });
 
     describe('Static SPA serving', () => {
-        let staticDir;
-        let staticApp;
+        let staticDir: string;
+        let staticApp: ReturnType<typeof createApp>;
 
         beforeEach(() => {
             staticDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spa-'));

@@ -7,7 +7,7 @@ on:
 
 jobs:
   backend:
-    name: Backend (lint + test)
+    name: Backend (typecheck + lint + test)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,6 +22,8 @@ jobs:
           cache-dependency-path: server/package-lock.json
 
       - run: npm ci
+
+      - run: npm run typecheck
 
       - run: npm run lint
 
