@@ -44,4 +44,8 @@ RUN chmod +x /inject-env.sh /docker-entrypoint.sh
 ENV PORT=3000
 EXPOSE 3000
 
+# Report container health from the API (busybox wget ships with the image).
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3000/api/health || exit 1
+
 ENTRYPOINT ["/docker-entrypoint.sh"]
