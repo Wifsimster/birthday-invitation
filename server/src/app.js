@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
+import path from 'path';
 import { eventConfig, buildIcs } from './event.js';
 
 // Wrap an async route handler so rejected promises reach the error middleware
@@ -43,6 +45,8 @@ function makeBasicAuth({ username, password }) {
  * @param {string} [options.adminPassword]
  * @param {number} [options.trustProxy]   Number of proxy hops to trust for req.ip.
  * @param {object} [options.rateLimits]   Override default limiter windows/maxes.
+ * @param {string} [options.staticDir]    If set, serve the built SPA from here
+ *                                        (single-process: no separate web server).
  */
 export function createApp(db, options = {}) {
     const {
@@ -50,16 +54,22 @@ export function createApp(db, options = {}) {
         adminPassword = process.env.ADMIN_PASSWORD,
         trustProxy = Number(process.env.TRUST_PROXY ?? 1),
         rateLimits = {},
-        event = eventConfig()
+        event = eventConfig(),
+        staticDir = process.env.STATIC_DIR
     } = options;
 
     const app = express();
 
-    // Behind Caddy (and Traefik) — trust the forwarding hop(s) so req.ip is the
-    // real client address and per-IP rate limiting actually works.
+    // Behind Traefik — trust the forwarding hop(s) so req.ip is the real client
+    // address and per-IP rate limiting actually works.
     app.set('trust proxy', trustProxy);
 
-    app.use(helmet());
+    app.use(compression());
+    app.use(helmet({
+        // The SPA pulls fonts/icons from CDNs; relax CSP so it still renders when
+        // this process serves the HTML directly. Other Helmet defaults stay on.
+        contentSecurityPolicy: false
+    }));
     app.use(cors());
     app.use(express.json());
 
@@ -225,6 +235,36 @@ export function createApp(db, options = {}) {
         }
         res.json({ message: 'RSVP supprimé avec succès !', changes: result.changes });
     }));
+
+    // Unmatched API routes get a JSON 404 (not Express's default HTML page).
+    app.use('/api', (req, res) => {
+        res.status(404).json({ error: 'Ressource introuvable' });
+    });
+
+    // --- Static SPA -----------------------------------------------------------
+    // When a build directory is provided, this process serves the frontend too,
+    // so no separate web server (Caddy) or process manager is needed.
+    if (staticDir) {
+        app.use(express.static(staticDir, {
+            index: false,
+            setHeaders(res, filePath) {
+                // Vite emits content-hashed files under assets/ — cache forever.
+                // Everything else (index.html, the runtime-injected env.js) must
+                // never be cached so new deploys and config take effect.
+                if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+                    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+                } else {
+                    res.setHeader('Cache-Control', 'no-cache');
+                }
+            }
+        }));
+
+        // SPA fallback: any other GET that isn't an API call returns index.html.
+        app.use((req, res, next) => {
+            if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
+            res.sendFile(path.join(staticDir, 'index.html'));
+        });
+    }
 
     // --- Error handling -------------------------------------------------------
 

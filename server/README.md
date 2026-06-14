@@ -123,16 +123,24 @@ The database file is created automatically on first start (see `DB_PATH` below).
 
 - Rate limiting: 100 requests per 15 minutes per IP
 - RSVP rate limiting: 5 RSVP submissions per hour per IP
-- `trust proxy` so per-IP limits use the real client address behind Caddy/Traefik
+- `trust proxy` so per-IP limits use the real client address behind Traefik
 - Helmet.js for security headers
 - Input validation and sanitization
 - HTTP Basic auth on admin endpoints (fails closed when credentials are unset)
+
+## Serving the SPA
+
+When `STATIC_DIR` is set (or `../dist` exists, as in the container), the same Node
+process serves the built frontend: gzip compression, long-lived immutable caching
+for hashed `assets/`, no-cache for `index.html` / `env.js`, and an SPA fallback to
+`index.html` for client-side routes. No separate web server or process manager.
 
 ## Configuration
 
 | Variable                          | Default      | Purpose                                          |
 | --------------------------------- | ------------ | ------------------------------------------------ |
-| `PORT`                            | `3001`       | Port the API listens on                          |
+| `PORT`                            | `3000`       | Port the server listens on (SPA + API)           |
 | `DB_PATH`                         | `../../data/rsvp.db` | SQLite database file location            |
+| `STATIC_DIR`                      | `../dist`    | Built SPA to serve (omit to run API-only)        |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | —          | Basic-auth credentials for admin endpoints       |
 | `TRUST_PROXY`                     | `1`          | Number of proxy hops to trust for `req.ip`       |

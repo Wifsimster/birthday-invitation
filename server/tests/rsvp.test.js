@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { openDb, initSchema } from '../src/db.js';
@@ -273,6 +276,48 @@ describe('RSVP API', () => {
         it('returns 404 when no event date is configured', async () => {
             const noEvent = createApp(db, { event: { person: 'X', date: '' } });
             await request(noEvent).get('/api/event.ics').expect(404);
+        });
+    });
+
+    describe('Static SPA serving', () => {
+        let staticDir;
+        let staticApp;
+
+        beforeEach(() => {
+            staticDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spa-'));
+            fs.mkdirSync(path.join(staticDir, 'assets'));
+            fs.writeFileSync(path.join(staticDir, 'index.html'), '<!doctype html><div id=app></div>');
+            fs.writeFileSync(path.join(staticDir, 'assets', 'index-abc12345.js'), 'console.log(1)');
+            staticApp = createApp(db, {
+                adminUsername: ADMIN.username,
+                adminPassword: ADMIN.password,
+                rateLimits: { globalMax: 10000, rsvpMax: 10000 },
+                staticDir
+            });
+        });
+
+        it('serves index.html at the root', async () => {
+            const res = await request(staticApp).get('/').expect(200);
+            expect(res.text).toContain('id=app');
+        });
+
+        it('falls back to index.html for SPA routes', async () => {
+            const res = await request(staticApp).get('/some/client/route').expect(200);
+            expect(res.text).toContain('id=app');
+        });
+
+        it('serves hashed assets with a long immutable cache', async () => {
+            const res = await request(staticApp).get('/assets/index-abc12345.js').expect(200);
+            expect(res.headers['cache-control']).toMatch(/immutable/);
+        });
+
+        it('still returns JSON 404 for unknown API routes (no HTML fallback)', async () => {
+            const res = await request(staticApp).get('/api/does-not-exist').expect(404);
+            expect(res.headers['content-type']).toMatch(/json/);
+        });
+
+        it('keeps API routes working alongside static serving', async () => {
+            await request(staticApp).get('/api/health').expect(200);
         });
     });
 

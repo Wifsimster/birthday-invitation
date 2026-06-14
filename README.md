@@ -17,27 +17,28 @@ Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
 ## Architecture
 
 ```
-                 ┌──────────────── container (port 3000) ────────────────┐
-  browser ─────► │  Caddy                                                 │
-                 │   ├── /api/*   → reverse_proxy → Node backend :3001    │
-                 │   └── /*       → static SPA from /app/dist             │
-                 │                                                        │
-                 │  supervisord manages: caddy + node                     │
-                 └────────────────────────────────────────────────────────┘
+                 ┌──────────── container (port 3000) ────────────┐
+  browser ─────► │  Node (Express 5) — single process            │
+                 │   ├── /api/*  → RSVP API + SQLite             │
+                 │   └── /*      → static SPA from /app/dist     │
+                 └───────────────────────────────────────────────┘
 ```
 
 - **Frontend** — Vite SPA (built assets in `dist/`). Event details are injected
   at container start into `dist/env.js` by [`infra/inject-env.sh`](infra/inject-env.sh)
   from environment variables, so the same image works for any event.
-- **Backend** — Express 5 API with SQLite, rate limiting, Helmet and input
-  validation. Phone number is the guest identity (normalised to digits, so the
-  same number matches regardless of spacing/punctuation; one RSVP per phone,
-  re-submitting updates it). The host can export the guest list as CSV and guests
-  can download a calendar invite. Structured as a thin bootstrap (`server.js`) over
-  a testable `createApp(db)` factory and `db` / `event` modules — see
+- **Backend** — Express 5 serves both the SPA and the API in a **single process**
+  (compression, static caching and SPA fallback built in — no reverse proxy or
+  process manager). SQLite storage, rate limiting, Helmet and input validation.
+  Phone number is the guest identity (normalised to digits, so the same number
+  matches regardless of spacing/punctuation; one RSVP per phone, re-submitting
+  updates it). The host can export the guest list as CSV and guests can download a
+  calendar invite. Structured as a thin bootstrap (`server.js`) over a testable
+  `createApp(db)` factory and `db` / `event` modules — see
   [`server/README.md`](server/README.md).
-- **Process management** — [`infra/supervisord.conf`](infra/supervisord.conf)
-  runs Caddy and Node; [`infra/Caddyfile`](infra/Caddyfile) handles routing.
+- **Runtime** — [`infra/docker-entrypoint.sh`](infra/docker-entrypoint.sh) injects
+  the event env into the SPA, then runs the Node server (which receives signals
+  for graceful shutdown).
 
 ## Configuration
 

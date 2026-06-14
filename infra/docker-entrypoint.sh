@@ -1,8 +1,11 @@
 #!/bin/sh
-# Docker entrypoint script to run both backend and frontend in production
+# Docker entrypoint: inject runtime config into the SPA, then run the server.
+# A single Node process serves both the static SPA and the API.
+set -e
 
-# Inject environment variables into frontend
+# Write dist/env.js from environment variables.
 /inject-env.sh
 
-# Use supervisord to manage both caddy and backend processes
-exec supervisord -c /etc/supervisord.conf
+# Replace the shell with the Node process so it receives signals (SIGTERM) and
+# the server's graceful shutdown runs.
+exec node /app/server/server.js

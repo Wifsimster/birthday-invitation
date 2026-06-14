@@ -1,7 +1,19 @@
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { createApp } from './src/app.js';
 import { openDb, initSchema, defaultDbPath } from './src/db.js';
 
-const PORT = process.env.PORT || 3001;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PORT = process.env.PORT || 3000;
+
+// The built SPA lives next to the server (../dist). When present, this single
+// process serves it alongside the API — no Caddy / supervisord needed.
+function resolveStaticDir() {
+    if (process.env.STATIC_DIR) return process.env.STATIC_DIR;
+    const dist = path.join(__dirname, '..', 'dist');
+    return fs.existsSync(path.join(dist, 'index.html')) ? dist : undefined;
+}
 
 async function main() {
     const dbPath = defaultDbPath();
@@ -9,10 +21,12 @@ async function main() {
     await initSchema(db);
     console.log(`Connected to SQLite database at: ${dbPath}`);
 
-    const app = createApp(db);
+    const staticDir = resolveStaticDir();
+    const app = createApp(db, { staticDir });
 
     const server = app.listen(PORT, () => {
         console.log(`🚀 Server running on port ${PORT}`);
+        console.log(staticDir ? `📦 Serving SPA from ${staticDir}` : '📦 API only (no static dir found)');
     });
 
     const shutdown = async (signal) => {
