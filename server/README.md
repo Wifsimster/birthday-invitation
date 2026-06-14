@@ -97,7 +97,7 @@ npm run dev
 
 ## Database
 
-The server uses SQLite with a simple schema:
+The server uses SQLite (via the synchronous `better-sqlite3` driver) with a simple schema:
 
 ```sql
 CREATE TABLE rsvp (

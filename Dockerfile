@@ -22,9 +22,13 @@ LABEL org.opencontainers.image.title="birthday-invitation" \
 
 WORKDIR /app
 
-# Backend (Express + SQLite) — install production deps only
+# Backend (Express + SQLite) — install production deps only.
+# better-sqlite3 compiles a native binding, so build tooling is installed in a
+# virtual package and removed again to keep the runtime image small.
 COPY server/package.json server/package-lock.json ./server/
-RUN cd server && npm ci --omit=dev
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+ && (cd server && npm ci --omit=dev) \
+ && apk del .build-deps
 
 COPY server/ ./server/
 
