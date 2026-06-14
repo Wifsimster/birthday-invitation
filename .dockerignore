@@ -16,5 +16,6 @@ data
 .env
 .env.*
 
-# Runtime-injected at container start (see infra/inject-env.sh)
-dist/env.js
+# Built frontend — the image builds the SPA from source (stage 1), so a local
+# dist/ must not leak into the build context.
+dist
