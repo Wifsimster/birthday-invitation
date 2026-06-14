@@ -1,0 +1,68 @@
+name: Deploy — homelab
+
+# Runs on the self-hosted runner alongside the docker host. Fires after the
+# Release workflow succeeds on main, pulls :latest from GHCR, reconciles the
+# compose stack, waits for readiness, and prunes dangling images.
+# Replaces Watchtower — deploys are now observable in the Actions log.
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-homelab-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Pull & reconcile
+    runs-on: [self-hosted]
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.workflow_run.conclusion == 'success'
+    defaults:
+      run:
+        working-directory: /opt/docker/birthday-invitation
+    steps:
+      # Self-hosted runners share the deploy user's ~/.docker/config.json. An
+      # expired ghcr.io `ghs_` token cached by another repo's CI makes Docker
+      # send it for our pull and get `denied` instead of falling back to
+      # anonymous. Our image is public, so clear any stale credential first.
+      - name: Clear stale GHCR credentials
+        run: docker logout ghcr.io || true
+
+      - name: Pull latest image
+        run: docker compose pull birthday-invitation
+
+      - name: Reconcile stack
+        run: docker compose up -d
+
+      - name: Show status
+        run: docker compose ps
+
+      - name: Wait for backend to become ready
+        # `up -d` returns as soon as the container starts, not when the app is
+        # serving. Poll the backend health endpoint (~2 min) so a boot failure
+        # turns the deploy red instead of silently green.
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            if docker exec birthday-invitation wget -qO- http://localhost:3001/api/health >/dev/null 2>&1; then
+              echo "[$i/24] backend ready"; exit 0
+            fi
+            echo "[$i/24] backend not ready yet"; sleep 5
+          done
+          echo "Timed out waiting for backend readiness"
+          docker logs --tail=200 birthday-invitation || true
+          exit 1
+
+      - name: Prune dangling images
+        if: success()
+        working-directory: /
+        run: docker image prune -f
