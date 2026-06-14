@@ -28,6 +28,9 @@ services:
       - DB_PATH=/app/data/rsvp.db
       - ADMIN_USERNAME=${ADMIN_USERNAME}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      # Proxy hops in front of the backend (Traefik -> Caddy -> Node) so that
+      # per-IP rate limiting sees the real client address.
+      - TRUST_PROXY=${TRUST_PROXY:-2}
     volumes:
       - birthday_db:/app/data
     labels:
