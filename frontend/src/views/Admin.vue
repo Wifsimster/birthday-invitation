@@ -48,6 +48,31 @@
         </div>
       </div>
 
+      <div class="theme-panel">
+        <h2>🎨 Thème de l'invitation</h2>
+        <p class="theme-hint">Choisis l'ambiance affichée aux invités. Le changement est immédiat.</p>
+        <div class="theme-grid">
+          <button
+            v-for="t in themes"
+            :key="t.id"
+            type="button"
+            class="theme-card"
+            :class="{ active: t.id === currentTheme }"
+            :disabled="themeSaving"
+            @click="selectTheme(t.id)"
+          >
+            <span class="theme-icon">{{ t.icon }}</span>
+            <span class="theme-label">{{ t.label }}</span>
+            <span class="theme-swatches">
+              <span class="swatch" :style="{ background: t.palette.primary }"></span>
+              <span class="swatch" :style="{ background: t.palette.secondary }"></span>
+              <span class="swatch" :style="{ background: t.palette.accent }"></span>
+            </span>
+            <span v-if="t.id === currentTheme" class="theme-check">✓ Actif</span>
+          </button>
+        </div>
+      </div>
+
       <button class="refresh-btn" @click="loadData">🔄 Actualiser</button>
 
       <div class="rsvp-list">
@@ -131,11 +156,15 @@
 
 <script>
 import { apiBaseUrl } from '../env.js';
+import { themeList, applyTheme, DEFAULT_THEME } from '../themes.js';
 
 export default {
   name: 'Admin',
   data() {
     return {
+      themes: themeList,
+      currentTheme: DEFAULT_THEME,
+      themeSaving: false,
       isAuthenticated: false,
       authHeader: '',
       credentials: { username: '', password: '' },
@@ -155,6 +184,9 @@ export default {
     };
   },
   mounted() {
+    // The theme is public; load and apply it so the admin page matches the
+    // live invitation.
+    this.loadTheme();
     const saved = localStorage.getItem('adminAuth');
     if (saved) {
       this.authHeader = saved;
@@ -171,6 +203,49 @@ export default {
       return new Date(value).toLocaleString('fr-FR', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
       });
+    },
+    async loadTheme() {
+      try {
+        const res = await fetch(`${apiBaseUrl}/settings`);
+        if (res.ok) {
+          const { theme } = await res.json();
+          if (theme) {
+            this.currentTheme = theme;
+            applyTheme(theme);
+          }
+        }
+      } catch {
+        // Keep the default theme when settings can't be fetched.
+      }
+    },
+    async selectTheme(id) {
+      if (id === this.currentTheme || this.themeSaving) return;
+      this.themeSaving = true;
+      const previous = this.currentTheme;
+      // Optimistically re-skin so the change is instant.
+      this.currentTheme = id;
+      applyTheme(id);
+      try {
+        const res = await fetch(`${apiBaseUrl}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: this.authHeader },
+          body: JSON.stringify({ theme: id })
+        });
+        if (!res.ok) {
+          if (res.status === 401) { this.logout(); return; }
+          const err = await res.json();
+          throw new Error(err.error || 'Erreur lors du changement de thème');
+        }
+        const data = await res.json();
+        this.currentTheme = data.theme;
+        applyTheme(data.theme);
+      } catch (err) {
+        this.currentTheme = previous;
+        applyTheme(previous);
+        alert(err.message);
+      } finally {
+        this.themeSaving = false;
+      }
     },
     async authenticate() {
       this.authLoading = true;
@@ -302,8 +377,10 @@ export default {
 </script>
 
 <style scoped>
-.admin-container{min-height:100vh;background:linear-gradient(135deg,#667eea,#764ba2);padding:20px}
-.admin-header{max-width:1200px;margin:0 auto 20px;background:#ff6b6b;color:#fff;padding:30px;text-align:center;border-radius:15px;box-shadow:0 20px 40px #0000001a}
+.admin-container{min-height:100vh;background:var(--theme-bg-gradient,linear-gradient(135deg,#667eea,#764ba2));background-size:200% 200%;animation:gradientShift 12s ease infinite;padding:20px;transition:background .4s ease}
+@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}to{background-position:0% 50%}}
+.admin-header{max-width:1200px;margin:0 auto 20px;background:var(--theme-header-gradient,#ff6b6b);color:var(--theme-header-text,#fff);padding:30px;text-align:center;border-radius:15px;box-shadow:0 20px 40px #0000001a}
+.admin-header h1{font-family:var(--theme-font-display,inherit)}
 .admin-header h1{font-size:2rem;margin-bottom:10px}
 .header-actions{display:flex;gap:15px;align-items:center;margin-top:10px}
 .logout-btn{background:#ff4757;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:.9rem;transition:background-color .3s ease}
@@ -312,23 +389,36 @@ export default {
 .back-link:hover{background:#ffffff4d;transform:translateY(-2px);box-shadow:0 5px 15px #0003}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;max-width:1200px;margin:0 auto 20px;padding:0 20px}
 .stat-card{background:#fff;padding:20px;border-radius:10px;text-align:center;box-shadow:0 4px 10px #0000001a}
-.stat-card.positive .stat-number{color:#4ecdc4}
+.stat-card.positive .stat-number{color:var(--theme-secondary,#4ecdc4)}
 .stat-card.negative .stat-number{color:#ff7675}
-.stat-number{font-size:2.5rem;font-weight:700;color:#ff6b6b;margin-bottom:5px}
+.stat-number{font-size:2.5rem;font-weight:700;color:var(--theme-primary,#ff6b6b);margin-bottom:5px}
 .stat-label{color:#666;font-size:.9rem}
-.refresh-btn{background:#ff6b6b;color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer;font-size:1rem;margin:0 auto 20px;display:block;transition:background .3s ease}
-.refresh-btn:hover{background:#ff5252}
+.theme-panel{max-width:1200px;margin:0 auto 20px;background:#fff;border-radius:15px;padding:25px 30px;box-shadow:0 20px 40px #0000001a}
+.theme-panel h2{color:#333;margin-bottom:4px}
+.theme-hint{color:#777;font-size:.9rem;margin-bottom:18px}
+.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+.theme-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 12px;border:2px solid #e6e6e6;border-radius:14px;background:#fafafa;cursor:pointer;transition:all .2s ease;font-family:inherit}
+.theme-card:hover:not(:disabled){transform:translateY(-3px);border-color:var(--theme-primary,#ff6b6b);box-shadow:0 8px 20px #0000001f}
+.theme-card:disabled{opacity:.6;cursor:not-allowed}
+.theme-card.active{border-color:var(--theme-primary,#ff6b6b);background:#fff;box-shadow:0 0 0 3px var(--theme-primary-soft,#ff6b6b55)}
+.theme-icon{font-size:2rem;line-height:1}
+.theme-label{font-weight:600;color:#333;font-size:.95rem;text-align:center}
+.theme-swatches{display:flex;gap:5px}
+.swatch{width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0000001a}
+.theme-check{font-size:.78rem;font-weight:700;color:var(--theme-primary,#ff6b6b)}
+.refresh-btn{background:var(--theme-primary,#ff6b6b);color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer;font-size:1rem;margin:0 auto 20px;display:block;transition:filter .3s ease}
+.refresh-btn:hover{filter:brightness(.92)}
 .rsvp-list{max-width:1200px;margin:0 auto;background:#fff;border-radius:15px;padding:30px;box-shadow:0 20px 40px #0000001a}
 .rsvp-list h2{margin-bottom:20px;color:#333}
-.rsvp-item{background:#f8f9fa;border-left:4px solid #ff6b6b;padding:20px;margin-bottom:15px;border-radius:0 10px 10px 0}
+.rsvp-item{background:#f8f9fa;border-left:4px solid var(--theme-primary,#ff6b6b);padding:20px;margin-bottom:15px;border-radius:0 10px 10px 0}
 .rsvp-item.declined{border-left-color:#ff7675;background:#ffeaea}
 .rsvp-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.rsvp-header h3{color:#ff6b6b;margin:0}
+.rsvp-header h3{color:var(--theme-primary,#ff6b6b);margin:0}
 .rsvp-actions{display:flex;gap:10px}
 .edit-btn,.delete-btn{background:none;border:none;font-size:1.2rem;cursor:pointer;padding:5px 8px;border-radius:5px;transition:background-color .3s ease}
 .edit-btn:hover{background-color:#e3f2fd}
 .delete-btn:hover{background-color:#ffebee}
-.rsvp-item h3{color:#ff6b6b;margin-bottom:10px}
+.rsvp-item h3{color:var(--theme-primary,#ff6b6b);margin-bottom:10px}
 .rsvp-details{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:10px}
 .detail{color:#666}
 .detail strong{color:#333}
@@ -353,13 +443,13 @@ export default {
 .form-group{margin-bottom:20px}
 .form-group label{display:block;margin-bottom:5px;font-weight:500;color:#333}
 .form-input{width:100%;padding:10px 15px;border:2px solid #ddd;border-radius:8px;font-size:1rem;transition:border-color .3s ease;box-sizing:border-box}
-.form-input:focus{outline:none;border-color:#ff6b6b}
+.form-input:focus{outline:none;border-color:var(--theme-primary,#ff6b6b)}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;padding:20px 25px;border-top:1px solid #eee}
 .cancel-btn,.save-btn,.delete-confirm-btn{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:1rem;transition:all .3s ease}
 .cancel-btn{background:#f5f5f5;color:#666}
 .cancel-btn:hover{background:#e0e0e0}
-.save-btn{background:#ff6b6b;color:#fff}
-.save-btn:hover:not(:disabled){background:#ff5252}
+.save-btn{background:var(--theme-primary,#ff6b6b);color:#fff}
+.save-btn:hover:not(:disabled){filter:brightness(.92)}
 .save-btn:disabled{opacity:.7;cursor:not-allowed}
 .delete-confirm-btn{background:#dc3545;color:#fff}
 .delete-confirm-btn:hover:not(:disabled){background:#c82333}

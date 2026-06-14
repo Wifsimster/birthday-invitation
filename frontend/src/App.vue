@@ -7,10 +7,9 @@ export default { name: 'App' }
 </script>
 
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}
 #app{min-height:100vh}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Poppins,sans-serif;background:linear-gradient(45deg,#ff6b6b,#4ecdc4,#45b7d1,#f7dc6f,#ff6b6b);background-size:400% 400%;animation:gradientShift 8s ease infinite;min-height:100vh;overflow-x:hidden}
+body{font-family:var(--theme-font-body,Poppins,sans-serif);background:var(--theme-bg-gradient,linear-gradient(135deg,#FF5C8A,#7B5BFF,#21D4FD));background-size:200% 200%;animation:gradientShift 12s ease infinite;min-height:100vh;overflow-x:hidden;transition:background .4s ease}
 @keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}to{background-position:0% 50%}}
 .invitation-container{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;position:relative}
 .invitation-card{background:#fff;border-radius:25px;box-shadow:0 25px 50px #00000026;max-width:600px;width:100%;overflow:hidden;position:relative;animation:float 6s ease-in-out infinite;border:5px solid #fff;box-shadow:0 0 0 3px #ff6b6b,0 25px 50px #00000026}
