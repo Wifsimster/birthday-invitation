@@ -198,6 +198,84 @@ describe('RSVP API', () => {
         });
     });
 
+    describe('Phone normalisation', () => {
+        it('matches a re-submission with different spacing as the same guest', async () => {
+            const first = await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ phone: '06 12 34 56 78', guests: 2 }))
+                .expect(201);
+
+            const second = await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ phone: '06-12-34.56.78', guests: 5 }))
+                .expect(200);
+
+            expect(second.body.id).toBe(first.body.id);
+
+            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            expect(res.body.rsvps).toHaveLength(1);
+            expect(res.body.rsvps[0].phone).toBe('0612345678');
+        });
+
+        it('looks up a guest regardless of how the phone is formatted', async () => {
+            await request(app).post('/api/rsvp').send(validRsvp({ phone: '06 12 34 56 78' })).expect(201);
+            const res = await request(app).get('/api/rsvp/lookup/0612345678').expect(200);
+            expect(res.body.name).toBe('John Doe');
+        });
+
+        it('rejects a phone with no digits', async () => {
+            await request(app).post('/api/rsvp').send(validRsvp({ phone: '----' })).expect(400);
+        });
+    });
+
+    describe('GET /api/rsvps/export.csv (admin)', () => {
+        it('requires authentication', async () => {
+            await request(app).get('/api/rsvps/export.csv').expect(401);
+        });
+
+        it('exports rows as CSV with a header and BOM', async () => {
+            await request(app).post('/api/rsvp').send(validRsvp({ name: 'Alice', phone: '+33100000001' }));
+            await request(app).post('/api/rsvp').send(validRsvp({ name: 'Bob', phone: '+33100000002', message: 'a, b "c"' }));
+
+            const res = await request(app)
+                .get('/api/rsvps/export.csv')
+                .set('Authorization', authHeader)
+                .expect(200);
+
+            expect(res.headers['content-type']).toMatch(/text\/csv/);
+            expect(res.headers['content-disposition']).toMatch(/rsvps\.csv/);
+            expect(res.text.charCodeAt(0)).toBe(0xfeff); // BOM
+            const lines = res.text.replace(/^\uFEFF/, '').trim().split('\r\n');
+            expect(lines[0]).toBe('id,name,attending,email,phone,guests,message,created_at,updated_at');
+            expect(lines).toHaveLength(3);
+            // The quote/comma-bearing message must be RFC 4180 escaped.
+            expect(res.text).toContain('"a, b ""c"""');
+        });
+    });
+
+    describe('GET /api/event.ics', () => {
+        it('returns a calendar invite built from the event config', async () => {
+            const withEvent = createApp(db, {
+                adminUsername: ADMIN.username,
+                adminPassword: ADMIN.password,
+                event: { person: 'Léo', age: '5', date: '2025-09-06', time: '15h00 - 17h00', location: 'Chez Léo' }
+            });
+
+            const res = await request(withEvent).get('/api/event.ics').expect(200);
+            expect(res.headers['content-type']).toMatch(/text\/calendar/);
+            expect(res.text).toContain('BEGIN:VCALENDAR');
+            expect(res.text).toContain('SUMMARY:Anniversaire de Léo (5 ans)');
+            expect(res.text).toContain('DTSTART:20250906T150000');
+            expect(res.text).toContain('DTEND:20250906T170000');
+            expect(res.text).toContain('LOCATION:Chez Léo');
+        });
+
+        it('returns 404 when no event date is configured', async () => {
+            const noEvent = createApp(db, { event: { person: 'X', date: '' } });
+            await request(noEvent).get('/api/event.ics').expect(404);
+        });
+    });
+
     describe('GET /api/health', () => {
         it('reports OK with a valid timestamp', async () => {
             const res = await request(app).get('/api/health').expect(200);

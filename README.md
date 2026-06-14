@@ -30,9 +30,12 @@ Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
   at container start into `dist/env.js` by [`infra/inject-env.sh`](infra/inject-env.sh)
   from environment variables, so the same image works for any event.
 - **Backend** — Express 5 API with SQLite, rate limiting, Helmet and input
-  validation. Phone number is the guest identity (one RSVP per phone; re-submitting
-  updates it). Structured as a thin bootstrap (`server.js`) over a testable
-  `createApp(db)` factory and a `db` module — see [`server/README.md`](server/README.md).
+  validation. Phone number is the guest identity (normalised to digits, so the
+  same number matches regardless of spacing/punctuation; one RSVP per phone,
+  re-submitting updates it). The host can export the guest list as CSV and guests
+  can download a calendar invite. Structured as a thin bootstrap (`server.js`) over
+  a testable `createApp(db)` factory and `db` / `event` modules — see
+  [`server/README.md`](server/README.md).
 - **Process management** — [`infra/supervisord.conf`](infra/supervisord.conf)
   runs Caddy and Node; [`infra/Caddyfile`](infra/Caddyfile) handles routing.
 
@@ -69,8 +72,10 @@ locally instead, point the service at the included [`Dockerfile`](Dockerfile).
 | `GET`    | `/api/health`             | —     | Health check                             |
 | `POST`   | `/api/rsvp`               | —     | Submit/update an RSVP (keyed by phone)   |
 | `GET`    | `/api/rsvp/lookup/:phone` | —     | Look up an existing RSVP by phone        |
+| `GET`    | `/api/event.ics`          | —     | Calendar invite (.ics) for the event     |
 | `GET`    | `/api/rsvps`              | admin | All RSVPs                                |
 | `GET`    | `/api/rsvps/count`        | admin | Confirmation, decline and guest counts   |
+| `GET`    | `/api/rsvps/export.csv`   | admin | Export all RSVPs as CSV                  |
 | `PUT`    | `/api/rsvp/:id`           | admin | Edit an RSVP                             |
 | `DELETE` | `/api/rsvp/:id`           | admin | Delete an RSVP                           |
 

@@ -11,6 +11,7 @@ This is the Node.js backend server for the birthday invitation app with RSVP fun
 | `server.js`  | Bootstrap — opens the DB, builds the app, listens, shuts down |
 | `src/app.js` | `createApp(db, options)` factory — all routes and middleware  |
 | `src/db.js`  | Opens SQLite, runs schema/migrations, promise-wraps the handle |
+| `src/event.js` | Reads event env vars; builds the `.ics` calendar invite      |
 | `tests/`     | Vitest, hitting `createApp` over an in-memory database          |
 
 The bootstrap and the test suite share the exact same `createApp`, so tests
@@ -22,7 +23,9 @@ cannot drift away from the routes that actually run in production.
 - Rate limiting to prevent spam (proxy-aware via `trust proxy`)
 - CORS enabled for frontend communication
 - Input validation and sanitization
-- One RSVP per phone number (re-submitting updates the existing row)
+- One RSVP per phone number, normalised to digits so the same number matches
+  regardless of spacing/punctuation (re-submitting updates the existing row)
+- CSV export of the guest list and an `.ics` calendar invite
 - HTTP Basic auth on admin endpoints, failing closed when unconfigured
 
 ## API Endpoints
@@ -49,14 +52,23 @@ one is created (`201`).
 ```
 GET /api/rsvp/lookup/:phone
 ```
-Returns the RSVP for a phone number, or `404` if none exists.
+Returns the RSVP for a phone number, or `404` if none exists. The phone is
+normalised, so any formatting of the same number resolves to the same guest.
+
+### Calendar invite
+```
+GET /api/event.ics
+```
+Returns an iCalendar invite built from the event environment variables, or `404`
+when no event date is configured.
 
 ### Admin endpoints (HTTP Basic auth)
 ```
-GET    /api/rsvps          # all submissions
-GET    /api/rsvps/count    # responses, confirmations, declines, total guests
-PUT    /api/rsvp/:id       # edit a submission
-DELETE /api/rsvp/:id       # delete a submission
+GET    /api/rsvps             # all submissions
+GET    /api/rsvps/count       # responses, confirmations, declines, total guests
+GET    /api/rsvps/export.csv  # download all submissions as CSV
+PUT    /api/rsvp/:id          # edit a submission
+DELETE /api/rsvp/:id          # delete a submission
 ```
 
 ### Health Check
