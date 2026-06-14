@@ -249,10 +249,75 @@ describe('RSVP API', () => {
             expect(res.headers['content-disposition']).toMatch(/rsvps\.csv/);
             expect(res.text.charCodeAt(0)).toBe(0xfeff); // BOM
             const lines = res.text.replace(/^\uFEFF/, '').trim().split('\r\n');
-            expect(lines[0]).toBe('id,name,attending,email,phone,guests,message,created_at,updated_at');
+            expect(lines[0]).toBe('id,name,attending,email,phone,guests,dietary_restrictions,message,created_at,updated_at');
             expect(lines).toHaveLength(3);
             // The quote/comma-bearing message must be RFC 4180 escaped.
             expect(res.text).toContain('"a, b ""c"""');
+        });
+
+        it('neutralises CSV formula injection in guest-supplied fields', async () => {
+            await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ name: '=HYPERLINK("http://evil")', phone: '+33100000003' }));
+            const res = await request(app)
+                .get('/api/rsvps/export.csv')
+                .set('Authorization', authHeader)
+                .expect(200);
+            // The leading = is prefixed with a quote so spreadsheets treat it as text.
+            expect(res.text).toContain("'=HYPERLINK");
+        });
+    });
+
+    describe('Dietary restrictions / allergies', () => {
+        it('stores and returns the allergy field through submit and lookup', async () => {
+            await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ phone: '+33122000001', dietary_restrictions: 'Allergie aux arachides' }))
+                .expect(201);
+            const res = await request(app).get('/api/rsvp/lookup/+33122000001').expect(200);
+            expect(res.body.dietary_restrictions).toBe('Allergie aux arachides');
+        });
+    });
+
+    describe('RSVP deadline', () => {
+        it('rejects submissions after the deadline with 403', async () => {
+            const closed = createApp(db, {
+                adminUsername: ADMIN.username,
+                adminPassword: ADMIN.password,
+                rateLimits: { globalMax: 10000, rsvpMax: 10000 },
+                event: { person: 'X', age: '', date: '2999-01-01', time: '', town: '', location: '', rsvpDeadline: '2000-01-01' }
+            });
+            const res = await request(closed).post('/api/rsvp').send(validRsvp()).expect(403);
+            expect(res.body.error).toMatch(/closes/);
+        });
+    });
+
+    describe('POST /api/rsvps (admin manual add)', () => {
+        it('requires authentication', async () => {
+            await request(app).post('/api/rsvps').send(validRsvp({ phone: '+33133000001' })).expect(401);
+        });
+
+        it('creates an RSVP and rejects a duplicate phone', async () => {
+            await request(app)
+                .post('/api/rsvps')
+                .set('Authorization', authHeader)
+                .send(validRsvp({ phone: '+33133000002' }))
+                .expect(201);
+            await request(app)
+                .post('/api/rsvps')
+                .set('Authorization', authHeader)
+                .send(validRsvp({ phone: '+33133000002' }))
+                .expect(409);
+        });
+    });
+
+    describe('Input validation bounds', () => {
+        it('rejects an invalid email format', async () => {
+            const res = await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ email: 'not-an-email', phone: '+33144000001' }))
+                .expect(400);
+            expect(res.body.error).toMatch(/Email/);
         });
     });
 

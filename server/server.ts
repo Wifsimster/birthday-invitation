@@ -31,7 +31,16 @@ function main(): void {
 
   const shutdown = (signal: string): void => {
     logger.info({ signal }, 'shutting down');
+    // Force-exit if connections don't drain in time so the container doesn't
+    // hang until Docker's SIGKILL (and db.close never runs).
+    const forced = setTimeout(() => {
+      logger.warn('graceful shutdown timed out, forcing exit');
+      process.exit(1);
+    }, 5000);
+    forced.unref();
+    server.closeAllConnections?.();
     server.close(() => {
+      clearTimeout(forced);
       try {
         db.close();
         logger.info('database connection closed');
