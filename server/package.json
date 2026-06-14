@@ -17,12 +17,12 @@
         "clean": "rm -rf node_modules *.db"
     },
     "dependencies": {
+        "better-sqlite3": "^12.10.1",
         "compression": "^1.8.1",
         "cors": "^2.8.5",
         "express": "^5.1.0",
         "express-rate-limit": "^7.1.5",
-        "helmet": "^8.1.0",
-        "sqlite3": "^5.1.7"
+        "helmet": "^8.1.0"
     },
     "devDependencies": {
         "eslint": "^8.0.0",

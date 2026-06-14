@@ -1,4 +1,4 @@
-import sqlite3 from 'sqlite3';
+import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -10,51 +10,36 @@ export function defaultDbPath() {
     return process.env.DB_PATH || path.join(__dirname, '../..', 'data', 'rsvp.db');
 }
 
-// Thin promise wrapper around a sqlite3 Database handle so route handlers can
-// use async/await instead of nested callbacks.
+// better-sqlite3 is synchronous, so this is a thin adapter (no promises) exposing
+// the run/get/all shape the routes use. `run` normalises the result to the same
+// { lastID, changes } the rest of the code expects.
 export function wrapDb(handle) {
     return {
         raw: handle,
         run(sql, params = []) {
-            return new Promise((resolve, reject) => {
-                handle.run(sql, params, function (err) {
-                    if (err) reject(err);
-                    // `this` carries lastID / changes for INSERT/UPDATE/DELETE.
-                    else resolve(this);
-                });
-            });
+            const info = handle.prepare(sql).run(...params);
+            return { lastID: info.lastInsertRowid, changes: info.changes };
         },
         get(sql, params = []) {
-            return new Promise((resolve, reject) => {
-                handle.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
-            });
+            return handle.prepare(sql).get(...params);
         },
         all(sql, params = []) {
-            return new Promise((resolve, reject) => {
-                handle.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)));
-            });
+            return handle.prepare(sql).all(...params);
         },
         close() {
-            return new Promise((resolve, reject) => {
-                handle.close((err) => (err ? reject(err) : resolve()));
-            });
+            handle.close();
         }
     };
 }
 
 // Open (and create if missing) the SQLite database, returning the wrapped handle.
 export function openDb(dbPath = defaultDbPath()) {
-    return new Promise((resolve, reject) => {
-        const handle = new sqlite3.Database(dbPath, (err) => {
-            if (err) reject(err);
-            else resolve(wrapDb(handle));
-        });
-    });
+    return wrapDb(new Database(dbPath));
 }
 
 // Create the schema and apply migrations. Idempotent — safe to run on every boot.
-export async function initSchema(db) {
-    await db.run(`CREATE TABLE IF NOT EXISTS rsvp (
+export function initSchema(db) {
+    db.run(`CREATE TABLE IF NOT EXISTS rsvp (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   attending TEXT DEFAULT 'yes' CHECK(attending IN ('yes', 'no')),
@@ -70,7 +55,7 @@ export async function initSchema(db) {
 
     // Migration for databases created before the `attending` column existed.
     try {
-        await db.run(
+        db.run(
             `ALTER TABLE rsvp ADD COLUMN attending TEXT DEFAULT 'yes' CHECK(attending IN ('yes', 'no'))`
         );
     } catch (err) {
@@ -78,7 +63,7 @@ export async function initSchema(db) {
     }
 
     // One RSVP per phone number.
-    await db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_rsvp_phone ON rsvp(phone)');
+    db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_rsvp_phone ON rsvp(phone)');
 
     return db;
 }
