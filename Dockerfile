@@ -1,13 +1,11 @@
 # Birthday Invitation — runtime image
 #
-# NOTE: This repository was reconstructed from the published Docker image
-# (wifsimster/birthday-invitation:latest). The original Vite frontend *source*
-# was not present in the image, so the pre-built SPA in dist/ is committed as-is
-# and this Dockerfile assembles the runtime from those built assets rather than
-# building the frontend from source.
+# NOTE: This repository was reconstructed from the published Docker image. The
+# original Vite frontend *source* was not present, so the pre-built SPA in dist/
+# is committed as-is and this image serves those built assets.
 #
-# Caddy serves dist/ and proxies /api/* to the Node backend; supervisord runs
-# both processes. See infra/ for the process and proxy configuration.
+# A single Node process serves the SPA (dist/) and the API on one port — no
+# reverse proxy or process manager required. See infra/ for runtime env injection.
 
 FROM node:20-alpine
 
@@ -22,27 +20,24 @@ LABEL org.opencontainers.image.title="birthday-invitation" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
-# Caddy (static serving + reverse proxy) and supervisord (process manager)
-RUN apk add --no-cache caddy supervisor
-
 WORKDIR /app
 
 # Backend (Express + SQLite) — install production deps only
 COPY server/package.json server/package-lock.json ./server/
 RUN cd server && npm ci --omit=dev
+
 COPY server/ ./server/
 
-# Pre-built frontend SPA
+# Pre-built frontend SPA (served by the Node process from /app/dist)
 COPY dist/ ./dist/
 
-# Infra: process manager, reverse proxy, runtime env injection
-COPY infra/supervisord.conf /etc/supervisord.conf
-COPY infra/Caddyfile /etc/caddy/Caddyfile
+# Runtime env injection (writes dist/env.js from environment at start)
 COPY infra/inject-env.sh /inject-env.sh
 COPY infra/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /inject-env.sh /docker-entrypoint.sh
 
-# Caddy listens on 3000; backend on 3001 (internal, proxied by Caddy)
+# Node serves SPA + API on port 3000
+ENV PORT=3000
 EXPOSE 3000
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

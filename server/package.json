@@ -17,6 +17,7 @@
         "clean": "rm -rf node_modules *.db"
     },
     "dependencies": {
+        "compression": "^1.8.1",
         "cors": "^2.8.5",
         "express": "^5.1.0",
         "express-rate-limit": "^7.1.5",
