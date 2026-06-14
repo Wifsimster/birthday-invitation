@@ -18,6 +18,12 @@ export interface RsvpRow {
   updated_at: string;
 }
 
+export interface SettingsRow {
+  key: string;
+  value: string;
+  updated_at: string;
+}
+
 export interface RunResult {
   lastID: number | bigint;
   changes: number;
@@ -90,6 +96,14 @@ export function initSchema(db: Db): Db {
 
   // One RSVP per phone number.
   db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_rsvp_phone ON rsvp(phone)');
+
+  // Generic key/value store for admin-tunable settings (e.g. the selected UI
+  // theme). Absence of a key means "use the application default".
+  db.run(`CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
 
   return db;
 }

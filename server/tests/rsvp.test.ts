@@ -321,6 +321,45 @@ describe('RSVP API', () => {
         });
     });
 
+    describe('Settings API', () => {
+        it('GET /api/settings returns the default theme when unset', async () => {
+            const res = await request(app).get('/api/settings').expect(200);
+            expect(res.body).toMatchObject({ theme: 'fiesta' });
+        });
+
+        it('PUT /api/settings requires authentication', async () => {
+            await request(app).put('/api/settings').send({ theme: 'dino' }).expect(401);
+        });
+
+        it('PUT /api/settings persists a valid theme and GET reflects it', async () => {
+            const put = await request(app)
+                .put('/api/settings')
+                .set('Authorization', authHeader)
+                .send({ theme: 'spiderman' })
+                .expect(200);
+            expect(put.body).toMatchObject({ theme: 'spiderman' });
+
+            const get = await request(app).get('/api/settings').expect(200);
+            expect(get.body).toMatchObject({ theme: 'spiderman' });
+        });
+
+        it('PUT /api/settings rejects an unknown theme with 400 + French error', async () => {
+            const res = await request(app)
+                .put('/api/settings')
+                .set('Authorization', authHeader)
+                .send({ theme: 'not-a-theme' })
+                .expect(400);
+            expect(res.body.error).toMatch(/Thème inconnu/);
+        });
+
+        it('PUT /api/settings upserts (a second write overwrites the first)', async () => {
+            await request(app).put('/api/settings').set('Authorization', authHeader).send({ theme: 'dino' }).expect(200);
+            await request(app).put('/api/settings').set('Authorization', authHeader).send({ theme: 'space' }).expect(200);
+            const get = await request(app).get('/api/settings').expect(200);
+            expect(get.body.theme).toBe('space');
+        });
+    });
+
     describe('GET /api/health', () => {
         it('reports OK with a valid timestamp', async () => {
             const res = await request(app).get('/api/health').expect(200);

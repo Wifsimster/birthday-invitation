@@ -7,6 +7,7 @@ import { pinoHttp } from 'pino-http';
 import path from 'node:path';
 import { z } from 'zod';
 import { eventConfig, buildIcs, type EventConfig } from './event.ts';
+import { THEME_IDS, DEFAULT_THEME } from './themes.ts';
 import { logger as defaultLogger, type Logger } from './logger.ts';
 import type { Db, RsvpRow } from './db.ts';
 
@@ -75,6 +76,19 @@ function rsvpSchema(opts: { requireAttending: boolean; minGuests: number }) {
       .optional(),
     message: z.string().trim().nullish()
   });
+}
+
+// Admin-selectable UI theme. Validated against the shared allow-list so the
+// stored value always maps to a known frontend theme.
+const settingsSchema = z.object({
+  theme: z.enum(THEME_IDS, { error: 'Thème inconnu' })
+});
+
+// Read the current theme from the settings table, falling back to the default
+// when the admin has never chosen one.
+function readTheme(db: Db): string {
+  const row = db.get<{ value: string }>('SELECT value FROM settings WHERE key = ?', ['theme']);
+  return row?.value ?? DEFAULT_THEME;
 }
 
 const FIELD_PRIORITY = ['name', 'phone', 'attending', 'guests', 'email', 'message'];
@@ -166,6 +180,26 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
   });
+
+  // Public: the current UI settings (currently just the selected theme).
+  // Defaults to the fiesta theme when nothing has been chosen yet.
+  app.get('/api/settings', asyncHandler((_req, res) => {
+    res.json({ theme: readTheme(db) });
+  }));
+
+  // Admin: choose the active UI theme. Validated against the shared allow-list.
+  app.put('/api/settings', basicAuth, asyncHandler((req, res) => {
+    const parsed = settingsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: firstError(parsed.error) });
+    }
+    db.run(
+      `INSERT INTO settings (key, value, updated_at) VALUES ('theme', ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+      [parsed.data.theme]
+    );
+    res.json({ theme: parsed.data.theme });
+  }));
 
   app.get('/api/rsvps', basicAuth, asyncHandler((_req, res) => {
     const rsvps = db.all<RsvpRow>('SELECT * FROM rsvp ORDER BY created_at DESC, id DESC');

@@ -77,6 +77,8 @@ locally instead, point the service at the included [`Dockerfile`](Dockerfile).
 | `POST`   | `/api/rsvp`               | —     | Submit/update an RSVP (keyed by phone)   |
 | `GET`    | `/api/rsvp/lookup/:phone` | —     | Look up an existing RSVP by phone        |
 | `GET`    | `/api/event.ics`          | —     | Calendar invite (.ics) for the event     |
+| `GET`    | `/api/settings`           | —     | Current UI settings (selected theme)     |
+| `PUT`    | `/api/settings`           | admin | Set the active UI theme                  |
 | `GET`    | `/api/rsvps`              | admin | All RSVPs                                |
 | `GET`    | `/api/rsvps/count`        | admin | Confirmation, decline and guest counts   |
 | `GET`    | `/api/rsvps/export.csv`   | admin | Export all RSVPs as CSV                  |
@@ -106,6 +108,7 @@ The TypeScript server is split for testability:
 | `src/app.ts`     | `createApp(db, options)` — routes, zod validation |
 | `src/db.ts`      | Open SQLite (better-sqlite3), schema/migrations  |
 | `src/event.ts`   | Event config + `.ics` calendar invite            |
+| `src/themes.ts`  | Allow-list of valid theme ids (settings validation) |
 | `src/logger.ts`  | pino structured logger                           |
 | `tests/`         | Vitest hitting `createApp` over an in-memory DB  |
 
@@ -129,6 +132,18 @@ npm run build    # builds the SPA into ../dist (served by the backend)
 | `src/views/Admin.vue`    | Admin panel: login, stats, list, edit/delete (`/admin`) |
 | `src/router.js`          | Routes                                            |
 | `src/env.js`             | Reads runtime config from `window.ENV`           |
+| `src/themes.js`          | Theme catalog + `applyTheme` (CSS custom properties) |
+
+### Themes
+
+The invitation has a selectable visual theme (Fiesta, Spider-Man, Iron Man,
+Pat' Patrouille, Mickey, Princesse, Dino, Espace, Licorne). The admin picks one
+from the **🎨 Thème** panel in `/admin`; it is persisted server-side in the
+`settings` table and applied to every visitor. Each theme is pure CSS
+(palette + emoji + fonts, no image assets) defined in `frontend/src/themes.js`,
+applied by writing `--theme-*` CSS custom properties on `<html>`. The
+server-side allow-list in `server/src/themes.ts` must stay in sync with the
+ids in that catalog.
 
 The Docker image builds the SPA from this source (multi-stage build), so `dist/`
 is never committed. For a full local run, build the frontend once, then start the
