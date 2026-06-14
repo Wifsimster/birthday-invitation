@@ -7,12 +7,11 @@ confirm their attendance; a Node.js/Express backend stores RSVPs in SQLite.
 Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
 `leo-birthday.${DOMAIN}`.
 
-> ⚠️ **Provenance:** this repository was reconstructed from the published Docker
-> image. The original **Vite frontend source was not available**, so the compiled
-> SPA is committed as-is under [`dist/`](dist/). The **backend** under
-> [`server/`](server/) is full source. If you have the original frontend sources,
-> drop them in (e.g. a `frontend/` folder) and adjust the [`Dockerfile`](Dockerfile)
-> to build them.
+> ℹ️ **Provenance:** this repository was originally reconstructed from the
+> published Docker image (the original Vite source had been lost). The frontend
+> has since been **rebuilt from source** under [`frontend/`](frontend/) — a
+> Vue 3 + Vite SPA — so `dist/` is now a build artifact (git-ignored) produced
+> by `npm run build`, not committed assets.
 
 ## Architecture
 
@@ -24,9 +23,11 @@ Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
                  └───────────────────────────────────────────────┘
 ```
 
-- **Frontend** — Vite SPA (built assets in `dist/`). Event details are injected
-  at container start into `dist/env.js` by [`infra/inject-env.sh`](infra/inject-env.sh)
-  from environment variables, so the same image works for any event.
+- **Frontend** — Vue 3 + Vite SPA under [`frontend/`](frontend/): an invitation
+  view (`/`) with the RSVP and lookup forms, and an admin view (`/admin`). Built
+  to `dist/` by `npm run build`. Event details are injected at container start into
+  `dist/env.js` by [`infra/inject-env.sh`](infra/inject-env.sh) and read via
+  `window.ENV`, so the same image works for any event.
 - **Backend** — Express 5 serves both the SPA and the API in a **single process**
   (compression, static caching and SPA fallback built in — no reverse proxy or
   process manager). SQLite storage, rate limiting, Helmet and input validation.
@@ -106,3 +107,24 @@ The server is split for testability:
 Tests exercise the same `createApp` used in production, so they can't drift from
 the real routes. CI runs lint + tests on every push and PR (see
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
+## Frontend development
+
+```bash
+cd frontend
+npm install
+npm run dev      # Vite dev server (proxy /api to the backend, or run both)
+npm run build    # builds the SPA into ../dist (served by the backend)
+```
+
+| File                     | Responsibility                                   |
+| ------------------------ | ------------------------------------------------ |
+| `src/App.vue`            | Root + global styles, `<router-view>`            |
+| `src/views/Invitation.vue` | Invitation, RSVP form and lookup (`/`)         |
+| `src/views/Admin.vue`    | Admin panel: login, stats, list, edit/delete (`/admin`) |
+| `src/router.js`          | Routes                                            |
+| `src/env.js`             | Reads runtime config from `window.ENV`           |
+
+The Docker image builds the SPA from this source (multi-stage build), so `dist/`
+is never committed. For a full local run, build the frontend once, then start the
+backend (`DB_PATH=… node server/server.js`), which serves `../dist`.

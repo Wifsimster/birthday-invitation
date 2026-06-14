@@ -1,12 +1,19 @@
 # Birthday Invitation — runtime image
 #
-# NOTE: This repository was reconstructed from the published Docker image. The
-# original Vite frontend *source* was not present, so the pre-built SPA in dist/
-# is committed as-is and this image serves those built assets.
-#
-# A single Node process serves the SPA (dist/) and the API on one port — no
-# reverse proxy or process manager required. See infra/ for runtime env injection.
+# A single Node process serves the SPA (built from frontend/ source) and the API
+# on one port — no reverse proxy or process manager. See infra/ for runtime env
+# injection.
 
+# --- Stage 1: build the Vite SPA from source ---------------------------------
+FROM node:22-alpine AS frontend
+WORKDIR /build/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+# Outputs to /build/dist (vite.config.js outDir: ../dist)
+RUN npm run build
+
+# --- Stage 2: runtime --------------------------------------------------------
 FROM node:22-alpine
 
 # Build metadata stamped by the Release workflow (see .github/workflows/
@@ -32,8 +39,8 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
 
 COPY server/ ./server/
 
-# Pre-built frontend SPA (served by the Node process from /app/dist)
-COPY dist/ ./dist/
+# Built frontend SPA from stage 1 (served by the Node process from /app/dist)
+COPY --from=frontend /build/dist ./dist
 
 # Runtime env injection (writes dist/env.js from environment at start)
 COPY infra/inject-env.sh /inject-env.sh
