@@ -1,12 +1,12 @@
 <template>
   <div class="invitation-container">
-    <div v-for="(emoji, i) in themeDef.decorations" :key="i" class="decoration">{{ emoji }}</div>
+    <div v-for="(emoji, i) in themeDef.decorations" :key="i" class="decoration" aria-hidden="true">{{ emoji }}</div>
 
-    <div class="invitation-card">
-      <div class="invitation-header">
+    <main class="invitation-card">
+      <header class="invitation-header">
         <h1 class="birthday-title">{{ themeDef.copy.title }}</h1>
         <p class="birthday-subtitle">{{ themeDef.copy.subtitle }}</p>
-      </div>
+      </header>
 
       <div class="invitation-body">
         <div class="birthday-person">{{ birthdayPerson }}</div>
@@ -14,31 +14,38 @@
 
         <div class="event-details">
           <div class="detail-item">
-            <i class="fas fa-calendar-day detail-icon"></i>
+            <i class="fas fa-calendar-day detail-icon" aria-hidden="true"></i>
             <span>{{ formatDate(eventDate) }}</span>
           </div>
           <div class="detail-item">
-            <i class="fas fa-clock detail-icon"></i>
+            <i class="fas fa-clock detail-icon" aria-hidden="true"></i>
             <span>{{ eventTime }}</span>
           </div>
           <div class="detail-item" v-if="eventTown">
-            <i class="fas fa-city detail-icon"></i>
+            <i class="fas fa-city detail-icon" aria-hidden="true"></i>
             <span>{{ eventTown }}</span>
           </div>
           <div class="detail-item" v-if="eventLocation">
-            <i class="fas fa-map-marker-alt detail-icon"></i>
-            <span>{{ eventLocation }}</span>
+            <i class="fas fa-map-marker-alt detail-icon" aria-hidden="true"></i>
+            <a v-if="mapUrl" :href="mapUrl" target="_blank" rel="noopener" class="map-link">{{ eventLocation }}</a>
+            <span v-else>{{ eventLocation }}</span>
           </div>
           <div class="detail-item" v-if="dresscode">
-            <i class="fas fa-tshirt detail-icon"></i>
+            <i class="fas fa-tshirt detail-icon" aria-hidden="true"></i>
             <span>{{ dresscode }}</span>
           </div>
         </div>
 
+        <div class="action-row">
+          <a class="action-chip" :href="icsUrl"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Calendrier (.ics)</a>
+          <a class="action-chip" :href="googleCalUrl" target="_blank" rel="noopener"><i class="fab fa-google" aria-hidden="true"></i> Google Agenda</a>
+          <button type="button" class="action-chip" @click="share"><i class="fas fa-share-nodes" aria-hidden="true"></i> Partager</button>
+        </div>
+
         <div class="rsvp-section">
-          <div v-if="hasConfirmedAttendance" class="confirmation-message" :class="{ declined: !isAttending }">
+          <div v-if="hasConfirmedAttendance" class="confirmation-message" :class="{ declined: !isAttending }" role="status">
             <template v-if="isAttending">
-              <h3>🎉 Merci {{ confirmedName }} !</h3>
+              <h2>🎉 Merci {{ confirmedName }} !</h2>
               <p>Ta réponse est bien enregistrée. À très bientôt ! 🎈</p>
               <div class="confirmation-details">
                 <p>👨‍👩‍👧‍👦 {{ confirmedGuests }} personne(s)</p>
@@ -46,7 +53,7 @@
               </div>
             </template>
             <template v-else>
-              <h3>Merci {{ confirmedName }}</h3>
+              <h2>Merci {{ confirmedName }}</h2>
               <p>Dommage que tu ne puisses pas venir. 😔</p>
               <div class="confirmation-details" v-if="confirmedMessage">
                 <p>💌 {{ confirmedMessage }}</p>
@@ -57,59 +64,71 @@
             </div>
           </div>
 
+          <div v-else-if="rsvpClosed" class="rsvp-closed" role="status">
+            <h2>🙏 Réponses closes</h2>
+            <p>La date limite de réponse ({{ formatDeadline }}) est passée.</p>
+          </div>
+
           <template v-else>
+            <p v-if="formatDeadline" class="deadline-note">⏳ Merci de répondre avant le {{ formatDeadline }}</p>
+
             <div class="rsvp-buttons" v-if="!showRsvpForm && !showLookupForm">
-              <button class="rsvp-button" @click="showRsvpForm = true">🎈 Je réponds à l'invitation</button>
-              <button class="lookup-button" @click="showLookupForm = true">✏️ Modifier ma réponse</button>
+              <button class="rsvp-button" @click="openRsvpForm">🎈 Je réponds à l'invitation</button>
+              <button class="lookup-button" @click="openLookupForm">✏️ Modifier ma réponse</button>
             </div>
 
             <form v-if="showRsvpForm" class="rsvp-form" @submit.prevent="submitRSVP">
-              <h3 class="form-title">Réponds à l'invitation</h3>
+              <h2 class="form-title">Réponds à l'invitation</h2>
 
-              <div class="form-group">
-                <label>Statut *</label>
+              <fieldset class="form-group radio-fieldset">
+                <legend>Statut <span aria-hidden="true">*</span></legend>
                 <div class="radio-group">
                   <label class="radio-option" :class="{ selected: formData.attending === 'yes' }">
-                    <input type="radio" value="yes" v-model="formData.attending" />
+                    <input type="radio" class="visually-hidden" value="yes" v-model="formData.attending" name="attending" />
                     <span class="radio-text">Oui, je viens ! 🎈</span>
                   </label>
                   <label class="radio-option" :class="{ selected: formData.attending === 'no' }">
-                    <input type="radio" value="no" v-model="formData.attending" />
+                    <input type="radio" class="visually-hidden" value="no" v-model="formData.attending" name="attending" />
                     <span class="radio-text">Non, je ne peux pas venir 😔</span>
                   </label>
                 </div>
+              </fieldset>
+
+              <div class="form-group">
+                <label for="rsvp-name">👶 Nom de l'enfant <span aria-hidden="true">*</span></label>
+                <input id="rsvp-name" type="text" v-model="formData.name" required aria-required="true" placeholder="Prénom de l'enfant" />
               </div>
 
               <div class="form-group">
-                <label>👶 Nom de l'enfant *</label>
-                <input type="text" v-model="formData.name" required placeholder="Prénom de l'enfant" />
+                <label for="rsvp-phone">📱 Téléphone <span aria-hidden="true">*</span></label>
+                <input id="rsvp-phone" type="tel" inputmode="tel" v-model="formData.phone" required aria-required="true" placeholder="06 12 34 56 78" />
               </div>
 
               <div class="form-group">
-                <label>📱 Téléphone *</label>
-                <input type="tel" v-model="formData.phone" required placeholder="06 12 34 56 78" />
-              </div>
-
-              <div class="form-group">
-                <label>✉️ Email du parent</label>
-                <input type="email" v-model="formData.email" placeholder="parent@example.com" />
+                <label for="rsvp-email">✉️ Email du parent</label>
+                <input id="rsvp-email" type="email" v-model="formData.email" placeholder="parent@example.com" />
               </div>
 
               <div class="form-group" v-if="formData.attending === 'yes'">
-                <label>👨‍👩‍👧‍👦 Nombre de personnes</label>
-                <select v-model.number="formData.guests">
+                <label for="rsvp-guests">👨‍👩‍👧‍👦 Nombre de personnes</label>
+                <select id="rsvp-guests" v-model.number="formData.guests">
                   <option :value="1">1 personne (juste l'enfant)</option>
                   <option :value="2">2 personnes (enfant + 1 accompagnateur)</option>
                   <option :value="3">3 personnes (enfant + 2 accompagnateurs)</option>
                 </select>
               </div>
 
-              <div class="form-group">
-                <label>💌 Message (optionnel)</label>
-                <textarea v-model="formData.message" :placeholder="messagePlaceholder"></textarea>
+              <div class="form-group" v-if="formData.attending === 'yes'">
+                <label for="rsvp-diet">🥜 Allergies / régime alimentaire</label>
+                <textarea id="rsvp-diet" v-model="formData.dietary_restrictions" placeholder="Allergies, intolérances, régime particulier..."></textarea>
               </div>
 
-              <div v-if="errorMessage" class="rsvp-error"><i class="fas fa-exclamation-circle"></i> {{ errorMessage }}</div>
+              <div class="form-group">
+                <label for="rsvp-message">💌 Message (optionnel)</label>
+                <textarea id="rsvp-message" v-model="formData.message" :placeholder="messagePlaceholder"></textarea>
+              </div>
+
+              <div v-if="errorMessage" class="rsvp-error" role="alert"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> {{ errorMessage }}</div>
 
               <div class="form-actions">
                 <button type="button" class="btn-cancel" @click="cancelForm">Annuler</button>
@@ -118,12 +137,12 @@
             </form>
 
             <form v-if="showLookupForm" class="lookup-form" @submit.prevent="lookupRSVP">
-              <h3>Retrouver ma réponse</h3>
+              <h2>Retrouver ma réponse</h2>
               <div class="form-group">
-                <label>📱 Téléphone *</label>
-                <input type="tel" v-model="lookupPhoneNumber" required placeholder="06 12 34 56 78" />
+                <label for="lookup-phone">📱 Téléphone <span aria-hidden="true">*</span></label>
+                <input id="lookup-phone" type="tel" inputmode="tel" v-model="lookupPhoneNumber" required aria-required="true" placeholder="06 12 34 56 78" />
               </div>
-              <div v-if="errorMessage" class="error-message">{{ errorMessage }}</div>
+              <div v-if="errorMessage" class="error-message" role="alert">{{ errorMessage }}</div>
               <div class="form-buttons">
                 <button type="button" class="cancel-button" @click="cancelForm">Annuler</button>
                 <button type="submit" class="submit-button" :disabled="isLookingUp">{{ isLookingUp ? 'Recherche...' : 'Rechercher' }}</button>
@@ -132,7 +151,7 @@
           </template>
         </div>
       </div>
-    </div>
+    </main>
 
     <div class="admin-link">
       <router-link to="/admin" class="admin-button">🔐 Admin</router-link>
@@ -156,6 +175,7 @@ export default {
       eventTown: eventConfig.eventTown,
       eventLocation: eventConfig.eventLocation,
       dresscode: eventConfig.dresscode,
+      rsvpDeadline: eventConfig.rsvpDeadline,
       showRsvpForm: false,
       showLookupForm: false,
       hasConfirmedAttendance: false,
@@ -167,7 +187,7 @@ export default {
       isSubmitting: false,
       isLookingUp: false,
       lookupPhoneNumber: '',
-      formData: { attending: 'yes', name: '', phone: '', email: '', guests: 1, message: '' }
+      formData: { attending: 'yes', name: '', phone: '', email: '', guests: 1, dietary_restrictions: '', message: '' }
     };
   },
   computed: {
@@ -178,6 +198,41 @@ export default {
       return this.formData.attending === 'yes'
         ? 'Un petit mot pour nous dire votre joie de venir...'
         : "Un petit mot pour s'excuser...";
+    },
+    rsvpClosed() {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(this.rsvpDeadline)) return false;
+      return Date.now() > new Date(`${this.rsvpDeadline}T23:59:59`).getTime();
+    },
+    formatDeadline() {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(this.rsvpDeadline)) return '';
+      return new Date(`${this.rsvpDeadline}T12:00:00`)
+        .toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    },
+    icsUrl() {
+      return `${apiBaseUrl}/event.ics`;
+    },
+    mapUrl() {
+      const q = [this.eventLocation, this.eventTown].filter(Boolean).join(', ');
+      return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : '';
+    },
+    googleCalUrl() {
+      const d = this.eventDate instanceof Date ? this.eventDate : new Date(this.eventDate);
+      if (Number.isNaN(d.getTime())) return '';
+      const day = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+      // All-day event spanning the party date (end is exclusive next day).
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+      const dayNext = `${next.getFullYear()}${String(next.getMonth() + 1).padStart(2, '0')}${String(next.getDate()).padStart(2, '0')}`;
+      const title = `Anniversaire de ${this.birthdayPerson}${this.age ? ` (${this.age} ans)` : ''}`;
+      const details = [this.eventTime, this.dresscode].filter(Boolean).join(' — ');
+      const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: title,
+        dates: `${day}/${dayNext}`,
+        details,
+        location: [this.eventLocation, this.eventTown].filter(Boolean).join(', ')
+      });
+      return `https://calendar.google.com/calendar/render?${params.toString()}`;
     }
   },
   async mounted() {
@@ -201,6 +256,14 @@ export default {
     formatDate(date) {
       return date.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     },
+    openRsvpForm() {
+      this.errorMessage = '';
+      this.showRsvpForm = true;
+    },
+    openLookupForm() {
+      this.errorMessage = '';
+      this.showLookupForm = true;
+    },
     cancelForm() {
       this.showRsvpForm = false;
       this.showLookupForm = false;
@@ -216,7 +279,26 @@ export default {
       this.showLookupForm = false;
       this.errorMessage = '';
       this.lookupPhoneNumber = '';
-      this.formData = { attending: 'yes', name: '', phone: '', email: '', guests: 1, message: '' };
+      this.formData = { attending: 'yes', name: '', phone: '', email: '', guests: 1, dietary_restrictions: '', message: '' };
+    },
+    async share() {
+      const url = window.location.href;
+      const title = `Anniversaire de ${this.birthdayPerson}`;
+      const text = `${title} — tu es invité(e) ! 🎉`;
+      try {
+        if (navigator.share) {
+          await navigator.share({ title, text, url });
+          return;
+        }
+      } catch {
+        return; // user cancelled the native share sheet
+      }
+      // Fallback: WhatsApp share, then clipboard.
+      try {
+        await navigator.clipboard?.writeText(url);
+        this.errorMessage = '';
+      } catch { /* ignore clipboard failures */ }
+      window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, '_blank', 'noopener');
     },
     async submitRSVP() {
       this.isSubmitting = true;
@@ -231,6 +313,7 @@ export default {
             email: this.formData.email,
             phone: this.formData.phone,
             guests: this.formData.guests,
+            dietary_restrictions: this.formData.dietary_restrictions,
             message: this.formData.message
           })
         });
@@ -272,6 +355,7 @@ export default {
           email: data.email || '',
           phone: data.phone,
           guests: data.guests || 1,
+          dietary_restrictions: data.dietary_restrictions || '',
           message: data.message || ''
         };
         this.showLookupForm = false;
@@ -305,29 +389,39 @@ export default {
 .birthday-subtitle{opacity:.92;font-size:1.1rem}
 .invitation-body{padding:30px}
 .birthday-person{font-family:var(--theme-font-display,'Comic Sans MS',cursive);text-align:center;color:var(--theme-primary,#ff6b6b);font-size:1.7rem;margin-bottom:15px;font-weight:700}
-.age-badge{background:var(--theme-badge-gradient,linear-gradient(135deg,#ffd93d,#ff6b6b));color:#fff;padding:10px 22px;border-radius:25px;text-align:center;font-weight:700;font-size:1.2rem;margin:0 auto 25px;display:inline-block;box-shadow:0 4px 15px #0000002e;text-shadow:1px 1px 2px #0000003a}
+.age-badge{background:var(--theme-badge-gradient,linear-gradient(135deg,#ffd93d,#ff6b6b));color:var(--theme-badge-text,#fff);padding:10px 22px;border-radius:25px;text-align:center;font-weight:700;font-size:1.2rem;margin:0 auto 25px;display:inline-block;box-shadow:0 4px 15px #0000002e}
+.map-link{color:var(--theme-primary,#ff6b6b);text-decoration:underline}
+.action-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:10px 0 6px}
+.action-chip{display:inline-flex;align-items:center;gap:7px;background:#00000008;border:1.5px solid #0000001f;color:var(--theme-card-text,#333);border-radius:20px;padding:8px 14px;font-size:.85rem;font-weight:600;cursor:pointer;text-decoration:none;transition:all .2s ease;font-family:inherit}
+.action-chip:hover{border-color:var(--theme-primary,#ff6b6b);transform:translateY(-1px)}
+.deadline-note{text-align:center;font-size:.95rem;font-weight:600;color:var(--theme-primary-dark,#c9184a);margin-bottom:14px}
+.rsvp-closed{background:#f3f4f6;border:2px dashed #cbd5e1;border-radius:15px;padding:24px;text-align:center;color:#44505f}
+.rsvp-closed h2{margin-bottom:8px;color:var(--theme-primary-dark,#c9184a)}
 .event-details{margin:25px 0}
 .detail-item{display:flex;align-items:center;margin-bottom:15px;font-size:1rem;color:var(--theme-card-text,#333)}
 .detail-icon{color:var(--theme-primary,#ff6b6b);margin-right:12px;width:20px;text-align:center}
 .rsvp-section{margin-top:30px}
 .rsvp-buttons{text-align:center;display:flex;flex-direction:column;gap:15px;align-items:center}
-.rsvp-button,.lookup-button{font-family:var(--theme-font-display,inherit);color:#fff;border:none;padding:15px 30px;border-radius:25px;font-size:1.1rem;font-weight:600;cursor:pointer;transition:all .3s ease;min-width:200px}
+.rsvp-button,.lookup-button{font-family:var(--theme-font-display,inherit);color:var(--theme-button-text,#fff);border:none;padding:15px 30px;border-radius:25px;font-size:1.1rem;font-weight:600;cursor:pointer;transition:all .3s ease;min-width:200px}
 .rsvp-button{background:var(--theme-button-gradient,linear-gradient(135deg,#4ecdc4,#44a08d));box-shadow:0 4px 15px #00000033}
 .rsvp-button:hover{transform:translateY(-2px);box-shadow:0 8px 25px #00000040}
 .lookup-button{background:linear-gradient(135deg,var(--theme-secondary,#667eea),var(--theme-primary-dark,#764ba2));box-shadow:0 4px 15px #00000033}
 .lookup-button:hover{transform:translateY(-2px);box-shadow:0 8px 25px #00000040}
 .lookup-form{background:#f0f4ff;padding:25px;border-radius:15px;margin-top:20px;border:2px solid #e1e5e9}
-.lookup-form h3{color:var(--theme-primary,#667eea);margin-bottom:20px;text-align:center}
+.lookup-form h2{color:var(--theme-primary,#667eea);font-size:1.3rem;margin-bottom:20px;text-align:center}
 .rsvp-form{background:#f8f9fa;padding:25px;border-radius:15px;margin-top:20px}
-.rsvp-form h3{color:var(--theme-primary,#ff6b6b);margin-bottom:20px;text-align:center}
+.rsvp-form h2,.form-title{color:var(--theme-primary,#ff6b6b);font-size:1.3rem;margin-bottom:20px;text-align:center}
 .form-group{margin-bottom:20px}
+.radio-fieldset{border:none;padding:0;margin:0 0 20px}
+.radio-fieldset legend{margin-bottom:8px;color:#333;font-weight:500;padding:0}
 .form-group label{display:block;margin-bottom:8px;color:#333;font-weight:500}
 .form-group input,.form-group select{width:100%;padding:12px 15px;border:2px solid #e1e5e9;border-radius:10px;font-size:1rem;transition:border-color .3s ease}
 .form-group input:focus,.form-group select:focus{outline:none;border-color:var(--theme-primary,#ff6b6b)}
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .radio-group{display:flex;flex-direction:column;gap:12px}
 .radio-option{display:flex;align-items:center;cursor:pointer;padding:12px;border:2px solid #e1e5e9;border-radius:10px;transition:all .3s ease}
 .radio-option:hover{border-color:var(--theme-primary,#ff6b6b);background-color:#0000000a}
-.radio-option input[type=radio]{display:none}
+.radio-option:focus-within{outline:3px solid var(--theme-primary-soft,#ff6b6b55);outline-offset:2px;border-color:var(--theme-primary,#ff6b6b)}
 .radio-option.selected{border-color:var(--theme-primary,#ff6b6b);background-color:#00000010}
 .radio-text{font-weight:500;color:#333}
 .form-group textarea{width:100%;padding:12px 15px;border:2px solid #e1e5e9;border-radius:10px;font-size:1rem;transition:border-color .3s ease;resize:vertical;min-height:80px;font-family:inherit}
@@ -340,7 +434,7 @@ export default {
 .submit-button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 15px #00000040}
 .submit-button:disabled{opacity:.7;cursor:not-allowed}
 .confirmation-message{background:linear-gradient(135deg,#43cea2,#22a06b);color:#fff;padding:25px;border-radius:15px;text-align:center;margin-top:20px}
-.confirmation-message h3{margin-bottom:15px}
+.confirmation-message h2{font-size:1.4rem;margin-bottom:15px}
 .confirmation-message.declined{background:linear-gradient(135deg,#ff7675,#fd79a8)}
 .confirmation-details{margin-top:15px;opacity:.9}
 .reset-section{margin-top:20px;text-align:center}

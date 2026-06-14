@@ -7,5 +7,6 @@ window.ENV = {
   VITE_EVENT_TOWN: "Artigues-pr\u00e8s-Bordeaux",
   VITE_EVENT_LOCATION: "\ud83c\udfe0 Chez L\u00e9o",
   VITE_DRESSCODE: "Tenue de rechange ou maillot de bain ! Il y aura des jeux d'eau \ud83d\udca6",
+  VITE_EVENT_RSVP_DEADLINE: "",
   VITE_API_BASE_URL: "/api"
 };

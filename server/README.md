@@ -66,8 +66,19 @@ GET /api/event.ics
 Returns an iCalendar invite built from the event environment variables, or `404`
 when no event date is configured.
 
+RSVP bodies may include `dietary_restrictions` (allergies). Submissions are
+rejected with `403` once `EVENT_RSVP_DEADLINE` has passed. The lookup response
+is rate-limited and returns only the fields the form needs (never `ip_address`).
+
+### Settings (UI theme)
+```
+GET /api/settings            # { theme } — public, defaults to "fiesta"
+PUT /api/settings            # set the active theme (admin)
+```
+
 ### Admin endpoints (HTTP Basic auth)
 ```
+POST   /api/rsvps            # manually add a submission (409 on duplicate phone)
 GET    /api/rsvps             # all submissions
 GET    /api/rsvps/count       # responses, confirmations, declines, total guests
 GET    /api/rsvps/export.csv  # download all submissions as CSV
@@ -123,11 +134,17 @@ The database file is created automatically on first start (see `DB_PATH` below).
 
 ## Security Features
 
-- Rate limiting: 100 requests per 15 minutes per IP
-- RSVP rate limiting: 5 RSVP submissions per hour per IP
-- `trust proxy` so per-IP limits use the real client address behind Traefik
-- Helmet.js for security headers
-- Input validation and sanitization
+- Rate limiting: global (300/15min), RSVP submit (5/hr), phone lookup (20/hr),
+  admin auth (20/15min) — all proxy-aware via `trust proxy`
+- Constant-time admin credential comparison (`crypto.timingSafeEqual`)
+- Restrictive Content-Security-Policy (allow-lists only the font/icon CDNs)
+- CORS disabled unless `CORS_ORIGIN` is set (same-origin SPA by default)
+- Helmet.js for the remaining security headers
+- zod input validation with length caps + email format; 64 kB JSON body limit
+- CSV export escapes formula-injection (`= + - @`) so spreadsheets treat
+  guest text as data, not formulas
+- Public phone-lookup is rate-limited and returns only form fields (no IP)
+- Logs redact the Authorization header/cookies and mask the lookup phone number
 - HTTP Basic auth on admin endpoints (fails closed when credentials are unset)
 
 ## Serving the SPA
@@ -145,4 +162,6 @@ for hashed `assets/`, no-cache for `index.html` / `env.js`, and an SPA fallback 
 | `DB_PATH`                         | `../../data/rsvp.db` | SQLite database file location            |
 | `STATIC_DIR`                      | `../dist`    | Built SPA to serve (omit to run API-only)        |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | —          | Basic-auth credentials for admin endpoints       |
+| `EVENT_RSVP_DEADLINE`             | —            | `YYYY-MM-DD`; closes RSVPs (API + UI) once passed |
+| `CORS_ORIGIN`                     | —            | Comma-separated cross-origin allow-list (off by default) |
 | `TRUST_PROXY`                     | `1`          | Number of proxy hops to trust for `req.ip`       |
