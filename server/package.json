@@ -1,0 +1,36 @@
+{
+    "name": "@birthday-invitation/backend",
+    "version": null,
+    "description": "Birthday invitation backend - Express.js API server",
+    "type": "module",
+    "private": true,
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node --watch server.js",
+        "build": "echo 'No build step required for backend'",
+        "test": "vitest",
+        "test:run": "vitest run",
+        "test:watch": "vitest --watch",
+        "lint": "eslint . --ext .js --fix",
+        "clean": "rm -rf node_modules *.db"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^5.1.0",
+        "express-rate-limit": "^7.1.5",
+        "helmet": "^8.1.0",
+        "node-fetch": "^3.3.2",
+        "sqlite3": "^5.1.7"
+    },
+    "devDependencies": {
+        "@types/supertest": "^6.0.3",
+        "concurrently": "^9.2.0",
+        "eslint": "^8.0.0",
+        "supertest": "^7.1.1",
+        "vitest": "^3.2.4"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}
