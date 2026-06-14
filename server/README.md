@@ -1,8 +1,8 @@
 # Birthday Invitation Backend
 
 This is the Node.js backend server for the birthday invitation app with RSVP
-functionality. It is written in **TypeScript** and run directly by Node's native
-type stripping (`--experimental-strip-types`) — there is no build step.
+functionality. It is written in **TypeScript** and run directly by Node 24's
+native type stripping — there is no build step.
 
 > **Note:** For complete project documentation, see the main [README.md](../README.md) file.
 
@@ -87,15 +87,15 @@ Returns server status.
 cd server
 npm install
 npm run dev        # node --watch, type-stripped TS
-npm start          # node --experimental-strip-types server.ts
+npm start          # node server.ts
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint (typescript-eslint)
 npm test           # vitest
 ```
 
-Requires Node 22+ (for `--experimental-strip-types`). The backend ships as
-TypeScript and is executed as-is — no compile/emit step. CI runs typecheck +
-lint + tests, and builds the Docker image.
+Requires **Node 24+**, which strips TypeScript types at runtime by default (no
+flag needed). The backend ships as TypeScript and is executed as-is — no
+compile/emit step. CI runs typecheck + lint + tests, and builds the Docker image.
 
 ## Database
 

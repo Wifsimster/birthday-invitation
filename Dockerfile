@@ -5,7 +5,7 @@
 # injection.
 
 # --- Stage 1: build the Vite SPA from source ---------------------------------
-FROM node:22-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -14,7 +14,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # --- Stage 2: runtime --------------------------------------------------------
-FROM node:22-alpine
+FROM node:24-alpine
 
 # Build metadata stamped by the Release workflow (see .github/workflows/
 # release.yml). Defaults keep plain `docker build` working without --build-arg.
