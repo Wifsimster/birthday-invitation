@@ -11,6 +11,17 @@
 
 FROM node:20-alpine
 
+# Build metadata stamped by the Release workflow (see .github/workflows/
+# release.yml). Defaults keep plain `docker build` working without --build-arg.
+ARG VERSION=dev
+ARG BUILD_DATE
+ARG VCS_REF
+LABEL org.opencontainers.image.title="birthday-invitation" \
+      org.opencontainers.image.source="https://github.com/wifsimster/birthday-invitation" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 # Caddy (static serving + reverse proxy) and supervisord (process manager)
 RUN apk add --no-cache caddy supervisor
 
