@@ -6,8 +6,8 @@
     "private": true,
     "main": "server.ts",
     "scripts": {
-        "start": "node --disable-warning=ExperimentalWarning --experimental-strip-types server.ts",
-        "dev": "node --disable-warning=ExperimentalWarning --experimental-strip-types --watch server.ts",
+        "start": "node server.ts",
+        "dev": "node --watch server.ts",
         "build": "echo 'No build step required — Node strips types at runtime'",
         "test": "vitest",
         "test:run": "vitest run",
@@ -44,6 +44,6 @@
         "vitest": "^4.1.8"
     },
     "engines": {
-        "node": ">=22.0.0"
+        "node": ">=24.0.0"
     }
 }
