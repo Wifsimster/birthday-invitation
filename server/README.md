@@ -4,40 +4,59 @@ This is the Node.js backend server for the birthday invitation app with RSVP fun
 
 > **Note:** For complete project documentation, see the main [README.md](../README.md) file.
 
+## Layout
+
+| File         | Responsibility                                              |
+| ------------ | ----------------------------------------------------------- |
+| `server.js`  | Bootstrap — opens the DB, builds the app, listens, shuts down |
+| `src/app.js` | `createApp(db, options)` factory — all routes and middleware  |
+| `src/db.js`  | Opens SQLite, runs schema/migrations, promise-wraps the handle |
+| `tests/`     | Vitest, hitting `createApp` over an in-memory database          |
+
+The bootstrap and the test suite share the exact same `createApp`, so tests
+cannot drift away from the routes that actually run in production.
+
 ## Features
 
 - SQLite database for storing RSVP data
-- Rate limiting to prevent spam
+- Rate limiting to prevent spam (proxy-aware via `trust proxy`)
 - CORS enabled for frontend communication
 - Input validation and sanitization
-- IP-based duplicate submission prevention
+- One RSVP per phone number (re-submitting updates the existing row)
+- HTTP Basic auth on admin endpoints, failing closed when unconfigured
 
 ## API Endpoints
 
-### Get All RSVPs
-```
-GET /api/rsvps
-```
-Returns all RSVP submissions (for admin purposes).
-
-### Get RSVP Count
-```
-GET /api/rsvps/count
-```
-Returns the number of confirmations and total guests.
-
-### Submit RSVP
+### Submit / update an RSVP
 ```
 POST /api/rsvp
 ```
-Submit a new RSVP. Body should contain:
+Body (`name`, `phone` and `attending` are required):
 ```json
 {
+  "attending": "yes",
   "name": "Child Name",
   "email": "parent@example.com",
   "phone": "06 12 34 56 78",
-  "guests": 1
+  "guests": 1,
+  "message": "Optional note"
 }
+```
+If an RSVP already exists for that phone number it is updated; otherwise a new
+one is created (`201`).
+
+### Look up an RSVP
+```
+GET /api/rsvp/lookup/:phone
+```
+Returns the RSVP for a phone number, or `404` if none exists.
+
+### Admin endpoints (HTTP Basic auth)
+```
+GET    /api/rsvps          # all submissions
+GET    /api/rsvps/count    # responses, confirmations, declines, total guests
+PUT    /api/rsvp/:id       # edit a submission
+DELETE /api/rsvp/:id       # delete a submission
 ```
 
 ### Health Check
@@ -72,8 +91,9 @@ The server uses SQLite with a simple schema:
 CREATE TABLE rsvp (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  attending TEXT DEFAULT 'yes' CHECK(attending IN ('yes', 'no')),
   email TEXT,
-  phone TEXT,
+  phone TEXT NOT NULL,
   guests INTEGER DEFAULT 1,
   dietary_restrictions TEXT,
   message TEXT,
@@ -81,18 +101,26 @@ CREATE TABLE rsvp (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+-- UNIQUE index on phone enforces one RSVP per guest.
+CREATE UNIQUE INDEX idx_rsvp_phone ON rsvp(phone);
 ```
 
-The database file (`rsvp.db`) will be created automatically when the server starts.
+The database file is created automatically on first start (see `DB_PATH` below).
 
 ## Security Features
 
 - Rate limiting: 100 requests per 15 minutes per IP
 - RSVP rate limiting: 5 RSVP submissions per hour per IP
+- `trust proxy` so per-IP limits use the real client address behind Caddy/Traefik
 - Helmet.js for security headers
 - Input validation and sanitization
-- IP-based duplicate submission prevention
+- HTTP Basic auth on admin endpoints (fails closed when credentials are unset)
 
 ## Configuration
 
-The server runs on port 3001 by default. You can change this by setting the `PORT` environment variable.
+| Variable                          | Default      | Purpose                                          |
+| --------------------------------- | ------------ | ------------------------------------------------ |
+| `PORT`                            | `3001`       | Port the API listens on                          |
+| `DB_PATH`                         | `../../data/rsvp.db` | SQLite database file location            |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | —          | Basic-auth credentials for admin endpoints       |
+| `TRUST_PROXY`                     | `1`          | Number of proxy hops to trust for `req.ip`       |

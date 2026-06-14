@@ -29,8 +29,10 @@ Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
 - **Frontend** — Vite SPA (built assets in `dist/`). Event details are injected
   at container start into `dist/env.js` by [`infra/inject-env.sh`](infra/inject-env.sh)
   from environment variables, so the same image works for any event.
-- **Backend** — Express 5 API with SQLite, rate limiting, Helmet, input
-  validation and IP-based duplicate prevention. See [`server/README.md`](server/README.md).
+- **Backend** — Express 5 API with SQLite, rate limiting, Helmet and input
+  validation. Phone number is the guest identity (one RSVP per phone; re-submitting
+  updates it). Structured as a thin bootstrap (`server.js`) over a testable
+  `createApp(db)` factory and a `db` module — see [`server/README.md`](server/README.md).
 - **Process management** — [`infra/supervisord.conf`](infra/supervisord.conf)
   runs Caddy and Node; [`infra/Caddyfile`](infra/Caddyfile) handles routing.
 
@@ -62,15 +64,19 @@ locally instead, point the service at the included [`Dockerfile`](Dockerfile).
 
 ## API
 
-| Method | Endpoint           | Description                          |
-| ------ | ------------------ | ------------------------------------ |
-| `GET`  | `/api/health`      | Health check                         |
-| `GET`  | `/api/rsvps`       | All RSVPs (admin)                    |
-| `GET`  | `/api/rsvps/count` | Confirmation and guest counts        |
-| `POST` | `/api/rsvp`        | Submit an RSVP                       |
+| Method   | Endpoint                  | Auth  | Description                              |
+| -------- | ------------------------- | ----- | ---------------------------------------- |
+| `GET`    | `/api/health`             | —     | Health check                             |
+| `POST`   | `/api/rsvp`               | —     | Submit/update an RSVP (keyed by phone)   |
+| `GET`    | `/api/rsvp/lookup/:phone` | —     | Look up an existing RSVP by phone        |
+| `GET`    | `/api/rsvps`              | admin | All RSVPs                                |
+| `GET`    | `/api/rsvps/count`        | admin | Confirmation, decline and guest counts   |
+| `PUT`    | `/api/rsvp/:id`           | admin | Edit an RSVP                             |
+| `DELETE` | `/api/rsvp/:id`           | admin | Delete an RSVP                           |
 
-See [`server/README.md`](server/README.md) for request/response details and the
-database schema.
+Admin endpoints use HTTP Basic auth (`ADMIN_USERNAME` / `ADMIN_PASSWORD`) and
+fail closed (`503`) when those are unset. See [`server/README.md`](server/README.md)
+for request/response details and the database schema.
 
 ## Backend development
 
@@ -78,5 +84,19 @@ database schema.
 cd server
 npm install
 npm run dev    # node --watch
-npm test       # vitest
+npm test       # vitest (runs against the real app via createApp)
+npm run lint   # eslint
 ```
+
+The server is split for testability:
+
+| File             | Responsibility                                  |
+| ---------------- | ----------------------------------------------- |
+| `server.js`      | Bootstrap: open DB, build app, listen, shutdown |
+| `src/app.js`     | `createApp(db, options)` — routes & middleware  |
+| `src/db.js`      | Open SQLite, schema/migrations, promise wrapper |
+| `tests/`         | Vitest hitting `createApp` over an in-memory DB |
+
+Tests exercise the same `createApp` used in production, so they can't drift from
+the real routes. CI runs lint + tests on every push and PR (see
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml)).

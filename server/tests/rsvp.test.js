@@ -1,332 +1,223 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
-import { createTestApp } from './testServer.js';
+import { createApp } from '../src/app.js';
+import { openDb, initSchema } from '../src/db.js';
+
+const ADMIN = { username: 'admin', password: 'secret' };
+const authHeader = 'Basic ' + Buffer.from(`${ADMIN.username}:${ADMIN.password}`).toString('base64');
+
+// A complete, valid RSVP payload. Tests override individual fields as needed.
+const validRsvp = (overrides = {}) => ({
+    attending: 'yes',
+    name: 'John Doe',
+    email: 'john@example.com',
+    phone: '+1234567890',
+    guests: 2,
+    ...overrides
+});
 
 describe('RSVP API', () => {
-    let app, db;
+    let app;
+    let db;
 
     beforeEach(async () => {
-        const testApp = createTestApp();
-        app = testApp.app;
-        db = testApp.db;
-
-        // Clear the database before each test
-        return new Promise((resolve) => {
-            db.run('DELETE FROM rsvp', resolve);
+        // A fresh in-memory database per test, wired to the *real* app factory.
+        db = await openDb(':memory:');
+        await initSchema(db);
+        app = createApp(db, {
+            adminUsername: ADMIN.username,
+            adminPassword: ADMIN.password,
+            // Generous limits so tests don't trip the rate limiter.
+            rateLimits: { globalMax: 10000, rsvpMax: 10000 }
         });
     });
 
     describe('POST /api/rsvp', () => {
-        it('should successfully submit a valid RSVP', async () => {
-            const rsvpData = {
-                name: 'John Doe',
-                email: 'john@example.com',
-                phone: '+1234567890',
-                guests: 2
-            };
-
-            const response = await request(app)
-                .post('/api/rsvp')
-                .send(rsvpData)
-                .expect(201);
-
-            expect(response.body).toMatchObject({
-                message: 'RSVP submitted successfully!',
+        it('accepts a valid RSVP', async () => {
+            const res = await request(app).post('/api/rsvp').send(validRsvp()).expect(201);
+            expect(res.body).toMatchObject({
+                message: 'Réponse soumise avec succès !',
                 id: expect.any(Number)
             });
         });
 
-        it('should successfully submit RSVP with only required fields', async () => {
-            const rsvpData = {
-                name: 'Jane Smith'
-            };
-
-            const response = await request(app)
+        it('rejects a missing name', async () => {
+            const res = await request(app)
                 .post('/api/rsvp')
-                .send(rsvpData)
-                .expect(201);
-
-            expect(response.body).toMatchObject({
-                message: 'RSVP submitted successfully!',
-                id: expect.any(Number)
-            });
-        });
-
-        it('should reject RSVP without name', async () => {
-            const rsvpData = {
-                email: 'test@example.com',
-                guests: 1
-            };
-
-            const response = await request(app)
-                .post('/api/rsvp')
-                .send(rsvpData)
+                .send(validRsvp({ name: undefined }))
                 .expect(400);
-
-            expect(response.body).toMatchObject({
-                error: 'Name is required'
-            });
+            expect(res.body).toMatchObject({ error: 'Le nom est requis' });
         });
 
-        it('should reject RSVP with empty name', async () => {
-            const rsvpData = {
-                name: '   ',
-                email: 'test@example.com'
-            };
-
-            const response = await request(app)
+        it('rejects an empty name', async () => {
+            const res = await request(app)
                 .post('/api/rsvp')
-                .send(rsvpData)
+                .send(validRsvp({ name: '   ' }))
                 .expect(400);
-
-            expect(response.body).toMatchObject({
-                error: 'Name is required'
-            });
+            expect(res.body).toMatchObject({ error: 'Le nom est requis' });
         });
 
-        it('should reject RSVP with invalid guest count (too low)', async () => {
-            const rsvpData = {
-                name: 'Test User',
-                guests: 0
-            };
-
-            const response = await request(app)
+        it('rejects a missing phone', async () => {
+            const res = await request(app)
                 .post('/api/rsvp')
-                .send(rsvpData)
+                .send(validRsvp({ phone: undefined }))
                 .expect(400);
-
-            expect(response.body).toMatchObject({
-                error: 'Number of guests must be between 1 and 10'
-            });
+            expect(res.body).toMatchObject({ error: 'Le numéro de téléphone est requis' });
         });
 
-        it('should reject RSVP with invalid guest count (too high)', async () => {
-            const rsvpData = {
-                name: 'Test User',
-                guests: 15
-            };
-
-            const response = await request(app)
+        it('rejects a missing/invalid attending status', async () => {
+            const res = await request(app)
                 .post('/api/rsvp')
-                .send(rsvpData)
+                .send(validRsvp({ attending: 'maybe' }))
                 .expect(400);
-
-            expect(response.body).toMatchObject({
-                error: 'Number of guests must be between 1 and 10'
-            });
+            expect(res.body).toMatchObject({ error: 'Le statut de participation est requis' });
         });
 
-        it('should accept valid guest counts within range', async () => {
-            const testCases = [1, 5, 10];
+        it('rejects a guest count that is too low', async () => {
+            const res = await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ guests: 0 }))
+                .expect(400);
+            expect(res.body.error).toMatch(/nombre d'invités/);
+        });
 
-            for (const guests of testCases) {
-                const rsvpData = {
-                    name: `Test User ${guests}`,
-                    guests
-                };
+        it('rejects a guest count that is too high', async () => {
+            const res = await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ guests: 15 }))
+                .expect(400);
+            expect(res.body.error).toMatch(/nombre d'invités/);
+        });
 
+        it('accepts guest counts within range', async () => {
+            for (const guests of [1, 5, 10]) {
                 await request(app)
                     .post('/api/rsvp')
-                    .send(rsvpData)
+                    .send(validRsvp({ guests, phone: `+100000000${guests}` }))
                     .expect(201);
             }
         });
 
-        it('should trim whitespace from name and email', async () => {
-            const rsvpData = {
-                name: '  John Doe  ',
-                email: '  john@example.com  '
-            };
-
+        it('trims whitespace from name and email', async () => {
             await request(app)
                 .post('/api/rsvp')
-                .send(rsvpData)
+                .send(validRsvp({ name: '  John Doe  ', email: '  john@example.com  ' }))
                 .expect(201);
 
-            // Verify the data was trimmed by checking the database
-            const response = await request(app)
-                .get('/api/rsvps')
-                .expect(200);
-
-            const rsvp = response.body.rsvps[0];
-            expect(rsvp.name).toBe('John Doe');
-            expect(rsvp.email).toBe('john@example.com');
-        });
-    });
-
-    describe('GET /api/rsvps', () => {
-        it('should return empty array when no RSVPs exist', async () => {
-            const response = await request(app)
-                .get('/api/rsvps')
-                .expect(200);
-
-            expect(response.body).toMatchObject({
-                rsvps: []
-            });
+            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            expect(res.body.rsvps[0]).toMatchObject({ name: 'John Doe', email: 'john@example.com' });
         });
 
-        it('should return all RSVPs ordered by creation date (newest first)', async () => {
-            // Create multiple RSVPs
-            const rsvps = [
-                { name: 'First Person', email: 'first@example.com' },
-                { name: 'Second Person', email: 'second@example.com' },
-                { name: 'Third Person', email: 'third@example.com' }
-            ];
-
-            // Submit RSVPs with small delays to ensure different timestamps
-            for (const rsvp of rsvps) {
-                await request(app).post('/api/rsvp').send(rsvp);
-                await new Promise(resolve => setTimeout(resolve, 10));
-            }
-
-            const response = await request(app)
-                .get('/api/rsvps')
-                .expect(200);
-
-            expect(response.body.rsvps).toHaveLength(3);
-            expect(response.body.rsvps[0].name).toBe('Third Person');
-            expect(response.body.rsvps[1].name).toBe('Second Person');
-            expect(response.body.rsvps[2].name).toBe('First Person');
-        });
-    });
-
-    describe('GET /api/rsvps/count', () => {
-        it('should return zero counts when no RSVPs exist', async () => {
-            const response = await request(app)
-                .get('/api/rsvps/count')
-                .expect(200);
-
-            expect(response.body).toMatchObject({
-                confirmations: 0,
-                total_guests: 0
-            });
-        });
-
-        it('should return correct counts after RSVPs are submitted', async () => {
-            const rsvps = [
-                { name: 'Person 1', guests: 2 },
-                { name: 'Person 2', guests: 3 },
-                { name: 'Person 3', guests: 1 }
-            ];
-
-            for (const rsvp of rsvps) {
-                await request(app).post('/api/rsvp').send(rsvp);
-            }
-
-            const response = await request(app)
-                .get('/api/rsvps/count')
-                .expect(200);
-
-            expect(response.body).toMatchObject({
-                confirmations: 3,
-                total_guests: 6
-            });
-        });
-
-        it('should handle default guest count of 1', async () => {
+        it('records 0 guests when declining', async () => {
             await request(app)
                 .post('/api/rsvp')
-                .send({ name: 'Single Guest' });
+                .send(validRsvp({ attending: 'no', guests: 3 }))
+                .expect(201);
 
-            const response = await request(app)
-                .get('/api/rsvps/count')
+            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            expect(res.body.rsvps[0].guests).toBe(0);
+        });
+
+        it('updates the existing RSVP when the same phone re-submits', async () => {
+            const first = await request(app).post('/api/rsvp').send(validRsvp({ guests: 2 })).expect(201);
+
+            const update = await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ guests: 4, message: 'changed' }))
                 .expect(200);
 
-            expect(response.body).toMatchObject({
-                confirmations: 1,
-                total_guests: 1
+            expect(update.body).toMatchObject({
+                message: 'Réponse mise à jour avec succès !',
+                id: first.body.id
             });
+
+            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            expect(res.body.rsvps).toHaveLength(1);
+            expect(res.body.rsvps[0]).toMatchObject({ guests: 4, message: 'changed' });
+        });
+    });
+
+    describe('GET /api/rsvps (admin)', () => {
+        it('requires authentication', async () => {
+            await request(app).get('/api/rsvps').expect(401);
+        });
+
+        it('returns an empty array when no RSVPs exist', async () => {
+            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            expect(res.body).toMatchObject({ rsvps: [] });
+        });
+
+        it('returns all RSVPs, newest first', async () => {
+            const people = ['First', 'Second', 'Third'];
+            for (let i = 0; i < people.length; i++) {
+                await request(app)
+                    .post('/api/rsvp')
+                    .send(validRsvp({ name: people[i], phone: `+2000000000${i}` }));
+                await new Promise((r) => setTimeout(r, 10));
+            }
+
+            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            expect(res.body.rsvps.map((r) => r.name)).toEqual(['Third', 'Second', 'First']);
+        });
+    });
+
+    describe('GET /api/rsvps/count (admin)', () => {
+        it('requires authentication', async () => {
+            await request(app).get('/api/rsvps/count').expect(401);
+        });
+
+        it('returns zero counts when empty', async () => {
+            const res = await request(app).get('/api/rsvps/count').set('Authorization', authHeader).expect(200);
+            expect(res.body).toMatchObject({ total_responses: 0, confirmations: 0, declined: 0, total_guests: 0 });
+        });
+
+        it('aggregates confirmations, declines and guests', async () => {
+            await request(app).post('/api/rsvp').send(validRsvp({ phone: '+30000001', guests: 2 }));
+            await request(app).post('/api/rsvp').send(validRsvp({ phone: '+30000002', guests: 3 }));
+            await request(app).post('/api/rsvp').send(validRsvp({ phone: '+30000003', attending: 'no' }));
+
+            const res = await request(app).get('/api/rsvps/count').set('Authorization', authHeader).expect(200);
+            expect(res.body).toMatchObject({
+                total_responses: 3,
+                confirmations: 2,
+                declined: 1,
+                total_guests: 5
+            });
+        });
+    });
+
+    describe('GET /api/rsvp/lookup/:phone', () => {
+        it('returns the RSVP for a known phone', async () => {
+            await request(app).post('/api/rsvp').send(validRsvp({ phone: '+40000001' }));
+            const res = await request(app).get('/api/rsvp/lookup/+40000001').expect(200);
+            expect(res.body).toMatchObject({ name: 'John Doe', phone: '+40000001' });
+        });
+
+        it('returns 404 for an unknown phone', async () => {
+            await request(app).get('/api/rsvp/lookup/+99999999').expect(404);
         });
     });
 
     describe('GET /api/health', () => {
-        it('should return health status', async () => {
-            const response = await request(app)
-                .get('/api/health')
-                .expect(200);
-
-            expect(response.body).toMatchObject({
-                status: 'OK',
-                timestamp: expect.any(String)
-            });
-
-            // Verify timestamp is a valid ISO string
-            expect(() => new Date(response.body.timestamp)).not.toThrow();
+        it('reports OK with a valid timestamp', async () => {
+            const res = await request(app).get('/api/health').expect(200);
+            expect(res.body).toMatchObject({ status: 'OK', timestamp: expect.any(String) });
+            expect(Number.isNaN(Date.parse(res.body.timestamp))).toBe(false);
         });
     });
 
-    describe('RSVP Data Persistence', () => {
-        it('should persist all RSVP fields correctly', async () => {
-            const rsvpData = {
-                name: 'Complete User',
-                email: 'complete@example.com',
-                phone: '+1-555-123-4567',
-                guests: 4
-            };
-
+    describe('Error handling', () => {
+        it('returns 400 for malformed JSON', async () => {
             await request(app)
-                .post('/api/rsvp')
-                .send(rsvpData)
-                .expect(201);
-
-            const response = await request(app)
-                .get('/api/rsvps')
-                .expect(200);
-
-            const savedRsvp = response.body.rsvps[0];
-            expect(savedRsvp).toMatchObject({
-                name: rsvpData.name,
-                email: rsvpData.email,
-                phone: rsvpData.phone,
-                guests: rsvpData.guests,
-                id: expect.any(Number),
-                ip_address: expect.any(String),
-                created_at: expect.any(String),
-                updated_at: expect.any(String)
-            });
-        });
-
-        it('should handle null values for optional fields', async () => {
-            const rsvpData = {
-                name: 'Minimal User'
-                // No email, phone, or guests specified
-            };
-
-            await request(app)
-                .post('/api/rsvp')
-                .send(rsvpData)
-                .expect(201);
-
-            const response = await request(app)
-                .get('/api/rsvps')
-                .expect(200);
-
-            const savedRsvp = response.body.rsvps[0];
-            expect(savedRsvp.name).toBe('Minimal User');
-            expect(savedRsvp.email).toBeNull();
-            expect(savedRsvp.phone).toBeNull();
-            expect(savedRsvp.guests).toBe(1); // Default value
-        });
-    });
-
-    describe('Error Handling', () => {
-        it('should handle malformed JSON gracefully', async () => {
-            const response = await request(app)
                 .post('/api/rsvp')
                 .set('Content-Type', 'application/json')
                 .send('{ invalid json }')
                 .expect(400);
         });
 
-        it('should handle missing Content-Type header', async () => {
-            const response = await request(app)
-                .post('/api/rsvp')
-                .send('name=Test')
-                .expect(400);
-
-            expect(response.body).toMatchObject({
-                error: 'Name is required'
-            });
+        it('returns 400 when the body is not JSON (no name parsed)', async () => {
+            const res = await request(app).post('/api/rsvp').send('name=Test').expect(400);
+            expect(res.body).toMatchObject({ error: 'Le nom est requis' });
         });
     });
 });
