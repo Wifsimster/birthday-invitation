@@ -1,29 +1,260 @@
 name: Release
 
-# Builds the runtime image from the committed Dockerfile and publishes it to
-# GHCR on every push to main. The homelab deploy is handled separately by
-# deploy.yml (fires on this workflow's success via workflow_run).
+# Semantic-release pipeline (wawptn-style). On every push to main the bump type
+# is derived from the triggering commit (conventional commits); non-releasable
+# pushes short-circuit. A release bumps server/package.json, tags the repo,
+# builds the runtime image from the committed Dockerfile, publishes it to GHCR
+# with semver + sha tags, and cuts a GitHub Release. The homelab deploy is
+# handled separately by deploy.yml (fires on this workflow's success).
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      version_type:
+        description: "Version bump type"
+        required: false
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: "patch"
 
+# Serialize whole runs. cancel-in-progress is false on purpose: each release
+# pushes a `chore: bump version` commit back to main, and cancelling an
+# in-flight release mid-way (between the git push and the GitHub Release) would
+# leave a dangling tag/image. The bump-commit run short-circuits in seconds via
+# detect-release, so queuing barely adds latency.
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
+# Least-privilege default. The release job elevates per-job to the
+# contents:write / packages:write it actually needs.
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  release:
-    name: Build & publish image
+  detect-release:
+    name: Detect release type
     runs-on: ubuntu-latest
+    # Skip the workflow's own `chore: bump version` commits. GITHUB_TOKEN pushes
+    # don't re-trigger workflows, so this is belt-and-suspenders.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (
+        github.actor != 'github-actions[bot]'
+        && !startsWith(github.event.head_commit.message, 'chore: bump version')
+      )
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      bump_type: ${{ steps.check.outputs.bump_type }}
+    steps:
+      - name: Analyze commit for release type
+        id: check
+        # Workflow expressions are passed through env vars so bash always
+        # treats them as data, never as code to parse.
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+          VERSION_INPUT: ${{ inputs.version_type }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "bump_type=$VERSION_INPUT" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FIRST_LINE=$(printf '%s\n' "$COMMIT_MSG" | head -1)
+
+          # Merge commit: the PR title is the 3rd line of the merge message.
+          if printf '%s' "$FIRST_LINE" | grep -qE "^Merge pull request #"; then
+            FIRST_LINE=$(printf '%s\n' "$COMMIT_MSG" | sed -n '3p')
+          fi
+
+          if printf '%s' "$FIRST_LINE" | grep -qE "^(feat|feature)(\(.+\))?!:|^BREAKING CHANGE:"; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "bump_type=major" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$FIRST_LINE" | grep -qE "^(feat|feature)(\(.+\))?:"; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "bump_type=minor" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$FIRST_LINE" | grep -qE "^(fix|perf|revert|refactor)(\(.+\))?:"; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "bump_type=patch" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only non-releasable commits (chore/docs/style/test/ci/build) — skipping."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  lint:
+    name: Lint
+    needs: [detect-release]
+    if: needs.detect-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    name: Test
+    needs: [detect-release]
+    if: needs.detect-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run test:run
+
+  release:
+    name: Build, publish & release
+    needs: [detect-release, lint, test]
+    if: needs.detect-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Rebase onto the latest origin/main BEFORE bumping so a previous
+      # release's bump commit (queued ahead of us by cancel-in-progress: false)
+      # is picked up and our later push isn't rejected as non-fast-forward.
+      - name: Sync with latest origin/main
+        run: |
+          git fetch origin main
+          git rebase origin/main
+
+      - name: Compute new version
+        id: version
+        env:
+          BUMP: ${{ needs.detect-release.outputs.bump_type }}
+        run: |
+          set -euo pipefail
+          CURRENT=$(node -p "require('./server/package.json').version")
+          # Strict semver guard: this value flows into git tags and docker tags.
+          if ! [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version in server/package.json: $CURRENT" >&2
+            exit 1
+          fi
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "$BUMP" in
+            patch) PATCH=$((PATCH + 1)) ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            *) echo "Unknown bump type: $BUMP" >&2; exit 1 ;;
+          esac
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "Current: $CURRENT → New: $NEW_VERSION ($BUMP)"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "major=$MAJOR" >> "$GITHUB_OUTPUT"
+          echo "minor=$MAJOR.$MINOR" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        # Built from PREVIOUS_TAG..HEAD before the bump commit, so the
+        # `chore: bump version` commit doesn't pollute its own changelog.
+        run: |
+          set -euo pipefail
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          {
+            echo "## What's Changed"
+            echo ""
+            if [ -z "$PREVIOUS_TAG" ]; then
+              git log --pretty=format:"- %s (%h)" --no-merges
+            else
+              git log "${PREVIOUS_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges
+            fi
+          } > CHANGELOG_TEMP.md
+          cat CHANGELOG_TEMP.md
+
+      - name: Bump version in server/package.json
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+        working-directory: server
+        run: npm version "$NEW_VERSION" --no-git-tag-version
+
+      # Diff-guard: if the bump left the worktree clean (e.g. a re-run), skip
+      # the commit so `git commit` doesn't exit 1 and kill the job.
+      - name: Commit version bump
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+        run: |
+          git add server/package.json server/package-lock.json
+          if git diff --staged --quiet; then
+            echo "No version changes staged — skipping commit (likely a re-run)."
+          else
+            git commit -m "chore: bump version to ${NEW_VERSION}"
+          fi
+
+      - name: Create tag
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+        run: git tag -fa "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"
+
+      # Push git BEFORE Docker so git stays the source of truth: if the push
+      # fails we abort before polluting GHCR with an untagged image. Retry loop
+      # handles the expected race where a sibling release's bump commit lands
+      # between our rebase and our push.
+      - name: Push git changes (retry on non-fast-forward)
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+        run: |
+          set -e
+          attempt=0
+          max_attempts=4
+          delay=2
+          until [ $attempt -ge $max_attempts ]; do
+            if git push origin HEAD:main && git push origin "v${NEW_VERSION}"; then
+              echo "Push succeeded on attempt $((attempt+1))."
+              break
+            fi
+            attempt=$((attempt+1))
+            if [ $attempt -ge $max_attempts ]; then
+              echo "::error::Failed to push git changes after $max_attempts attempts."
+              exit 1
+            fi
+            echo "Push failed. Pulling --rebase and retrying in ${delay}s (attempt $((attempt+1))/$max_attempts)."
+            sleep $delay
+            delay=$((delay*2))
+            git fetch origin main
+            git rebase origin/main
+          done
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -42,7 +273,24 @@ jobs:
           push: true
           tags: |
             ghcr.io/wifsimster/birthday-invitation:latest
-            ghcr.io/wifsimster/birthday-invitation:${{ github.sha }}
+            ghcr.io/wifsimster/birthday-invitation:v${{ steps.version.outputs.new_version }}
+            ghcr.io/wifsimster/birthday-invitation:${{ steps.version.outputs.minor }}
+            ghcr.io/wifsimster/birthday-invitation:${{ steps.version.outputs.major }}
+            ghcr.io/wifsimster/birthday-invitation:sha-${{ steps.version.outputs.short_sha }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.new_version }}
+            BUILD_DATE=${{ steps.version.outputs.build_date }}
+            VCS_REF=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max,ignore-error=true
+          # amd64-only: production target is x86_64. Re-add arm64 with native runners if needed.
           platforms: linux/amd64
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.new_version }}
+          name: Release v${{ steps.version.outputs.new_version }}
+          body_path: CHANGELOG_TEMP.md
+          draft: false
+          prerelease: false
