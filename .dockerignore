@@ -1,0 +1,20 @@
+# Keep the build context lean and — importantly — prevent the host's
+# node_modules (with a wrong-architecture better-sqlite3 binary) from being
+# copied over the image's freshly compiled one by `COPY server/ ./server/`.
+**/node_modules
+
+# VCS / CI / docs not needed in the runtime image
+.git
+.gitignore
+.github
+.dockerignore
+
+# Local runtime data and secrets
+data
+*.db
+*.log
+.env
+.env.*
+
+# Runtime-injected at container start (see infra/inject-env.sh)
+dist/env.js
