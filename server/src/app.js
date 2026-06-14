@@ -268,7 +268,8 @@ export function createApp(db, options = {}) {
 
     // --- Error handling -------------------------------------------------------
 
-    // eslint-disable-next-line no-unused-vars -- Express needs the 4-arg signature.
+    // Express needs the 4-arg signature to recognise this as error-handling
+    // middleware; `next` is unused but required.
     app.use((err, req, res, next) => {
         // Body-parser and similar middleware attach an HTTP status (e.g. 400 for
         // malformed JSON); honour it rather than masking everything as 500.

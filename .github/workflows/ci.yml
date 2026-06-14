@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: server/package-lock.json
 
@@ -26,3 +26,13 @@ jobs:
       - run: npm run lint
 
       - run: npm run test:run
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Validates the runtime image — including the better-sqlite3 native
+      # compile on Alpine — on every PR, not just at release time.
+      - run: docker build -t birthday-invitation:ci .

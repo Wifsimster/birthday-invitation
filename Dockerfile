@@ -7,7 +7,7 @@
 # A single Node process serves the SPA (dist/) and the API on one port — no
 # reverse proxy or process manager required. See infra/ for runtime env injection.
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Build metadata stamped by the Release workflow (see .github/workflows/
 # release.yml). Defaults keep plain `docker build` working without --build-arg.
