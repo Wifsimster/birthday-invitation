@@ -4,29 +4,19 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import compression from 'compression';
 import { pinoHttp } from 'pino-http';
+import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import path from 'node:path';
-import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { eventConfig, buildIcs, isRsvpClosed, type EventConfig } from './event.ts';
 import { THEME_IDS, DEFAULT_THEME } from './themes.ts';
 import { logger as defaultLogger, type Logger } from './logger.ts';
+import { createAuth, type Auth } from './auth.ts';
 import type { Db, RsvpRow } from './db.ts';
 
-// Constant-time string comparison that doesn't leak length via early return.
-function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) {
-    // Compare against self to keep the timing path constant, then fail.
-    timingSafeEqual(bufA, bufA);
-    return false;
-  }
-  return timingSafeEqual(bufA, bufB);
-}
-
 export interface CreateAppOptions {
-  adminUsername?: string;
-  adminPassword?: string;
+  // Better Auth instance protecting the admin routes. When omitted one is built
+  // from the app's SQLite handle (env-configured secret/baseURL).
+  auth?: Auth;
   trustProxy?: number;
   rateLimits?: {
     globalWindowMs?: number;
@@ -37,6 +27,7 @@ export interface CreateAppOptions {
     lookupMax?: number;
     adminWindowMs?: number;
     adminMax?: number;
+    loginMax?: number;
   };
   event?: EventConfig;
   corsOrigin?: string;
@@ -49,31 +40,16 @@ type Handler = (req: Request, res: Response, next: NextFunction) => unknown;
 const asyncHandler = (fn: Handler) => (req: Request, res: Response, next: NextFunction) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
-// Build a Basic-Auth middleware. Fails closed (503) when credentials are unset.
-function makeBasicAuth({ username, password }: { username?: string; password?: string }) {
-  return function basicAuth(req: Request, res: Response, next: NextFunction) {
-    if (!username || !password) {
-      return res.status(503).json({ error: 'Admin access is not configured' });
-    }
-
-    const auth = req.headers.authorization;
-    if (!auth || !auth.startsWith('Basic ')) {
-      res.set('WWW-Authenticate', 'Basic realm="Admin Access"');
+// Build the admin guard: a valid Better Auth session (email/password) is
+// required. Fails closed with 401 when no session is present.
+function makeRequireAuth(auth: Auth) {
+  return asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    if (!session) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-
-    const [user, pass] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
-    // Constant-time compare both fields (always evaluate both to avoid leaking
-    // which one was wrong).
-    const okUser = safeEqual(user ?? '', username);
-    const okPass = safeEqual(pass ?? '', password);
-    if (okUser && okPass) {
-      return next();
-    }
-
-    res.set('WWW-Authenticate', 'Basic realm="Admin Access"');
-    return res.status(401).json({ error: 'Invalid credentials' });
-  };
+    next();
+  });
 }
 
 // --- Validation (zod) --------------------------------------------------------
@@ -178,8 +154,7 @@ function toCsv(rows: RsvpRow[]): string {
  */
 export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   const {
-    adminUsername = process.env.ADMIN_USERNAME,
-    adminPassword = process.env.ADMIN_PASSWORD,
+    auth = createAuth(db.raw),
     trustProxy = Number(process.env.TRUST_PROXY ?? 1),
     rateLimits = {},
     event = eventConfig(),
@@ -226,11 +201,28 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   // Same-origin SPA: only enable CORS when an explicit origin is configured
   // (e.g. a separate dev frontend). Defaults to no cross-origin access.
   if (corsOrigin) {
-    app.use(cors({ origin: corsOrigin.split(',').map((o) => o.trim()) }));
+    app.use(cors({ origin: corsOrigin.split(',').map((o) => o.trim()), credentials: true }));
   }
+
+  // --- Better Auth (email/password) -----------------------------------------
+  // The auth handler reads the raw request body, so it must be mounted *before*
+  // express.json(). Public self-service registration is disabled: only the
+  // env-seeded admin account exists, so the sign-up endpoint is blocked here
+  // (the seed runs in-process and never touches this HTTP route).
+  const loginLimiter = rateLimit({
+    windowMs: rateLimits.adminWindowMs ?? 15 * 60 * 1000,
+    max: rateLimits.loginMax ?? 20,
+    message: { error: 'Trop de tentatives, veuillez réessayer plus tard.' }
+  });
+  app.all('/api/auth/sign-up/*splat', (_req, res) => {
+    res.status(403).json({ error: 'Inscription désactivée' });
+  });
+  app.use('/api/auth/sign-in', loginLimiter);
+  app.all('/api/auth/*splat', toNodeHandler(auth));
+
   app.use(express.json({ limit: '64kb' }));
 
-  const basicAuth = makeBasicAuth({ username: adminUsername, password: adminPassword });
+  const requireAuth = makeRequireAuth(auth);
 
   app.use(rateLimit({
     windowMs: rateLimits.globalWindowMs ?? 15 * 60 * 1000,
@@ -250,14 +242,15 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     message: { error: 'Trop de recherches, veuillez réessayer plus tard.' }
   });
 
-  // Strict limiter on admin authentication to blunt password brute-forcing.
+  // Strict limiter on admin endpoints to blunt automated abuse. Sign-in itself
+  // is throttled separately by loginLimiter (above).
   const adminLimiter = rateLimit({
     windowMs: rateLimits.adminWindowMs ?? 15 * 60 * 1000,
-    max: rateLimits.adminMax ?? 20,
+    max: rateLimits.adminMax ?? 100,
     message: { error: 'Trop de tentatives, veuillez réessayer plus tard.' }
   });
-  // Every admin route is rate-limited then authenticated.
-  const admin = [adminLimiter, basicAuth];
+  // Every admin route is rate-limited then requires a valid admin session.
+  const admin = [adminLimiter, requireAuth];
 
   // --- Routes ---------------------------------------------------------------
 

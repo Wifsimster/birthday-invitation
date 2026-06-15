@@ -12,6 +12,7 @@ native type stripping — there is no build step.
 | -------------- | ------------------------------------------------------------- |
 | `server.ts`    | Bootstrap — opens the DB, builds the app, listens, shuts down |
 | `src/app.ts`   | `createApp(db, options)` factory — routes, middleware, zod validation |
+| `src/auth.ts`  | Better Auth (email/password) factory, migration + admin-seed helpers |
 | `src/db.ts`    | Opens SQLite (better-sqlite3), runs schema/migrations, typed adapter |
 | `src/event.ts` | Reads event env vars; builds the `.ics` calendar invite       |
 | `src/logger.ts`| Shared pino structured logger                                 |
@@ -30,7 +31,8 @@ cannot drift away from the routes that actually run in production.
 - One RSVP per phone number, normalised to digits so the same number matches
   regardless of spacing/punctuation (re-submitting updates the existing row)
 - CSV export of the guest list and an `.ics` calendar invite
-- HTTP Basic auth on admin endpoints, failing closed when unconfigured
+- **Better Auth** email/password authentication on admin endpoints (cookie
+  sessions); single admin seeded from the environment, public sign-up disabled
 
 ## API Endpoints
 
@@ -76,7 +78,20 @@ GET /api/settings            # { theme } — public, defaults to "fiesta"
 PUT /api/settings            # set the active theme (admin)
 ```
 
-### Admin endpoints (HTTP Basic auth)
+### Authentication (Better Auth — email/password)
+```
+ALL  /api/auth/*              # Better Auth handler (sign-in, sign-out, session…)
+POST /api/auth/sign-in/email  # { email, password } -> sets a session cookie
+POST /api/auth/sign-out       # clears the session
+GET  /api/auth/get-session    # current session (null when signed out)
+```
+Public self-service registration is disabled: `POST /api/auth/sign-up/*` is
+blocked (`403`). The single admin account is seeded server-side from
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` on first start. The auth tables
+(`user`, `session`, `account`, `verification`) are created by Better Auth's own
+migrations at boot, alongside the app's SQLite database.
+
+### Admin endpoints (require a valid admin session cookie)
 ```
 POST   /api/rsvps            # manually add a submission (409 on duplicate phone)
 GET    /api/rsvps             # all submissions
@@ -85,6 +100,7 @@ GET    /api/rsvps/export.csv  # download all submissions as CSV
 PUT    /api/rsvp/:id          # edit a submission
 DELETE /api/rsvp/:id          # delete a submission
 ```
+Unauthenticated requests to these routes get `401`.
 
 ### Health Check
 ```
@@ -135,8 +151,10 @@ The database file is created automatically on first start (see `DB_PATH` below).
 ## Security Features
 
 - Rate limiting: global (300/15min), RSVP submit (5/hr), phone lookup (20/hr),
-  admin auth (20/15min) — all proxy-aware via `trust proxy`
-- Constant-time admin credential comparison (`crypto.timingSafeEqual`)
+  admin login (20/15min), admin data routes (100/15min) — all proxy-aware
+- Better Auth email/password sessions: passwords hashed (scrypt), httpOnly
+  signed session cookies, built-in CSRF (Origin) checks on state-changing routes
+- Public sign-up disabled — only the env-seeded admin account can sign in
 - Restrictive Content-Security-Policy (allow-lists only the font/icon CDNs)
 - CORS disabled unless `CORS_ORIGIN` is set (same-origin SPA by default)
 - Helmet.js for the remaining security headers
@@ -145,7 +163,6 @@ The database file is created automatically on first start (see `DB_PATH` below).
   guest text as data, not formulas
 - Public phone-lookup is rate-limited and returns only form fields (no IP)
 - Logs redact the Authorization header/cookies and mask the lookup phone number
-- HTTP Basic auth on admin endpoints (fails closed when credentials are unset)
 
 ## Serving the SPA
 
@@ -161,7 +178,10 @@ for hashed `assets/`, no-cache for `index.html` / `env.js`, and an SPA fallback 
 | `PORT`                            | `3000`       | Port the server listens on (SPA + API)           |
 | `DB_PATH`                         | `../../data/rsvp.db` | SQLite database file location            |
 | `STATIC_DIR`                      | `../dist`    | Built SPA to serve (omit to run API-only)        |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | —          | Basic-auth credentials for admin endpoints       |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD`  | —            | Seeds the single admin account (password ≥ 8 chars) |
+| `ADMIN_NAME`                      | `Admin`      | Display name for the seeded admin                |
+| `BETTER_AUTH_SECRET`              | —            | Session signing secret (**required in production**) |
+| `BETTER_AUTH_URL`                 | —            | External origin for cookie/origin scoping (set behind a proxy) |
 | `EVENT_RSVP_DEADLINE`             | —            | `YYYY-MM-DD`; closes RSVPs (API + UI) once passed |
 | `CORS_ORIGIN`                     | —            | Comma-separated cross-origin allow-list (off by default) |
 | `TRUST_PROXY`                     | `1`          | Number of proxy hops to trust for `req.ip`       |
