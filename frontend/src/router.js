@@ -4,6 +4,7 @@ import Admin from './views/Admin.vue';
 
 const routes = [
   { path: '/', name: 'invitation', component: Invitation },
+  { path: '/e/:slug', name: 'event', component: Invitation, props: true },
   { path: '/admin', name: 'admin', component: Admin }
 ];
 
