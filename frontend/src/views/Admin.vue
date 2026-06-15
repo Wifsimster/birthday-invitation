@@ -14,20 +14,23 @@
           </div>
           <div v-if="authError" class="auth-error" role="alert">{{ authError }}</div>
           <div class="modal-actions">
-            <button type="submit" class="save-btn" :disabled="authLoading">{{ authLoading ? 'Connexion...' : 'Se connecter' }}</button>
+            <button type="submit" class="btn btn-primary btn-block" :disabled="authLoading">{{ authLoading ? 'Connexion...' : 'Se connecter' }}</button>
           </div>
         </form>
       </div>
     </div>
 
     <template v-else>
-      <div class="admin-header">
-        <h1>🎉 Administration</h1>
-        <div class="header-actions">
-          <button class="logout-btn" @click="logout">🚪 Déconnexion</button>
-          <router-link to="/" class="back-link">← Retour</router-link>
+      <header class="admin-header">
+        <div class="admin-header-title">
+          <h1>Administration</h1>
+          <p class="admin-header-subtitle">Gestion des confirmations pour l'anniversaire</p>
         </div>
-      </div>
+        <div class="header-actions">
+          <router-link to="/" class="btn btn-ghost">← Retour à l'invitation</router-link>
+          <button class="btn btn-danger-soft" @click="logout">Déconnexion</button>
+        </div>
+      </header>
 
       <div class="stats">
         <div class="stat-card">
@@ -78,14 +81,14 @@
         <p class="theme-hint">Diffuse ce lien ou ce QR code pour inviter tes convives.</p>
         <div class="share-row">
           <input class="form-input share-url" type="text" :value="invitationUrl" readonly aria-label="Lien de l'invitation" />
-          <button type="button" class="save-btn" @click="copyLink">{{ linkCopied ? '✓ Copié' : 'Copier le lien' }}</button>
+          <button type="button" class="btn btn-primary" @click="copyLink">{{ linkCopied ? '✓ Copié' : 'Copier le lien' }}</button>
         </div>
         <img v-if="qrDataUrl" :src="qrDataUrl" alt="QR code de l'invitation" class="qr-img" />
       </div>
 
       <div class="list-actions">
-        <button class="refresh-btn" @click="loadData">🔄 Actualiser</button>
-        <button class="add-btn" @click="openCreateModal">➕ Ajouter une réponse</button>
+        <button class="btn btn-secondary" @click="loadData">↻ Actualiser</button>
+        <button class="btn btn-primary" @click="openCreateModal">+ Ajouter une réponse</button>
       </div>
 
       <div class="rsvp-list">
@@ -143,8 +146,8 @@
           <div class="form-group"><label for="edit-diet"><span aria-hidden="true">🥜</span> Allergies / régime</label><textarea id="edit-diet" class="form-input" v-model="editForm.dietary_restrictions"></textarea></div>
           <div class="form-group"><label for="edit-message"><span aria-hidden="true">💌</span> Message</label><textarea id="edit-message" class="form-input" v-model="editForm.message"></textarea></div>
           <div class="modal-actions">
-            <button type="button" class="cancel-btn" @click="closeEditModal">Annuler</button>
-            <button type="submit" class="save-btn" :disabled="editLoading">{{ editLoading ? 'Sauvegarde...' : (editMode === 'create' ? 'Ajouter' : 'Sauvegarder') }}</button>
+            <button type="button" class="btn btn-secondary" @click="closeEditModal">Annuler</button>
+            <button type="submit" class="btn btn-primary" :disabled="editLoading">{{ editLoading ? 'Sauvegarde...' : (editMode === 'create' ? 'Ajouter' : 'Sauvegarder') }}</button>
           </div>
         </form>
       </div>
@@ -161,8 +164,8 @@
           <p class="warning">Cette action est irréversible.</p>
         </div>
         <div class="modal-actions">
-          <button type="button" class="cancel-btn" @click="closeDeleteModal">Annuler</button>
-          <button type="button" class="delete-confirm-btn" @click="deleteRsvp" :disabled="deleteLoading">{{ deleteLoading ? 'Suppression...' : 'Supprimer' }}</button>
+          <button type="button" class="btn btn-secondary" @click="closeDeleteModal">Annuler</button>
+          <button type="button" class="btn btn-danger" @click="deleteRsvp" :disabled="deleteLoading">{{ deleteLoading ? 'Suppression...' : 'Supprimer' }}</button>
         </div>
       </div>
     </div>
@@ -490,86 +493,192 @@ export default {
 </script>
 
 <style scoped>
-.admin-container{min-height:100vh;background:var(--theme-bg-gradient,linear-gradient(135deg,#667eea,#764ba2));background-size:200% 200%;animation:gradientShift 12s ease infinite;padding:20px;transition:background .4s ease}
-@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}to{background-position:0% 50%}}
-.admin-header{max-width:1200px;margin:0 auto 20px;background:var(--theme-header-gradient,#ff6b6b);color:var(--theme-header-text,#fff);padding:30px;text-align:center;border-radius:15px;box-shadow:0 20px 40px #0000001a}
-.admin-header h1{font-family:var(--theme-font-display,inherit)}
-.admin-header h1{font-size:2rem;margin-bottom:10px}
-.header-actions{display:flex;gap:15px;align-items:center;margin-top:10px}
-.logout-btn{background:#ff4757;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:.9rem;transition:background-color .3s ease}
-.logout-btn:hover{background:#ff3838}
-.back-link{display:inline-block;margin-top:15px;padding:10px 20px;background:#fff3;color:#fff;text-decoration:none;border-radius:25px;font-size:.9rem;transition:all .3s ease;border:2px solid rgba(255,255,255,.3)}
-.back-link:hover{background:#ffffff4d;transform:translateY(-2px);box-shadow:0 5px 15px #0003}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;max-width:1200px;margin:0 auto 20px;padding:0 20px}
-.stat-card{background:#fff;padding:20px;border-radius:10px;text-align:center;box-shadow:0 4px 10px #0000001a}
-.stat-card.positive .stat-number{color:#1b9e77}
-.stat-card.negative .stat-number{color:#d64545}
-.stat-number{font-size:2.5rem;font-weight:700;color:var(--theme-primary-dark,#c9184a);margin-bottom:5px}
-.stat-label{color:#666;font-size:.9rem}
-.theme-panel{max-width:1200px;margin:0 auto 20px;background:#fff;border-radius:15px;padding:25px 30px;box-shadow:0 20px 40px #0000001a}
-.theme-panel h2{color:#333;margin-bottom:4px}
-.theme-hint{color:#777;font-size:.9rem;margin-bottom:18px}
-.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
-.theme-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 12px;border:2px solid #e6e6e6;border-radius:14px;background:#fafafa;cursor:pointer;transition:all .2s ease;font-family:inherit}
-.theme-card:hover:not(:disabled){transform:translateY(-3px);border-color:var(--theme-primary,#ff6b6b);box-shadow:0 8px 20px #0000001f}
+/*
+ * Admin design system — deliberately generic and theme-independent.
+ *
+ * The public invitation re-skins itself from the selected palette (the
+ * --theme-* custom properties), but the admin dashboard stays neutral so it
+ * reads as a tool regardless of which festive theme is live. All admin chrome
+ * is driven by the local design tokens below; the only place we surface the
+ * invitation palette is the theme picker (swatches + active state), where it
+ * acts as a genuine preview.
+ */
+.admin-container{
+  /* Color tokens */
+  --c-bg:#f1f5f9;
+  --c-surface:#ffffff;
+  --c-surface-subtle:#f8fafc;
+  --c-border:#e2e8f0;
+  --c-border-strong:#cbd5e1;
+  --c-text:#0f172a;
+  --c-text-muted:#64748b;
+  --c-text-subtle:#94a3b8;
+  --c-accent:#4f46e5;
+  --c-accent-hover:#4338ca;
+  --c-accent-soft:#eef2ff;
+  --c-success:#059669;
+  --c-success-soft:#ecfdf5;
+  --c-danger:#dc2626;
+  --c-danger-hover:#b91c1c;
+  --c-danger-soft:#fef2f2;
+  --c-focus-ring:rgba(79,70,229,.25);
+  /* Radii */
+  --r-sm:8px;
+  --r-md:12px;
+  --r-lg:16px;
+  --r-full:9999px;
+  /* Shadows */
+  --shadow-xs:0 1px 2px rgba(15,23,42,.06);
+  --shadow-sm:0 1px 3px rgba(15,23,42,.08),0 1px 2px rgba(15,23,42,.04);
+  --shadow-md:0 4px 12px rgba(15,23,42,.08);
+  /* Spacing rhythm for the page */
+  --content-max:1100px;
+
+  min-height:100vh;
+  background:var(--c-bg);
+  color:var(--c-text);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  padding:24px 20px 48px;
+  -webkit-font-smoothing:antialiased;
+}
+.admin-container > *{max-width:var(--content-max);margin-left:auto;margin-right:auto}
+
+/* ---- Buttons -------------------------------------------------------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  font:inherit;font-size:.9rem;font-weight:600;line-height:1;
+  padding:10px 18px;border:1px solid transparent;border-radius:var(--r-sm);
+  cursor:pointer;text-decoration:none;white-space:nowrap;
+  transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,transform .05s ease;
+}
+.btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn-block{width:100%}
+.btn-primary{background:var(--c-accent);color:#fff}
+.btn-primary:hover:not(:disabled){background:var(--c-accent-hover)}
+.btn-secondary{background:var(--c-surface);color:var(--c-text);border-color:var(--c-border)}
+.btn-secondary:hover:not(:disabled){background:var(--c-surface-subtle);border-color:var(--c-border-strong)}
+.btn-ghost{background:transparent;color:var(--c-text-muted);border-color:transparent}
+.btn-ghost:hover:not(:disabled){background:var(--c-surface);color:var(--c-text);box-shadow:var(--shadow-xs)}
+.btn-danger{background:var(--c-danger);color:#fff}
+.btn-danger:hover:not(:disabled){background:var(--c-danger-hover)}
+.btn-danger-soft{background:var(--c-danger-soft);color:var(--c-danger);border-color:transparent}
+.btn-danger-soft:hover:not(:disabled){background:#fee2e2}
+
+/* ---- Header --------------------------------------------------------- */
+.admin-header{
+  display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;
+  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
+  padding:24px 28px;margin-bottom:24px;box-shadow:var(--shadow-sm);
+}
+.admin-header h1{font-size:1.5rem;font-weight:700;letter-spacing:-.02em;margin:0;color:var(--c-text)}
+.admin-header-subtitle{margin:4px 0 0;color:var(--c-text-muted);font-size:.9rem}
+.header-actions{display:flex;gap:10px;align-items:center}
+
+/* ---- Stats ---------------------------------------------------------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{
+  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);
+  padding:20px 22px;box-shadow:var(--shadow-xs);
+}
+.stat-number{font-size:2rem;font-weight:700;line-height:1;letter-spacing:-.02em;color:var(--c-text);margin-bottom:8px}
+.stat-card.positive .stat-number{color:var(--c-success)}
+.stat-card.negative .stat-number{color:var(--c-danger)}
+.stat-label{color:var(--c-text-muted);font-size:.8rem;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+
+/* ---- Panels (theme + share) ---------------------------------------- */
+.theme-panel,.share-panel{
+  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
+  padding:24px 28px;margin-bottom:24px;box-shadow:var(--shadow-sm);
+}
+.theme-panel h2,.share-panel h2,.rsvp-list h2{font-size:1.1rem;font-weight:700;color:var(--c-text);margin:0 0 4px}
+.theme-hint{color:var(--c-text-muted);font-size:.875rem;margin:0 0 18px}
+.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.theme-card{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:16px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);
+  background:var(--c-surface-subtle);cursor:pointer;font:inherit;
+  transition:border-color .15s ease,box-shadow .15s ease,transform .1s ease,background-color .15s ease;
+}
+.theme-card:hover:not(:disabled){transform:translateY(-2px);border-color:var(--c-border-strong);box-shadow:var(--shadow-sm);background:var(--c-surface)}
+.theme-card:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring)}
 .theme-card:disabled{opacity:.6;cursor:not-allowed}
-.theme-card.active{border-color:var(--theme-primary,#ff6b6b);background:#fff;box-shadow:0 0 0 3px var(--theme-primary-soft,#ff6b6b55)}
-.theme-icon{font-size:2rem;line-height:1}
-.theme-label{font-weight:600;color:#333;font-size:.95rem;text-align:center}
+.theme-card.active{border-color:var(--c-accent);background:var(--c-accent-soft);box-shadow:0 0 0 1px var(--c-accent)}
+.theme-icon{font-size:1.9rem;line-height:1}
+.theme-label{font-weight:600;color:var(--c-text);font-size:.9rem;text-align:center}
 .theme-swatches{display:flex;gap:5px}
-.swatch{width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0000001a}
-.theme-check{font-size:.78rem;font-weight:700;color:var(--theme-primary,#ff6b6b)}
-.refresh-btn{background:var(--theme-primary,#ff6b6b);color:#fff;border:none;padding:12px 24px;border-radius:25px;cursor:pointer;font-size:1rem;margin:0 auto 20px;display:block;transition:filter .3s ease}
-.refresh-btn:hover{filter:brightness(.92)}
-.rsvp-list{max-width:1200px;margin:0 auto;background:#fff;border-radius:15px;padding:30px;box-shadow:0 20px 40px #0000001a}
-.rsvp-list h2{margin-bottom:20px;color:#333}
-.rsvp-item{background:#f8f9fa;border-left:4px solid var(--theme-primary,#ff6b6b);padding:20px;margin-bottom:15px;border-radius:0 10px 10px 0}
-.rsvp-item.declined{border-left-color:#ff7675;background:#ffeaea}
-.rsvp-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.rsvp-header h3{color:var(--theme-primary,#ff6b6b);margin:0}
-.rsvp-actions{display:flex;gap:10px}
-.edit-btn,.delete-btn{background:none;border:none;font-size:1.2rem;cursor:pointer;padding:5px 8px;border-radius:5px;transition:background-color .3s ease}
-.edit-btn:hover{background-color:#e3f2fd}
-.delete-btn:hover{background-color:#ffebee}
-.rsvp-item h3{color:var(--theme-primary,#ff6b6b);margin-bottom:10px}
-.rsvp-details{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:10px}
-.detail{color:#666}
-.detail strong{color:#333}
-.message{background:#fff;padding:10px;border-radius:5px;margin-top:10px;font-style:italic}
-.loading{text-align:center;padding:50px;color:#666}
-.error{background:#ff4757;color:#fff;padding:20px;margin:20px 0;border-radius:10px;text-align:center}
-.no-data{text-align:center;color:#666;padding:50px}
-.status-indicator{font-size:1.2rem;margin-right:8px}
-.status-indicator.accepted{color:#4ecdc4}
-.status-indicator.declined{color:#ff7675}
-.status-accepted{color:#4ecdc4;font-weight:600}
-.status-declined{color:#ff7675;font-weight:600}
-.form-input:disabled{background-color:#f5f5f5;color:#666;cursor:not-allowed}
-.login-modal{width:400px;max-width:90vw}
-.modal-overlay{position:fixed;inset:0;background:#00000080;display:flex;justify-content:center;align-items:center;z-index:1000}
-.modal{background:#fff;border-radius:15px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 40px #0003}
-.modal-header{display:flex;justify-content:space-between;align-items:center;padding:20px 25px;border-bottom:1px solid #eee}
-.modal-header h3{margin:0;color:#333}
-.close-btn{background:none;border:none;font-size:1.5rem;cursor:pointer;color:#999;padding:5px;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center}
-.close-btn:hover{background:#f5f5f5;color:#333}
-.modal-content,.edit-form{padding:20px 25px}
-.form-group{margin-bottom:20px}
-.form-group label{display:block;margin-bottom:5px;font-weight:500;color:#333}
-.form-input{width:100%;padding:10px 15px;border:2px solid #ddd;border-radius:8px;font-size:1rem;transition:border-color .3s ease;box-sizing:border-box}
-.form-input:focus{outline:none;border-color:var(--theme-primary,#ff6b6b)}
-.modal-actions{display:flex;justify-content:flex-end;gap:10px;padding:20px 25px;border-top:1px solid #eee}
-.cancel-btn,.save-btn,.delete-confirm-btn{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:1rem;transition:all .3s ease}
-.cancel-btn{background:#f5f5f5;color:#666}
-.cancel-btn:hover{background:#e0e0e0}
-.save-btn{background:var(--theme-primary,#ff6b6b);color:#fff}
-.save-btn:hover:not(:disabled){filter:brightness(.92)}
-.save-btn:disabled{opacity:.7;cursor:not-allowed}
-.delete-confirm-btn{background:#dc3545;color:#fff}
-.delete-confirm-btn:hover:not(:disabled){background:#c82333}
-.delete-confirm-btn:disabled{opacity:.7;cursor:not-allowed}
+.swatch{width:16px;height:16px;border-radius:var(--r-full);border:2px solid var(--c-surface);box-shadow:0 0 0 1px var(--c-border-strong)}
+.theme-check{font-size:.75rem;font-weight:700;color:var(--c-accent)}
+
+/* ---- Share panel ---------------------------------------------------- */
+.share-row{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin-bottom:16px}
+.share-url{flex:1;min-width:220px}
+.qr-img{display:block;width:160px;height:160px;border:1px solid var(--c-border);border-radius:var(--r-md);padding:8px;background:var(--c-surface)}
+
+/* ---- List actions --------------------------------------------------- */
+.list-actions{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:24px}
+
+/* ---- RSVP list ------------------------------------------------------ */
+.rsvp-list{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);padding:24px 28px;box-shadow:var(--shadow-sm)}
+.rsvp-list h2{margin-bottom:18px}
+.rsvp-item{
+  background:var(--c-surface);border:1px solid var(--c-border);border-left:3px solid var(--c-success);
+  padding:18px 20px;margin-bottom:12px;border-radius:var(--r-md);
+}
+.rsvp-item:last-child{margin-bottom:0}
+.rsvp-item.declined{border-left-color:var(--c-danger);background:var(--c-danger-soft)}
+.rsvp-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.rsvp-header h3,.rsvp-item h3{display:flex;align-items:center;gap:8px;color:var(--c-text);font-size:1rem;font-weight:700;margin:0}
+.rsvp-actions{display:flex;gap:6px}
+.edit-btn,.delete-btn{
+  background:transparent;border:1px solid transparent;font-size:1rem;cursor:pointer;
+  padding:6px 8px;border-radius:var(--r-sm);line-height:1;transition:background-color .15s ease,border-color .15s ease;
+}
+.edit-btn:hover{background:var(--c-accent-soft);border-color:var(--c-border)}
+.delete-btn:hover{background:var(--c-danger-soft);border-color:var(--c-border)}
+.rsvp-details{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 16px;margin-bottom:12px}
+.detail{color:var(--c-text-muted);font-size:.9rem}
+.detail strong{color:var(--c-text);font-weight:600}
+.message{background:var(--c-surface-subtle);border:1px solid var(--c-border);padding:12px 14px;border-radius:var(--r-sm);margin-top:12px;font-style:italic;color:var(--c-text-muted);font-size:.9rem}
+.loading,.no-data{text-align:center;padding:48px 20px;color:var(--c-text-muted)}
+.error{background:var(--c-danger-soft);color:var(--c-danger);border:1px solid #fecaca;padding:16px;margin:16px 0;border-radius:var(--r-md);text-align:center;font-weight:500}
+.status-indicator{font-size:1.05rem}
+.status-accepted{color:var(--c-success);font-weight:600}
+.status-declined{color:var(--c-danger);font-weight:600}
+
+/* ---- Forms ---------------------------------------------------------- */
+.form-group{margin-bottom:18px}
+.form-group label{display:block;margin-bottom:6px;font-weight:600;color:var(--c-text);font-size:.875rem}
+.form-input{
+  width:100%;padding:10px 12px;border:1px solid var(--c-border-strong);border-radius:var(--r-sm);
+  font:inherit;font-size:.95rem;color:var(--c-text);background:var(--c-surface);box-sizing:border-box;
+  transition:border-color .15s ease,box-shadow .15s ease;
+}
+.form-input::placeholder{color:var(--c-text-subtle)}
+.form-input:focus{outline:none;border-color:var(--c-accent);box-shadow:0 0 0 3px var(--c-focus-ring)}
+.form-input:disabled{background:var(--c-surface-subtle);color:var(--c-text-muted);cursor:not-allowed}
+textarea.form-input{min-height:80px;resize:vertical}
+
+/* ---- Modals --------------------------------------------------------- */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(2px);display:flex;justify-content:center;align-items:center;z-index:1000;padding:20px}
+.modal{background:var(--c-surface);border-radius:var(--r-lg);max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 50px rgba(15,23,42,.25);border:1px solid var(--c-border)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid var(--c-border)}
+.modal-header h3{margin:0;color:var(--c-text);font-size:1.1rem;font-weight:700}
+.close-btn{background:transparent;border:none;font-size:1.4rem;cursor:pointer;color:var(--c-text-subtle);width:32px;height:32px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;transition:background-color .15s ease,color .15s ease}
+.close-btn:hover{background:var(--c-surface-subtle);color:var(--c-text)}
+.modal-content,.edit-form{padding:20px 24px}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;padding:18px 24px;border-top:1px solid var(--c-border)}
 .delete-modal .modal-content{text-align:center}
-.warning{color:#dc3545;font-weight:500;margin-top:10px}
-.login-modal{max-width:400px;width:90%}
-.auth-form{padding:25px}
-.auth-error{color:#ff4757;background:#ffeaea;padding:10px;border-radius:5px;margin-top:10px;text-align:center}
+.delete-modal .modal-content p{color:var(--c-text-muted);margin:0 0 8px}
+.warning{color:var(--c-danger);font-weight:600;margin-top:8px!important}
+.login-modal{max-width:400px}
+.auth-form{padding:24px}
+.auth-error{color:var(--c-danger);background:var(--c-danger-soft);border:1px solid #fecaca;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;text-align:center;font-size:.875rem}
+
+@media (max-width:600px){
+  .admin-header{flex-direction:column;align-items:flex-start}
+  .header-actions{width:100%}
+  .header-actions .btn{flex:1}
+}
 </style>
