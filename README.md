@@ -57,7 +57,10 @@ to `.env` and fill them in.
 | `EVENT_TOWN`      | Town                                       |
 | `EVENT_LOCATION`  | Full address / location label              |
 | `DRESS_CODE`      | Dress code note                            |
+| `EVENT_RSVP_DEADLINE` | Optional `YYYY-MM-DD`; closes RSVPs (UI + API) once passed |
+| `CORS_ORIGIN`     | Optional cross-origin allow-list (off by default) |
 | `DOMAIN`          | Base domain for the Traefik router         |
+| `BACKUP_KEEP` / `BACKUP_INTERVAL` | Snapshots to keep / seconds between DB backups |
 
 ## Run with Docker
 
@@ -67,7 +70,16 @@ docker compose up -d
 ```
 
 `compose.yml` pulls the published image and wires up the Traefik router. To build
-locally instead, point the service at the included [`Dockerfile`](Dockerfile).
+locally instead, point the service at the included [`Dockerfile`](Dockerfile). The
+app container runs as a non-root user.
+
+### Backups
+
+The SQLite database is the only copy of every RSVP. `compose.yml` includes a
+`backup` sidecar that takes a consistent `sqlite3 .backup` snapshot to a separate
+`birthday_backups` volume on an interval (`BACKUP_INTERVAL`, default daily),
+keeping the latest `BACKUP_KEEP` (default 14). To restore, stop the app and copy
+a `rsvp-*.db` snapshot over `/app/data/rsvp.db`.
 
 ## API
 
@@ -79,6 +91,7 @@ locally instead, point the service at the included [`Dockerfile`](Dockerfile).
 | `GET`    | `/api/event.ics`          | —     | Calendar invite (.ics) for the event     |
 | `GET`    | `/api/settings`           | —     | Current UI settings (selected theme)     |
 | `PUT`    | `/api/settings`           | admin | Set the active UI theme                  |
+| `POST`   | `/api/rsvps`              | admin | Manually add an RSVP (409 on duplicate)  |
 | `GET`    | `/api/rsvps`              | admin | All RSVPs                                |
 | `GET`    | `/api/rsvps/count`        | admin | Confirmation, decline and guest counts   |
 | `GET`    | `/api/rsvps/export.csv`   | admin | Export all RSVPs as CSV                  |

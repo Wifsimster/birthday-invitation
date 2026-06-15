@@ -9,6 +9,7 @@ export interface EventConfig {
   time: string;
   town: string;
   location: string;
+  rsvpDeadline?: string;
 }
 
 export function eventConfig(env: NodeJS.ProcessEnv = process.env): EventConfig {
@@ -18,8 +19,16 @@ export function eventConfig(env: NodeJS.ProcessEnv = process.env): EventConfig {
     date: env.EVENT_DATE || '',      // YYYY-MM-DD
     time: env.EVENT_TIME || '',      // free text, e.g. "15h00 - 17h00"
     town: env.EVENT_TOWN || '',
-    location: env.EVENT_LOCATION || ''
+    location: env.EVENT_LOCATION || '',
+    rsvpDeadline: env.EVENT_RSVP_DEADLINE || ''  // YYYY-MM-DD, optional
   };
+}
+
+// True when an RSVP deadline is configured and has passed (end of that day).
+export function isRsvpClosed(cfg: EventConfig, now: Date = new Date()): boolean {
+  if (!cfg.rsvpDeadline || !/^\d{4}-\d{2}-\d{2}$/.test(cfg.rsvpDeadline)) return false;
+  const deadline = new Date(`${cfg.rsvpDeadline}T23:59:59`);
+  return now.getTime() > deadline.getTime();
 }
 
 // Pull up to two "HHhMM" / "HH:MM" / "HHh" times out of free-form text.

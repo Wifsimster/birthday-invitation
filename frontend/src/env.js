@@ -11,5 +11,6 @@ export const eventConfig = {
   eventTime: ENV.VITE_EVENT_TIME || '',
   eventTown: ENV.VITE_EVENT_TOWN || '',
   eventLocation: ENV.VITE_EVENT_LOCATION || '',
-  dresscode: ENV.VITE_DRESSCODE || ''
+  dresscode: ENV.VITE_DRESSCODE || '',
+  rsvpDeadline: ENV.VITE_EVENT_RSVP_DEADLINE || ''
 };

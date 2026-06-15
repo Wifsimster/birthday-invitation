@@ -47,6 +47,12 @@ COPY infra/inject-env.sh /inject-env.sh
 COPY infra/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /inject-env.sh /docker-entrypoint.sh
 
+# Drop privileges: the alpine image ships an unprivileged `node` user. Create the
+# DB directory and hand /app to that user so the entrypoint (env injection into
+# dist/) and SQLite writes (data/) work without root.
+RUN mkdir -p /app/data && chown -R node:node /app
+USER node
+
 # Node serves SPA + API on port 3000
 ENV PORT=3000
 EXPOSE 3000

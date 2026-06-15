@@ -65,13 +65,24 @@ export function wrapDb(handle: Database.Database): Db {
 }
 
 // Open (and create if missing) the SQLite database, returning the wrapped handle.
+// WAL + a busy timeout make the single-file store resilient to unclean restarts
+// and concurrent readers (e.g. an online `.backup`).
 export function openDb(dbPath: string = defaultDbPath()): Db {
-  return wrapDb(new Database(dbPath));
+  const handle = new Database(dbPath);
+  handle.pragma('journal_mode = WAL');
+  handle.pragma('busy_timeout = 5000');
+  handle.pragma('synchronous = NORMAL');
+  handle.pragma('foreign_keys = ON');
+  return wrapDb(handle);
 }
 
-// Create the schema and apply migrations. Idempotent — safe to run on every boot.
-export function initSchema(db: Db): Db {
-  db.run(`CREATE TABLE IF NOT EXISTS rsvp (
+// Ordered, idempotent migrations. Each entry runs once; the applied version is
+// tracked via SQLite's PRAGMA user_version. Append new migrations — never edit
+// or reorder existing ones.
+const MIGRATIONS: ((db: Db) => void)[] = [
+  // v1: base RSVP table + one-RSVP-per-phone index.
+  (db) => {
+    db.run(`CREATE TABLE IF NOT EXISTS rsvp (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   attending TEXT DEFAULT 'yes' CHECK(attending IN ('yes', 'no')),
@@ -84,26 +95,46 @@ export function initSchema(db: Db): Db {
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )`);
-
-  // Migration for databases created before the `attending` column existed.
-  try {
-    db.run(
-      `ALTER TABLE rsvp ADD COLUMN attending TEXT DEFAULT 'yes' CHECK(attending IN ('yes', 'no'))`
-    );
-  } catch (err) {
-    if (!/duplicate column name/.test((err as Error).message)) throw err;
-  }
-
-  // One RSVP per phone number.
-  db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_rsvp_phone ON rsvp(phone)');
-
-  // Generic key/value store for admin-tunable settings (e.g. the selected UI
-  // theme). Absence of a key means "use the application default".
-  db.run(`CREATE TABLE IF NOT EXISTS settings (
+    db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_rsvp_phone ON rsvp(phone)');
+  },
+  // v2: generic key/value settings store (selected theme, editable event fields).
+  (db) => {
+    db.run(`CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )`);
+  }
+];
+
+// Create the schema and apply pending migrations. Idempotent — safe on every boot.
+export function initSchema(db: Db): Db {
+  // Pre-migration databases (created before user_version tracking) already have
+  // the rsvp table; treat them as version 1 so we don't re-run the base create
+  // destructively. A fresh DB reports user_version 0 and runs all migrations.
+  const hasRsvp = db.get<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='rsvp'"
+  );
+  let version = (db.get<{ user_version: number }>('PRAGMA user_version')?.user_version) ?? 0;
+  if (version === 0 && hasRsvp) version = 1;
+
+  for (let i = version; i < MIGRATIONS.length; i++) {
+    MIGRATIONS[i](db);
+  }
+  db.run(`PRAGMA user_version = ${MIGRATIONS.length}`);
+
+  // Back-fill columns on databases that predate them. Idempotent: a
+  // "duplicate column name" just means the column already exists.
+  for (const ddl of [
+    `ALTER TABLE rsvp ADD COLUMN attending TEXT DEFAULT 'yes' CHECK(attending IN ('yes', 'no'))`,
+    'ALTER TABLE rsvp ADD COLUMN dietary_restrictions TEXT'
+  ]) {
+    try {
+      db.run(ddl);
+    } catch (err) {
+      if (!/duplicate column name/.test((err as Error).message)) throw err;
+    }
+  }
 
   return db;
 }
