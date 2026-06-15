@@ -1050,6 +1050,11 @@ textarea.form-input{min-height:80px;resize:vertical}
 .close-btn:hover{background:var(--c-surface-subtle);color:var(--c-text)}
 .modal-content,.edit-form{padding:20px 24px}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;padding:18px 24px;border-top:1px solid var(--c-border)}
+/* When the footer lives inside a padded form, break it out so its separator
+   and background span the full modal width and sit flush at the bottom,
+   matching the delete modals where .modal-actions is a direct child. */
+.edit-form .modal-actions{margin:20px -24px -20px}
+.auth-form .modal-actions{margin:24px -24px -24px}
 .delete-modal .modal-content{text-align:center}
 .delete-modal .modal-content p{color:var(--c-text-muted);margin:0 0 8px}
 .warning{color:var(--c-danger);font-weight:600;margin-top:8px!important}
