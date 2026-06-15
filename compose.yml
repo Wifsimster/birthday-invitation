@@ -28,8 +28,14 @@ services:
       # Optional "respond by" date (YYYY-MM-DD); closes RSVPs once passed.
       - EVENT_RSVP_DEADLINE=${EVENT_RSVP_DEADLINE:-}
       - DB_PATH=/app/data/rsvp.db
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      # Admin login (Better Auth email/password). The account is seeded from
+      # these on first start; BETTER_AUTH_SECRET signs the session cookies and
+      # BETTER_AUTH_URL is the external origin used for cookie/origin scoping.
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_NAME=${ADMIN_NAME:-Admin}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://leo-birthday.${DOMAIN}}
       # Restrict cross-origin API access (comma-separated). Empty = same-origin only.
       - CORS_ORIGIN=${CORS_ORIGIN:-}
       # Proxy hops in front of the backend (Traefik -> Node) so that per-IP

@@ -5,12 +5,12 @@
         <div class="modal-header"><h3 id="login-title"><span aria-hidden="true">🔐</span> Admin</h3></div>
         <form class="auth-form" @submit.prevent="authenticate">
           <div class="form-group">
-            <label for="login-username"><span aria-hidden="true">👤</span> Nom d'utilisateur</label>
-            <input id="login-username" class="form-input" type="text" v-model="credentials.username" required />
+            <label for="login-email"><span aria-hidden="true">✉️</span> Email</label>
+            <input id="login-email" class="form-input" type="email" autocomplete="username" v-model="credentials.email" required />
           </div>
           <div class="form-group">
             <label for="login-password"><span aria-hidden="true">🔐</span> Mot de passe</label>
-            <input id="login-password" class="form-input" type="password" v-model="credentials.password" required />
+            <input id="login-password" class="form-input" type="password" autocomplete="current-password" v-model="credentials.password" required />
           </div>
           <div v-if="authError" class="auth-error" role="alert">{{ authError }}</div>
           <div class="modal-actions">
@@ -172,6 +172,7 @@
 <script>
 import QRCode from 'qrcode';
 import { apiBaseUrl } from '../env.js';
+import { authClient } from '../auth-client.js';
 import { themeList, applyTheme, DEFAULT_THEME } from '../themes.js';
 
 export default {
@@ -182,8 +183,7 @@ export default {
       currentTheme: DEFAULT_THEME,
       themeSaving: false,
       isAuthenticated: false,
-      authHeader: '',
-      credentials: { username: '', password: '' },
+      credentials: { email: '', password: '' },
       authError: null,
       authLoading: false,
       loading: false,
@@ -213,14 +213,8 @@ export default {
     // live invitation.
     this.loadTheme();
     window.addEventListener('keydown', this.handleKeydown);
-    const saved = localStorage.getItem('adminAuth');
-    if (saved) {
-      this.authHeader = saved;
-      this.isAuthenticated = true;
-      this.loadData();
-      this.generateQr();
-      this.refreshInterval = setInterval(this.loadData, 30000);
-    }
+    // Restore an existing admin session (Better Auth cookie) if one is present.
+    this.restoreSession();
   },
   beforeUnmount() {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
@@ -291,7 +285,8 @@ export default {
       try {
         const res = await fetch(`${apiBaseUrl}/settings`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: this.authHeader },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ theme: id })
         });
         if (!res.ok) {
@@ -310,32 +305,52 @@ export default {
         this.themeSaving = false;
       }
     },
+    async restoreSession() {
+      // Ask the server whether a valid admin session cookie is already set.
+      try {
+        const { data } = await authClient.getSession();
+        if (data?.session) this.startSession();
+      } catch {
+        // No session / network error: stay on the login screen.
+      }
+    },
+    // Mark the admin authenticated and kick off the data loading + polling.
+    startSession() {
+      this.isAuthenticated = true;
+      this.loadData();
+      this.generateQr();
+      if (!this.refreshInterval) this.refreshInterval = setInterval(this.loadData, 30000);
+    },
     async authenticate() {
       this.authLoading = true;
       this.authError = null;
       try {
-        const token = btoa(`${this.credentials.username}:${this.credentials.password}`);
-        this.authHeader = `Basic ${token}`;
-        const res = await fetch(`${apiBaseUrl}/rsvps/count`, { headers: { Authorization: this.authHeader } });
-        if (!res.ok) throw new Error('Identifiants incorrects');
-        this.isAuthenticated = true;
-        localStorage.setItem('adminAuth', this.authHeader);
-        await this.loadData();
-        this.generateQr();
-        this.refreshInterval = setInterval(this.loadData, 30000);
+        const { error } = await authClient.signIn.email({
+          email: this.credentials.email,
+          password: this.credentials.password
+        });
+        if (error) throw new Error('Identifiants incorrects');
+        this.credentials.password = '';
+        this.startSession();
       } catch (err) {
-        this.authError = err.message;
+        this.authError = err.message || 'Identifiants incorrects';
       } finally {
         this.authLoading = false;
       }
     },
-    logout() {
+    async logout() {
+      try {
+        await authClient.signOut();
+      } catch {
+        // Best-effort: clear local state even if the network call fails.
+      }
       this.isAuthenticated = false;
-      this.authHeader = '';
-      this.credentials.username = '';
+      this.credentials.email = '';
       this.credentials.password = '';
-      localStorage.removeItem('adminAuth');
-      if (this.refreshInterval) clearInterval(this.refreshInterval);
+      if (this.refreshInterval) {
+        clearInterval(this.refreshInterval);
+        this.refreshInterval = null;
+      }
     },
     async loadData() {
       if (!this.isAuthenticated) return;
@@ -343,8 +358,8 @@ export default {
         this.loading = true;
         this.error = null;
         const [countRes, listRes] = await Promise.all([
-          fetch(`${apiBaseUrl}/rsvps/count`, { headers: { Authorization: this.authHeader } }),
-          fetch(`${apiBaseUrl}/rsvps`, { headers: { Authorization: this.authHeader } })
+          fetch(`${apiBaseUrl}/rsvps/count`, { credentials: 'include' }),
+          fetch(`${apiBaseUrl}/rsvps`, { credentials: 'include' })
         ]);
         if (!countRes.ok || !listRes.ok) {
           if (countRes.status === 401 || listRes.status === 401) { this.logout(); return; }
@@ -416,12 +431,14 @@ export default {
         const res = this.editMode === 'create'
           ? await fetch(`${apiBaseUrl}/rsvps`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: this.authHeader },
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body
           })
           : await fetch(`${apiBaseUrl}/rsvp/${this.editForm.id}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', Authorization: this.authHeader },
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body
           });
         if (!res.ok) {
@@ -453,7 +470,7 @@ export default {
       try {
         const res = await fetch(`${apiBaseUrl}/rsvp/${this.rsvpToDelete.id}`, {
           method: 'DELETE',
-          headers: { Authorization: this.authHeader }
+          credentials: 'include'
         });
         if (!res.ok) {
           if (res.status === 401) { this.logout(); return; }

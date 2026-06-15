@@ -3,11 +3,32 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import request from 'supertest';
+import type { Express } from 'express';
 import { createApp } from '../src/app.ts';
+import { createAuth, migrateAuth, seedAdminUser } from '../src/auth.ts';
 import { openDb, initSchema, type Db } from '../src/db.ts';
 
-const ADMIN = { username: 'admin', password: 'secret' };
-const authHeader = 'Basic ' + Buffer.from(`${ADMIN.username}:${ADMIN.password}`).toString('base64');
+// Fixed signing config so every Better Auth instance in the suite (the explicit
+// one and any built internally by createApp) shares the same secret/origin.
+process.env.BETTER_AUTH_SECRET = 'test-secret-0123456789-abcdefghijklmnop';
+process.env.BETTER_AUTH_URL = 'http://localhost:3000';
+
+const ADMIN = { email: 'admin@example.com', password: 'secret-password' };
+
+// Browsers send an Origin header on POSTs; Better Auth's CSRF guard requires it
+// on state-changing auth routes (sign-in/sign-out). Mirror that in tests.
+const ORIGIN = 'http://localhost:3000';
+
+// Sign in over HTTP and return the session cookie(s) for use on admin routes.
+async function adminLogin(app: Express): Promise<string> {
+    const res = await request(app)
+        .post('/api/auth/sign-in/email')
+        .set('Origin', ORIGIN)
+        .send(ADMIN)
+        .expect(200);
+    const raw = res.headers['set-cookie'] as unknown as string[] | undefined;
+    return (raw ?? []).map((c) => c.split(';')[0]).join('; ');
+}
 
 // A complete, valid RSVP payload. Tests override individual fields as needed.
 const validRsvp = (overrides: Record<string, unknown> = {}) => ({
@@ -22,17 +43,22 @@ const validRsvp = (overrides: Record<string, unknown> = {}) => ({
 describe('RSVP API', () => {
     let app: ReturnType<typeof createApp>;
     let db: Db;
+    let authCookie: string;
 
     beforeEach(async () => {
         // A fresh in-memory database per test, wired to the *real* app factory.
         db = await openDb(':memory:');
         await initSchema(db);
+        // Email/password auth: create the tables and seed the single admin.
+        const auth = createAuth(db.raw);
+        await migrateAuth(auth);
+        await seedAdminUser(auth, ADMIN.email, ADMIN.password);
         app = createApp(db, {
-            adminUsername: ADMIN.username,
-            adminPassword: ADMIN.password,
+            auth,
             // Generous limits so tests don't trip the rate limiter.
             rateLimits: { globalMax: 10000, rsvpMax: 10000 }
         });
+        authCookie = await adminLogin(app);
     });
 
     describe('POST /api/rsvp', () => {
@@ -107,7 +133,7 @@ describe('RSVP API', () => {
                 .send(validRsvp({ name: '  John Doe  ', email: '  john@example.com  ' }))
                 .expect(201);
 
-            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            const res = await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(200);
             expect(res.body.rsvps[0]).toMatchObject({ name: 'John Doe', email: 'john@example.com' });
         });
 
@@ -117,7 +143,7 @@ describe('RSVP API', () => {
                 .send(validRsvp({ attending: 'no', guests: 3 }))
                 .expect(201);
 
-            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            const res = await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(200);
             expect(res.body.rsvps[0].guests).toBe(0);
         });
 
@@ -134,7 +160,7 @@ describe('RSVP API', () => {
                 id: first.body.id
             });
 
-            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            const res = await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(200);
             expect(res.body.rsvps).toHaveLength(1);
             expect(res.body.rsvps[0]).toMatchObject({ guests: 4, message: 'changed' });
         });
@@ -146,7 +172,7 @@ describe('RSVP API', () => {
         });
 
         it('returns an empty array when no RSVPs exist', async () => {
-            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            const res = await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(200);
             expect(res.body).toMatchObject({ rsvps: [] });
         });
 
@@ -159,7 +185,7 @@ describe('RSVP API', () => {
                 await new Promise((r) => setTimeout(r, 10));
             }
 
-            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            const res = await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(200);
             expect(res.body.rsvps.map((r: { name: string }) => r.name)).toEqual(['Third', 'Second', 'First']);
         });
     });
@@ -170,7 +196,7 @@ describe('RSVP API', () => {
         });
 
         it('returns zero counts when empty', async () => {
-            const res = await request(app).get('/api/rsvps/count').set('Authorization', authHeader).expect(200);
+            const res = await request(app).get('/api/rsvps/count').set('Cookie', authCookie).expect(200);
             expect(res.body).toMatchObject({ total_responses: 0, confirmations: 0, declined: 0, total_guests: 0 });
         });
 
@@ -179,7 +205,7 @@ describe('RSVP API', () => {
             await request(app).post('/api/rsvp').send(validRsvp({ phone: '+30000002', guests: 3 }));
             await request(app).post('/api/rsvp').send(validRsvp({ phone: '+30000003', attending: 'no' }));
 
-            const res = await request(app).get('/api/rsvps/count').set('Authorization', authHeader).expect(200);
+            const res = await request(app).get('/api/rsvps/count').set('Cookie', authCookie).expect(200);
             expect(res.body).toMatchObject({
                 total_responses: 3,
                 confirmations: 2,
@@ -215,7 +241,7 @@ describe('RSVP API', () => {
 
             expect(second.body.id).toBe(first.body.id);
 
-            const res = await request(app).get('/api/rsvps').set('Authorization', authHeader).expect(200);
+            const res = await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(200);
             expect(res.body.rsvps).toHaveLength(1);
             expect(res.body.rsvps[0].phone).toBe('0612345678');
         });
@@ -242,7 +268,7 @@ describe('RSVP API', () => {
 
             const res = await request(app)
                 .get('/api/rsvps/export.csv')
-                .set('Authorization', authHeader)
+                .set('Cookie', authCookie)
                 .expect(200);
 
             expect(res.headers['content-type']).toMatch(/text\/csv/);
@@ -261,7 +287,7 @@ describe('RSVP API', () => {
                 .send(validRsvp({ name: '=HYPERLINK("http://evil")', phone: '+33100000003' }));
             const res = await request(app)
                 .get('/api/rsvps/export.csv')
-                .set('Authorization', authHeader)
+                .set('Cookie', authCookie)
                 .expect(200);
             // The leading = is prefixed with a quote so spreadsheets treat it as text.
             expect(res.text).toContain("'=HYPERLINK");
@@ -282,8 +308,6 @@ describe('RSVP API', () => {
     describe('RSVP deadline', () => {
         it('rejects submissions after the deadline with 403', async () => {
             const closed = createApp(db, {
-                adminUsername: ADMIN.username,
-                adminPassword: ADMIN.password,
                 rateLimits: { globalMax: 10000, rsvpMax: 10000 },
                 event: { person: 'X', age: '', date: '2999-01-01', time: '', town: '', location: '', rsvpDeadline: '2000-01-01' }
             });
@@ -300,12 +324,12 @@ describe('RSVP API', () => {
         it('creates an RSVP and rejects a duplicate phone', async () => {
             await request(app)
                 .post('/api/rsvps')
-                .set('Authorization', authHeader)
+                .set('Cookie', authCookie)
                 .send(validRsvp({ phone: '+33133000002' }))
                 .expect(201);
             await request(app)
                 .post('/api/rsvps')
-                .set('Authorization', authHeader)
+                .set('Cookie', authCookie)
                 .send(validRsvp({ phone: '+33133000002' }))
                 .expect(409);
         });
@@ -324,8 +348,6 @@ describe('RSVP API', () => {
     describe('GET /api/event.ics', () => {
         it('returns a calendar invite built from the event config', async () => {
             const withEvent = createApp(db, {
-                adminUsername: ADMIN.username,
-                adminPassword: ADMIN.password,
                 event: { person: 'Léo', age: '5', date: '2025-09-06', time: '15h00 - 17h00', town: '', location: 'Chez Léo' }
             });
 
@@ -354,8 +376,6 @@ describe('RSVP API', () => {
             fs.writeFileSync(path.join(staticDir, 'index.html'), '<!doctype html><div id=app></div>');
             fs.writeFileSync(path.join(staticDir, 'assets', 'index-abc12345.js'), 'console.log(1)');
             staticApp = createApp(db, {
-                adminUsername: ADMIN.username,
-                adminPassword: ADMIN.password,
                 rateLimits: { globalMax: 10000, rsvpMax: 10000 },
                 staticDir
             });
@@ -399,7 +419,7 @@ describe('RSVP API', () => {
         it('PUT /api/settings persists a valid theme and GET reflects it', async () => {
             const put = await request(app)
                 .put('/api/settings')
-                .set('Authorization', authHeader)
+                .set('Cookie', authCookie)
                 .send({ theme: 'spiderman' })
                 .expect(200);
             expect(put.body).toMatchObject({ theme: 'spiderman' });
@@ -411,17 +431,59 @@ describe('RSVP API', () => {
         it('PUT /api/settings rejects an unknown theme with 400 + French error', async () => {
             const res = await request(app)
                 .put('/api/settings')
-                .set('Authorization', authHeader)
+                .set('Cookie', authCookie)
                 .send({ theme: 'not-a-theme' })
                 .expect(400);
             expect(res.body.error).toMatch(/Thème inconnu/);
         });
 
         it('PUT /api/settings upserts (a second write overwrites the first)', async () => {
-            await request(app).put('/api/settings').set('Authorization', authHeader).send({ theme: 'dino' }).expect(200);
-            await request(app).put('/api/settings').set('Authorization', authHeader).send({ theme: 'space' }).expect(200);
+            await request(app).put('/api/settings').set('Cookie', authCookie).send({ theme: 'dino' }).expect(200);
+            await request(app).put('/api/settings').set('Cookie', authCookie).send({ theme: 'space' }).expect(200);
             const get = await request(app).get('/api/settings').expect(200);
             expect(get.body.theme).toBe('space');
+        });
+    });
+
+    describe('Authentication (Better Auth email/password)', () => {
+        it('rejects sign-in with the wrong password', async () => {
+            await request(app)
+                .post('/api/auth/sign-in/email')
+                .set('Origin', ORIGIN)
+                .send({ email: ADMIN.email, password: 'wrong-password' })
+                .expect(401);
+        });
+
+        it('rejects sign-in for an unknown email', async () => {
+            await request(app)
+                .post('/api/auth/sign-in/email')
+                .set('Origin', ORIGIN)
+                .send({ email: 'nobody@example.com', password: ADMIN.password })
+                .expect(401);
+        });
+
+        it('blocks public self-service sign-up', async () => {
+            const res = await request(app)
+                .post('/api/auth/sign-up/email')
+                .set('Origin', ORIGIN)
+                .send({ email: 'intruder@example.com', password: 'another-strong-password', name: 'Intruder' })
+                .expect(403);
+            expect(res.body).toMatchObject({ error: 'Inscription désactivée' });
+        });
+
+        it('exposes the signed-in admin via the session endpoint', async () => {
+            const res = await request(app).get('/api/auth/get-session').set('Cookie', authCookie).expect(200);
+            expect(res.body?.user?.email).toBe(ADMIN.email);
+        });
+
+        it('rejects admin routes once signed out', async () => {
+            await request(app)
+                .post('/api/auth/sign-out')
+                .set('Origin', ORIGIN)
+                .set('Cookie', authCookie)
+                .expect(200);
+            // The cookie is revoked server-side, so the protected route now 401s.
+            await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(401);
         });
     });
 

@@ -58,6 +58,9 @@ to `.env` and fill them in.
 | `EVENT_LOCATION`  | Full address / location label              |
 | `DRESS_CODE`      | Dress code note                            |
 | `EVENT_RSVP_DEADLINE` | Optional `YYYY-MM-DD`; closes RSVPs (UI + API) once passed |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Seeds the admin login (password ≥ 8 chars) |
+| `BETTER_AUTH_SECRET` | Session signing secret (**required in production**; `openssl rand -base64 32`) |
+| `BETTER_AUTH_URL` | External origin for session cookies (set behind a proxy) |
 | `CORS_ORIGIN`     | Optional cross-origin allow-list (off by default) |
 | `DOMAIN`          | Base domain for the Traefik router         |
 | `BACKUP_KEEP` / `BACKUP_INTERVAL` | Snapshots to keep / seconds between DB backups |
@@ -90,6 +93,7 @@ a `rsvp-*.db` snapshot over `/app/data/rsvp.db`.
 | `GET`    | `/api/rsvp/lookup/:phone` | —     | Look up an existing RSVP by phone        |
 | `GET`    | `/api/event.ics`          | —     | Calendar invite (.ics) for the event     |
 | `GET`    | `/api/settings`           | —     | Current UI settings (selected theme)     |
+| `ALL`    | `/api/auth/*`             | —     | Better Auth (sign-in, sign-out, session) |
 | `PUT`    | `/api/settings`           | admin | Set the active UI theme                  |
 | `POST`   | `/api/rsvps`              | admin | Manually add an RSVP (409 on duplicate)  |
 | `GET`    | `/api/rsvps`              | admin | All RSVPs                                |
@@ -98,9 +102,12 @@ a `rsvp-*.db` snapshot over `/app/data/rsvp.db`.
 | `PUT`    | `/api/rsvp/:id`           | admin | Edit an RSVP                             |
 | `DELETE` | `/api/rsvp/:id`           | admin | Delete an RSVP                           |
 
-Admin endpoints use HTTP Basic auth (`ADMIN_USERNAME` / `ADMIN_PASSWORD`) and
-fail closed (`503`) when those are unset. See [`server/README.md`](server/README.md)
-for request/response details and the database schema.
+Admin endpoints are protected by [Better Auth](https://better-auth.com)
+email/password sessions (cookie-based). The single admin account is seeded from
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` on first start, `BETTER_AUTH_SECRET` signs the
+session cookies, and public self-service sign-up is disabled. Unauthenticated
+requests get `401`. See [`server/README.md`](server/README.md) for request/response
+details and the database schema.
 
 ## Backend development
 
@@ -119,6 +126,7 @@ The TypeScript server is split for testability:
 | ---------------- | ------------------------------------------------ |
 | `server.ts`      | Bootstrap: open DB, build app, listen, shutdown  |
 | `src/app.ts`     | `createApp(db, options)` — routes, zod validation |
+| `src/auth.ts`    | Better Auth (email/password) + admin-seed helpers |
 | `src/db.ts`      | Open SQLite (better-sqlite3), schema/migrations  |
 | `src/event.ts`   | Event config + `.ics` calendar invite            |
 | `src/themes.ts`  | Allow-list of valid theme ids (settings validation) |
