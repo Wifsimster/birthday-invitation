@@ -1,9 +1,12 @@
 <template>
   <router-view />
+  <BuildFooter />
 </template>
 
 <script>
-export default { name: 'App' }
+import BuildFooter from './components/BuildFooter.vue';
+
+export default { name: 'App', components: { BuildFooter } }
 </script>
 
 <style>
