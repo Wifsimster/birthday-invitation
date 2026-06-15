@@ -1,9 +1,12 @@
 name: Deploy — homelab
 
 # Runs on the self-hosted runner alongside the docker host. Fires after the
-# Release workflow succeeds on main, pulls :latest from GHCR, reconciles the
-# compose stack, waits for readiness, and prunes dangling images.
-# Replaces Watchtower — deploys are now observable in the Actions log.
+# Release workflow succeeds on main, then reconciles the compose stack from the
+# *checked-out repo* — git is the source of truth for compose.yml + infra/ —
+# while reading secrets from the host-local .env. This closes the drift gap
+# where a compose change (new service / new env wiring) merged but never reached
+# production because the host's hand-maintained compose.yml was stale.
+# Replaces Watchtower — deploys are observable in the Actions log.
 
 on:
   workflow_run:
@@ -19,6 +22,14 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Host-local .env holds the secrets (BETTER_AUTH_SECRET, admin creds, event
+  # details) and is NEVER committed. compose.yml + infra/ come from the repo
+  # checkout. The compose top-level `name:` pins the project (and therefore the
+  # named volumes / container names) so running from the runner workspace
+  # reconciles the exact same stack as before.
+  ENV_FILE: /opt/docker/birthday-invitation/.env
+
 jobs:
   deploy:
     name: Pull & reconcile
@@ -26,10 +37,31 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch'
       || github.event.workflow_run.conclusion == 'success'
-    defaults:
-      run:
-        working-directory: /opt/docker/birthday-invitation
     steps:
+      - name: Check out repo (compose.yml + infra are the source of truth)
+        uses: actions/checkout@v4
+
+      - name: Verify required secrets exist in host .env
+        # Fail loudly BEFORE pulling if the host .env is missing a var the app
+        # needs. Catches the "new release needs a new env var" trap that would
+        # otherwise surface only as a runtime crash-loop after the image swap.
+        run: |
+          set -euo pipefail
+          if [ ! -r "$ENV_FILE" ]; then
+            echo "::error::Host env file $ENV_FILE not found or unreadable."
+            exit 1
+          fi
+          required="DOMAIN BIRTHDAY_PERSON ADMIN_EMAIL ADMIN_PASSWORD BETTER_AUTH_SECRET"
+          missing=""
+          for k in $required; do
+            grep -qE "^${k}=.+" "$ENV_FILE" || missing="$missing $k"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::$ENV_FILE is missing required var(s):$missing — see repo .env.example, add them, then re-run."
+            exit 1
+          fi
+          echo "All required env vars present."
+
       # Self-hosted runners share the deploy user's ~/.docker/config.json. An
       # expired ghcr.io `ghs_` token cached by another repo's CI makes Docker
       # send it for our pull and get `denied` instead of falling back to
@@ -38,13 +70,13 @@ jobs:
         run: docker logout ghcr.io || true
 
       - name: Pull latest image
-        run: docker compose pull birthday-invitation
+        run: docker compose --env-file "$ENV_FILE" pull birthday-invitation
 
       - name: Reconcile stack
-        run: docker compose up -d
+        run: docker compose --env-file "$ENV_FILE" up -d --remove-orphans
 
       - name: Show status
-        run: docker compose ps
+        run: docker compose --env-file "$ENV_FILE" ps
 
       - name: Wait for backend to become ready
         # `up -d` returns as soon as the container starts, not when the app is
@@ -64,5 +96,4 @@ jobs:
 
       - name: Prune dangling images
         if: success()
-        working-directory: /
         run: docker image prune -f
