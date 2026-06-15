@@ -4,6 +4,12 @@ A small self-hosted birthday invitation web app with online RSVP. A single-page
 frontend shows the event details (who, when, where, dress code) and lets guests
 confirm their attendance; a Node.js/Express backend stores RSVPs in SQLite.
 
+**Multi-event:** the admin panel (`/admin`) manages any number of events at
+once. Each event has its own theme, invitation link (`/e/<slug>`), QR code and
+RSVP list. The `BIRTHDAY_*` / `EVENT_*` environment variables seed a **default
+event** (served at `/`) so existing single-event deployments keep working
+unchanged; further events are created and edited entirely from the admin UI.
+
 Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
 `leo-birthday.${DOMAIN}`.
 
@@ -23,11 +29,14 @@ Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
                  └───────────────────────────────────────────────┘
 ```
 
-- **Frontend** — Vue 3 + Vite SPA under [`frontend/`](frontend/): an invitation
-  view (`/`) with the RSVP and lookup forms, and an admin view (`/admin`). Built
-  to `dist/` by `npm run build`. Event details are injected at container start into
-  `dist/env.js` by [`infra/inject-env.sh`](infra/inject-env.sh) and read via
-  `window.ENV`, so the same image works for any event.
+- **Frontend** — Vue 3 + Vite SPA under [`frontend/`](frontend/): a per-event
+  invitation view (`/` for the default event, `/e/:slug` for any other) with the
+  RSVP and lookup forms, and a multi-event admin dashboard (`/admin`) that lists
+  every event and lets the host create, edit, theme, share (link + QR) and manage
+  RSVPs for each one. Built to `dist/` by `npm run build`. The invitation view
+  fetches its event from the API by slug; the `BIRTHDAY_*` / `EVENT_*` values
+  injected into `dist/env.js` by [`infra/inject-env.sh`](infra/inject-env.sh)
+  seed the default event and provide an initial paint for `/`.
 - **Backend** — **TypeScript** (run via Node's native type stripping, no build
   step). Express 5 serves both the SPA and the API in a **single process**
   (compression, static caching and SPA fallback built in — no reverse proxy or
@@ -86,19 +95,49 @@ a `rsvp-*.db` snapshot over `/app/data/rsvp.db`.
 
 ## API
 
+Each event is addressed by its `slug`; the public routes below resolve the event
+from the URL. The legacy un-slugged routes (kept for backward compatibility)
+operate on the **default event**.
+
+**Per-event (public)**
+
+| Method   | Endpoint                                | Auth  | Description                              |
+| -------- | --------------------------------------- | ----- | ---------------------------------------- |
+| `GET`    | `/api/events/:slug`                     | —     | Public event details + `rsvp_closed`     |
+| `POST`   | `/api/events/:slug/rsvp`                | —     | Submit/update an RSVP for the event       |
+| `GET`    | `/api/events/:slug/rsvp/lookup/:phone`  | —     | Look up an RSVP within the event          |
+| `GET`    | `/api/events/:slug/event.ics`           | —     | Calendar invite (.ics) for the event      |
+
+**Event management (admin)**
+
+| Method   | Endpoint                                | Auth  | Description                              |
+| -------- | --------------------------------------- | ----- | ---------------------------------------- |
+| `GET`    | `/api/events`                           | admin | All events with per-event counts          |
+| `POST`   | `/api/events`                           | admin | Create an event (auto-slug from name)     |
+| `PUT`    | `/api/events/:id`                       | admin | Edit an event (details + theme)           |
+| `DELETE` | `/api/events/:id`                       | admin | Delete an event (default event protected) |
+| `GET`    | `/api/events/:id/rsvps`                 | admin | RSVPs for the event                       |
+| `GET`    | `/api/events/:id/rsvps/count`           | admin | Counts for the event                      |
+| `GET`    | `/api/events/:id/rsvps/export.csv`      | admin | Export the event's RSVPs as CSV           |
+| `POST`   | `/api/events/:id/rsvps`                 | admin | Manually add an RSVP (409 on duplicate)   |
+| `PUT`    | `/api/events/:id/rsvp/:rsvpId`          | admin | Edit an RSVP within the event             |
+| `DELETE` | `/api/events/:id/rsvp/:rsvpId`          | admin | Delete an RSVP within the event           |
+
+**Default event / legacy**
+
 | Method   | Endpoint                  | Auth  | Description                              |
 | -------- | ------------------------- | ----- | ---------------------------------------- |
 | `GET`    | `/api/health`             | —     | Health check                             |
-| `POST`   | `/api/rsvp`               | —     | Submit/update an RSVP (keyed by phone)   |
-| `GET`    | `/api/rsvp/lookup/:phone` | —     | Look up an existing RSVP by phone        |
-| `GET`    | `/api/event.ics`          | —     | Calendar invite (.ics) for the event     |
-| `GET`    | `/api/settings`           | —     | Current UI settings (selected theme)     |
+| `POST`   | `/api/rsvp`               | —     | Submit/update an RSVP (default event)    |
+| `GET`    | `/api/rsvp/lookup/:phone` | —     | Look up an RSVP (default event)          |
+| `GET`    | `/api/event.ics`          | —     | Calendar invite (.ics), default event    |
+| `GET`    | `/api/settings`           | —     | Current UI settings (default theme)      |
 | `ALL`    | `/api/auth/*`             | —     | Better Auth (sign-in, sign-out, session) |
-| `PUT`    | `/api/settings`           | admin | Set the active UI theme                  |
+| `PUT`    | `/api/settings`           | admin | Set the default event's theme            |
 | `POST`   | `/api/rsvps`              | admin | Manually add an RSVP (409 on duplicate)  |
-| `GET`    | `/api/rsvps`              | admin | All RSVPs                                |
-| `GET`    | `/api/rsvps/count`        | admin | Confirmation, decline and guest counts   |
-| `GET`    | `/api/rsvps/export.csv`   | admin | Export all RSVPs as CSV                  |
+| `GET`    | `/api/rsvps`              | admin | All RSVPs (default event)                |
+| `GET`    | `/api/rsvps/count`        | admin | Counts (default event)                   |
+| `GET`    | `/api/rsvps/export.csv`   | admin | Export RSVPs as CSV (default event)      |
 | `PUT`    | `/api/rsvp/:id`           | admin | Edit an RSVP                             |
 | `DELETE` | `/api/rsvp/:id`           | admin | Delete an RSVP                           |
 
@@ -149,9 +188,9 @@ npm run build    # builds the SPA into ../dist (served by the backend)
 | File                     | Responsibility                                   |
 | ------------------------ | ------------------------------------------------ |
 | `src/App.vue`            | Root + global styles, `<router-view>`            |
-| `src/views/Invitation.vue` | Invitation, RSVP form and lookup (`/`)         |
-| `src/views/Admin.vue`    | Admin panel: login, stats, list, edit/delete (`/admin`) |
-| `src/router.js`          | Routes                                            |
+| `src/views/Invitation.vue` | Per-event invitation, RSVP + lookup (`/`, `/e/:slug`) |
+| `src/views/Admin.vue`    | Multi-event admin: events list, create/edit/theme/share, per-event RSVPs (`/admin`) |
+| `src/router.js`          | Routes (`/`, `/e/:slug`, `/admin`)               |
 | `src/env.js`             | Reads runtime config from `window.ENV`           |
 | `src/themes.js`          | Theme catalog + `applyTheme` (CSS custom properties) |
 

@@ -8,16 +8,23 @@
         <p class="birthday-subtitle">{{ themeDef.copy.subtitle }}</p>
       </header>
 
-      <div class="invitation-body">
+      <div v-if="notFound" class="invitation-body">
+        <div class="event-not-found" role="status">
+          <h2>🔍 Événement introuvable</h2>
+          <p>Cette invitation n'existe pas ou n'est plus disponible.</p>
+        </div>
+      </div>
+
+      <div v-else class="invitation-body">
         <div class="birthday-person">{{ birthdayPerson }}</div>
-        <div class="age-badge">{{ age }} ans</div>
+        <div class="age-badge" v-if="age">{{ age }} ans</div>
 
         <div class="event-details">
-          <div class="detail-item">
+          <div class="detail-item" v-if="formattedDate">
             <i class="fas fa-calendar-day detail-icon" aria-hidden="true"></i>
-            <span>{{ formatDate(eventDate) }}</span>
+            <span>{{ formattedDate }}</span>
           </div>
-          <div class="detail-item">
+          <div class="detail-item" v-if="eventTime">
             <i class="fas fa-clock detail-icon" aria-hidden="true"></i>
             <span>{{ eventTime }}</span>
           </div>
@@ -165,17 +172,25 @@ import { applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
 
 export default {
   name: 'Invitation',
+  props: {
+    slug: { type: String, default: '' }
+  },
   data() {
+    // Only seed from the env.js fallback on the default route, to avoid a blank
+    // flash; the API response is the source of truth and overrides this.
+    const isDefault = !this.slug;
     return {
       theme: DEFAULT_THEME,
-      birthdayPerson: eventConfig.birthdayPerson,
-      age: eventConfig.age,
-      eventDate: eventConfig.eventDate,
-      eventTime: eventConfig.eventTime,
-      eventTown: eventConfig.eventTown,
-      eventLocation: eventConfig.eventLocation,
-      dresscode: eventConfig.dresscode,
-      rsvpDeadline: eventConfig.rsvpDeadline,
+      notFound: false,
+      rsvpClosed: false,
+      birthdayPerson: isDefault ? eventConfig.birthdayPerson : '',
+      age: isDefault ? eventConfig.age : 0,
+      eventDate: isDefault ? eventConfig.eventDate : null,
+      eventTime: isDefault ? eventConfig.eventTime : '',
+      eventTown: isDefault ? eventConfig.eventTown : '',
+      eventLocation: isDefault ? eventConfig.eventLocation : '',
+      dresscode: isDefault ? eventConfig.dresscode : '',
+      rsvpDeadline: isDefault ? eventConfig.rsvpDeadline : '',
       showRsvpForm: false,
       showLookupForm: false,
       hasConfirmedAttendance: false,
@@ -191,6 +206,9 @@ export default {
     };
   },
   computed: {
+    effectiveSlug() {
+      return this.slug || 'default';
+    },
     themeDef() {
       return getTheme(this.theme);
     },
@@ -199,9 +217,8 @@ export default {
         ? 'Un petit mot pour nous dire votre joie de venir...'
         : "Un petit mot pour s'excuser...";
     },
-    rsvpClosed() {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(this.rsvpDeadline)) return false;
-      return Date.now() > new Date(`${this.rsvpDeadline}T23:59:59`).getTime();
+    formattedDate() {
+      return this.formatDate(this.eventDate);
     },
     formatDeadline() {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(this.rsvpDeadline)) return '';
@@ -209,7 +226,7 @@ export default {
         .toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     },
     icsUrl() {
-      return `${apiBaseUrl}/event.ics`;
+      return `${apiBaseUrl}/events/${encodeURIComponent(this.effectiveSlug)}/event.ics`;
     },
     mapUrl() {
       const q = [this.eventLocation, this.eventTown].filter(Boolean).join(', ');
@@ -235,26 +252,49 @@ export default {
       return `https://calendar.google.com/calendar/render?${params.toString()}`;
     }
   },
-  async mounted() {
-    // Paint the default theme immediately, then upgrade to the admin-selected
-    // theme once the public settings endpoint responds.
+  mounted() {
+    // Paint the (fallback) theme immediately, then upgrade to the event's theme
+    // once the public event endpoint responds.
     applyTheme(this.theme);
-    try {
-      const res = await fetch(`${apiBaseUrl}/settings`);
-      if (res.ok) {
-        const { theme } = await res.json();
-        if (theme) {
-          this.theme = theme;
-          applyTheme(theme);
-        }
-      }
-    } catch {
-      // Keep the default theme when settings can't be fetched.
+    this.loadEvent();
+  },
+  watch: {
+    slug() {
+      this.loadEvent();
     }
   },
   methods: {
+    async loadEvent() {
+      this.notFound = false;
+      try {
+        const res = await fetch(`${apiBaseUrl}/events/${encodeURIComponent(this.effectiveSlug)}`);
+        if (res.status === 404) {
+          this.notFound = true;
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+        this.birthdayPerson = data.person || '';
+        this.age = Number(data.age) || 0;
+        this.eventDate = data.date ? new Date(data.date) : null;
+        this.eventTime = data.time || '';
+        this.eventTown = data.town || '';
+        this.eventLocation = data.location || '';
+        this.dresscode = data.dress_code || '';
+        this.rsvpDeadline = data.rsvp_deadline || '';
+        this.rsvpClosed = !!data.rsvp_closed;
+        if (data.theme) {
+          this.theme = data.theme;
+          applyTheme(data.theme);
+        }
+      } catch {
+        // Keep whatever we have (fallback paint) when the event can't be fetched.
+      }
+    },
     formatDate(date) {
-      return date.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const d = date instanceof Date ? date : (date ? new Date(date) : null);
+      if (!d || Number.isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     },
     openRsvpForm() {
       this.errorMessage = '';
@@ -306,7 +346,7 @@ export default {
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
-        const res = await fetch(`${apiBaseUrl}/rsvp`, {
+        const res = await fetch(`${apiBaseUrl}/events/${encodeURIComponent(this.effectiveSlug)}/rsvp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -342,7 +382,7 @@ export default {
         if (!this.lookupPhoneNumber || this.lookupPhoneNumber.trim().length === 0) {
           throw new Error('Le numéro de téléphone est requis');
         }
-        const res = await fetch(`${apiBaseUrl}/rsvp/lookup/${encodeURIComponent(this.lookupPhoneNumber.trim())}`, {
+        const res = await fetch(`${apiBaseUrl}/events/${encodeURIComponent(this.effectiveSlug)}/rsvp/lookup/${encodeURIComponent(this.lookupPhoneNumber.trim())}`, {
           headers: { 'Content-Type': 'application/json' }
         });
         if (!res.ok) {
@@ -399,6 +439,8 @@ export default {
 .deadline-note{text-align:center;font-size:.95rem;font-weight:600;color:var(--theme-primary-dark,#c9184a);margin-bottom:14px}
 .rsvp-closed{background:#f3f4f6;border:2px dashed #cbd5e1;border-radius:15px;padding:24px;text-align:center;color:#44505f}
 .rsvp-closed h2{margin-bottom:8px;color:var(--theme-primary-dark,#c9184a)}
+.event-not-found{background:#f3f4f6;border:2px dashed #cbd5e1;border-radius:15px;padding:30px 24px;text-align:center;color:#44505f}
+.event-not-found h2{margin-bottom:10px;color:var(--theme-primary-dark,#c9184a)}
 .event-details{margin:25px 0}
 .detail-item{display:flex;align-items:center;margin-bottom:15px;font-size:1rem;color:var(--theme-card-text,#333)}
 .detail-icon{color:var(--theme-primary,#ff6b6b);margin-right:12px;width:20px;text-align:center}

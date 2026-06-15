@@ -77,6 +77,46 @@ is rate-limited and returns only the fields the form needs (never `ip_address`).
 GET /api/settings            # { theme } — public, defaults to "fiesta"
 PUT /api/settings            # set the active theme (admin)
 ```
+The theme is stored on the **default event** row; the legacy routes above (and
+all the `/api/rsvp*` routes) resolve to that default event for backward
+compatibility with single-event deployments configured via env vars.
+
+### Multi-event — public routes (per invitation `:slug`)
+```
+GET  /api/events/:slug                    # safe invitation fields + rsvp_closed
+POST /api/events/:slug/rsvp               # submit/update an RSVP for this event
+GET  /api/events/:slug/rsvp/lookup/:phone # look up this event's RSVP by phone
+GET  /api/events/:slug/event.ics          # calendar invite for this event
+```
+`GET /api/events/:slug` returns only public fields (`slug`, `person`, `age`,
+`date`, `time`, `town`, `location`, `dress_code`, `theme`, `rsvp_deadline`) plus
+a computed `rsvp_closed` flag — never internal ids/timestamps. Unknown slugs
+`404`. Submissions are scoped to the event: the **same phone can RSVP to several
+events**. Once an event's `rsvp_deadline` has passed, submissions `403`.
+
+### Multi-event — admin management
+```
+GET    /api/events            # list all events with aggregated RSVP counts
+POST   /api/events            # create an event (auto-slug from person if omitted)
+PUT    /api/events/:id        # update an event (partial)
+DELETE /api/events/:id        # delete an event (its RSVPs cascade)
+```
+The list items include `responses`, `confirmations`, `declined` and
+`total_guests`. Slugs are made unique automatically (`-2`, `-3`…); an explicit
+duplicate slug `409`s. The default event's slug is fixed (`default`) and the
+default event cannot be deleted (`400`).
+
+### Multi-event — admin per-event RSVPs
+```
+GET    /api/events/:id/rsvps             # list this event's RSVPs (newest first)
+GET    /api/events/:id/rsvps/count       # scoped counts
+GET    /api/events/:id/rsvps/export.csv  # scoped CSV (filename rsvps-<slug>.csv)
+POST   /api/events/:id/rsvps             # manually add (409 on duplicate phone)
+PUT    /api/events/:id/rsvp/:rsvpId      # edit (scoped to the event)
+DELETE /api/events/:id/rsvp/:rsvpId      # delete (scoped to the event)
+```
+An unknown event id `404`s. Edits/deletes only affect RSVPs that belong to the
+named event.
 
 ### Authentication (Better Auth — email/password)
 ```
@@ -129,6 +169,23 @@ compile/emit step. CI runs typecheck + lint + tests, and builds the Docker image
 The server uses SQLite (via the synchronous `better-sqlite3` driver) with a simple schema:
 
 ```sql
+CREATE TABLE event (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL UNIQUE,
+  person TEXT NOT NULL DEFAULT '',
+  age TEXT NOT NULL DEFAULT '',
+  date TEXT NOT NULL DEFAULT '',          -- YYYY-MM-DD
+  time TEXT NOT NULL DEFAULT '',
+  town TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
+  dress_code TEXT NOT NULL DEFAULT '',
+  theme TEXT NOT NULL DEFAULT 'fiesta',
+  rsvp_deadline TEXT NOT NULL DEFAULT '', -- YYYY-MM-DD or ''
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE rsvp (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -139,14 +196,22 @@ CREATE TABLE rsvp (
   dietary_restrictions TEXT,
   message TEXT,
   ip_address TEXT,
+  event_id INTEGER REFERENCES event(id) ON DELETE CASCADE,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
--- UNIQUE index on phone enforces one RSVP per guest.
-CREATE UNIQUE INDEX idx_rsvp_phone ON rsvp(phone);
+-- One RSVP per phone *per event* (the unique constraint moved from phone to
+-- (event_id, phone) in migration v3).
+CREATE UNIQUE INDEX idx_rsvp_event_phone ON rsvp(event_id, phone);
 ```
 
-The database file is created automatically on first start (see `DB_PATH` below).
+Each invitation is an `event` row (theme, slug, details). A single
+`is_default = 1` row backs the legacy single-event routes, so env-configured
+deployments keep working: on boot `ensureDefaultEvent` seeds that row from the
+event environment variables (and migrates any previously stored global theme),
+but never clobbers it once an admin has edited it. The migration is idempotent
+and runs automatically; the database file is created on first start (see
+`DB_PATH` below).
 
 ## Security Features
 

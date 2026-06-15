@@ -2,6 +2,8 @@
 // frontend at container start). This module turns them into a calendar invite so
 // guests can add the party to their own calendar.
 
+import type { Db, EventRow } from './db.ts';
+
 export interface EventConfig {
   person: string;
   age: string;
@@ -9,6 +11,7 @@ export interface EventConfig {
   time: string;
   town: string;
   location: string;
+  dressCode?: string;
   rsvpDeadline?: string;
 }
 
@@ -20,8 +23,94 @@ export function eventConfig(env: NodeJS.ProcessEnv = process.env): EventConfig {
     time: env.EVENT_TIME || '',      // free text, e.g. "15h00 - 17h00"
     town: env.EVENT_TOWN || '',
     location: env.EVENT_LOCATION || '',
+    dressCode: env.DRESS_CODE || '',
     rsvpDeadline: env.EVENT_RSVP_DEADLINE || ''  // YYYY-MM-DD, optional
   };
+}
+
+// Turn arbitrary text (usually the celebrated person's name) into a URL-safe
+// slug: lowercase, diacritics stripped, non-alphanumerics collapsed to dashes.
+// Falls back to 'event' when the result would be empty or purely numeric.
+export function slugify(input: string): string {
+  const base = String(input ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/g, '');
+  if (!base || /^[0-9]+$/.test(base)) return 'event';
+  return base;
+}
+
+// Map a stored event row onto the EventConfig shape the ics/deadline helpers use.
+export function eventConfigFromRow(row: EventRow): EventConfig {
+  return {
+    person: row.person,
+    age: row.age,
+    date: row.date,
+    time: row.time,
+    town: row.town,
+    location: row.location,
+    dressCode: row.dress_code,
+    rsvpDeadline: row.rsvp_deadline
+  };
+}
+
+// The default event backs the legacy single-event routes. Prefer the flagged
+// row; fall back to the lowest id if (somehow) none is flagged.
+export function getDefaultEvent(db: Db): EventRow {
+  const row =
+    db.get<EventRow>('SELECT * FROM event WHERE is_default = 1 ORDER BY id LIMIT 1') ??
+    db.get<EventRow>('SELECT * FROM event ORDER BY id LIMIT 1');
+  if (!row) {
+    // Should never happen once initSchema has run, but stay defensive.
+    db.run("INSERT OR IGNORE INTO event (slug, is_default) VALUES ('default', 1)");
+    db.run("UPDATE event SET is_default = 1 WHERE slug = 'default'");
+    return db.get<EventRow>('SELECT * FROM event WHERE is_default = 1 ORDER BY id LIMIT 1') as EventRow;
+  }
+  return row;
+}
+
+export function getEventBySlug(db: Db, slug: string): EventRow | undefined {
+  return db.get<EventRow>('SELECT * FROM event WHERE slug = ?', [slug]);
+}
+
+export function getEventById(db: Db, id: number): EventRow | undefined {
+  return db.get<EventRow>('SELECT * FROM event WHERE id = ?', [id]);
+}
+
+// Seed/repair the default event from the env config so existing single-event
+// deployments flow their configuration into the default row on first boot.
+// Once an admin edits the event (person becomes non-empty) boot never clobbers it.
+export function ensureDefaultEvent(db: Db, cfg: EventConfig): EventRow {
+  const row = getDefaultEvent(db);
+  if (!row.person && cfg.person) {
+    // Migrate any legacy global theme stored in the settings table.
+    const themeRow = db.get<{ value: string }>('SELECT value FROM settings WHERE key = ?', ['theme']);
+    const theme = themeRow?.value || row.theme;
+    db.run(
+      `UPDATE event
+       SET person = ?, age = ?, date = ?, time = ?, town = ?, location = ?,
+           dress_code = ?, rsvp_deadline = ?, theme = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        cfg.person,
+        cfg.age || '',
+        cfg.date || '',
+        cfg.time || '',
+        cfg.town || '',
+        cfg.location || '',
+        cfg.dressCode || '',
+        cfg.rsvpDeadline || '',
+        theme,
+        row.id
+      ]
+    );
+    return getEventById(db, row.id) as EventRow;
+  }
+  return row;
 }
 
 // True when an RSVP deadline is configured and has passed (end of that day).

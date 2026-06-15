@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './src/app.ts';
 import { openDb, initSchema, defaultDbPath } from './src/db.ts';
+import { eventConfig, ensureDefaultEvent } from './src/event.ts';
 import { createAuth, migrateAuth, seedAdminUser } from './src/auth.ts';
 import { logger } from './src/logger.ts';
 
@@ -21,6 +22,9 @@ async function main(): Promise<void> {
   const dbPath = defaultDbPath();
   const db = openDb(dbPath);
   initSchema(db);
+  // Seed/repair the default event from the env config so env-configured
+  // deployments flow their configuration into the default event row.
+  ensureDefaultEvent(db, eventConfig());
   logger.info({ dbPath }, 'connected to SQLite database');
 
   // Email/password authentication (Better Auth). Fail fast in production if the
