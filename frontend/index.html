@@ -15,6 +15,12 @@
     <!-- Umami — mesure d'audience auto-hébergée, sans cookie. Page publique d'invitation. -->
     <script defer src="https://umami.battistella.ovh/stats.js"
       data-website-id="b783d281-9c26-4c77-b3ad-3f2c5f10e740"></script>
+
+    <!-- Heatmaps. Script distinct du tracker : `stats.js` ne l'embarque pas.
+         `replayEnabled` est OFF côté serveur, donc la charge utile ne contient
+         que des coordonnées de clic et de scroll — aucun DOM, aucun texte. -->
+    <script defer src="https://umami.battistella.ovh/recorder.js"
+      data-website-id="b783d281-9c26-4c77-b3ad-3f2c5f10e740"></script>
 </head>
 
 <body>
