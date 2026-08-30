@@ -301,15 +301,20 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   app.use(helmet({
     // Restrictive CSP that still allows the font/icon CDNs the SPA loads and the
     // inline styles Vue injects. 'unsafe-inline' for styles is required by Vue's
-    // scoped-style injection; scripts stay locked to same-origin.
+    // scoped-style injection.
+    //
+    // umami.battistella.ovh est notre propre instance de mesure d'audience, pas
+    // un tiers. Elle a besoin de DEUX directives : scriptSrc pour charger
+    // stats.js et recorder.js, connectSrc pour poster la mesure. N'en ouvrir
+    // qu'une donne une panne silencieuse — le script se charge et n'émet rien.
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", 'https://umami.battistella.ovh'],
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com', 'data:'],
         imgSrc: ["'self'", 'data:'],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", 'https://umami.battistella.ovh'],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
         frameAncestors: ["'self'"]
