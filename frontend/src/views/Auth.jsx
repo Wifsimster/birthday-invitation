@@ -170,8 +170,11 @@ export default function Auth({ mode: routeMode }) {
       navigate('/pending', { replace: true });
       return;
     }
+    // Only a path within this app. A leading '//' (or '/\') is a
+    // protocol-relative URL, so the bare startsWith('/') test would have let
+    // ?redirect=//example.com send a freshly signed-in admin off-site.
     const target = searchParams.get('redirect');
-    navigate(target && target.startsWith('/') ? target : '/admin', { replace: true });
+    navigate(target && /^\/(?![/\\])/.test(target) ? target : '/admin', { replace: true });
   }
 
   function handleSignIn() {

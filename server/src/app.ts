@@ -280,6 +280,9 @@ function countRsvps(db: Db, eventId: number): {
   };
 }
 
+// The slug column's length budget, mirrored by `slugField` above.
+const SLUG_MAX = 60;
+
 // Pick a free slug derived from a base, appending -2, -3… until unused.
 // `excludeId` lets an update keep its own slug.
 function uniqueSlug(db: Db, base: string, excludeId?: number): string {
@@ -287,11 +290,27 @@ function uniqueSlug(db: Db, base: string, excludeId?: number): string {
     const row = db.get<{ id: number }>('SELECT id FROM event WHERE slug = ?', [slug]);
     return !!row && row.id !== excludeId;
   };
+  // Truncating `${base}-${n}` back to the column budget can reproduce `base`
+  // itself once the base is at (or one character under) that budget — every
+  // candidate then equals the slug we already know is taken, and the loop spins
+  // forever, wedging the whole (single-threaded) server on one request. Trim the
+  // base first so the suffix always survives the truncation.
+  const withSuffix = (suffix: string): string =>
+    `${base.slice(0, SLUG_MAX - suffix.length).replace(/-+$/g, '')}${suffix}`;
+
   if (!taken(base)) return base;
-  for (let n = 2; ; n++) {
-    const candidate = `${base}-${n}`.slice(0, 60).replace(/-+$/g, '');
+  for (let n = 2; n <= 999; n++) {
+    const candidate = withSuffix(`-${n}`);
     if (!taken(candidate)) return candidate;
   }
+  // 998 events sharing one name is not a real deployment, but the fallback still
+  // has to terminate: try a handful of random suffixes, then give up loudly
+  // rather than looping.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const candidate = withSuffix(`-${Math.random().toString(36).slice(2, 8)}`);
+    if (!taken(candidate)) return candidate;
+  }
+  throw new Error('unable to derive a free event slug');
 }
 
 const FIELD_PRIORITY = [
@@ -479,6 +498,24 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   // The default event backs the legacy single-event routes. Resolved lazily
   // per-request so it always reflects the current default row.
   const defaultEventId = () => getDefaultEvent(db).id;
+
+  // A path parameter as a row id, or null when it isn't one. Keeps a junk id a
+  // 404 rather than letting NaN reach a comparison that silently never matches.
+  const rsvpIdParam = (raw: unknown): number | null => {
+    const id = Number(raw);
+    return Number.isInteger(id) ? id : null;
+  };
+
+  // True when another response on this event already holds the phone number, so
+  // an edit can answer 409 instead of tripping the (event_id, phone) UNIQUE
+  // index and falling through to the generic 500 handler.
+  const phoneTaken = (eventId: number, phone: string, exceptRsvpId: number): boolean => {
+    const row = db.get<{ id: number }>(
+      'SELECT id FROM rsvp WHERE event_id = ? AND phone = ?',
+      [eventId, phone]
+    );
+    return !!row && row.id !== exceptRsvpId;
+  };
 
   // The default event as the legacy routes read it (deadline, calendar invite).
   // The stored row wins: it is seeded from the env config at boot and is what
@@ -764,29 +801,48 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     res.status(201).json({ message: 'RSVP ajouté avec succès !', id: Number(result.lastID) });
   }));
 
-  // Update an arbitrary RSVP (admin).
+  // Update an RSVP of the default event (admin). Scoped like every other legacy
+  // route: an id belonging to another event is a 404 here, not a silent
+  // cross-event write.
   app.put('/api/rsvp/:id', ...admin, asyncHandler((req, res) => {
     const parsed = rsvpSchema({ requireAttending: false, minGuests: 0 }).safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ error: firstError(parsed.error) });
     }
+    const rsvpId = rsvpIdParam(req.params.id);
+    if (rsvpId === null) {
+      return res.status(404).json({ error: 'RSVP non trouvé' });
+    }
     const body = parsed.data;
     const attending = body.attending ?? 'yes';
+    const eventId = defaultEventId();
+    const phone = normalizePhone(body.phone);
+    if (!phone) {
+      return res.status(400).json({ error: 'Le numéro de téléphone est requis' });
+    }
+    // Phone is the guest identity, and (event_id, phone) is a UNIQUE index:
+    // moving a response onto a number another guest already used would raise a
+    // constraint error and surface as an opaque 500. Answer like the create
+    // route does instead.
+    if (phoneTaken(eventId, phone, rsvpId)) {
+      return res.status(409).json({ error: 'Une réponse existe déjà pour ce numéro' });
+    }
 
     const result = db.run(`
       UPDATE rsvp
       SET attending = ?, name = ?, email = ?, phone = ?, guests = ?,
           dietary_restrictions = ?, message = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
+      WHERE id = ? AND event_id = ?
     `, [
       attending,
       body.name,
       body.email ? body.email : null,
-      normalizePhone(body.phone),
+      phone,
       guestCount(attending, body.guests),
       body.dietary_restrictions ? body.dietary_restrictions : null,
       body.message ? body.message : null,
-      req.params.id
+      rsvpId,
+      eventId
     ]);
 
     if (result.changes === 0) {
@@ -795,9 +851,12 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     res.json({ message: 'RSVP mis à jour avec succès !', changes: result.changes });
   }));
 
-  // Delete an RSVP (admin).
+  // Delete an RSVP of the default event (admin).
   app.delete('/api/rsvp/:id', ...admin, asyncHandler((req, res) => {
-    const result = db.run('DELETE FROM rsvp WHERE id = ?', [req.params.id]);
+    const result = db.run('DELETE FROM rsvp WHERE id = ? AND event_id = ?', [
+      req.params.id,
+      defaultEventId()
+    ]);
     if (result.changes === 0) {
       return res.status(404).json({ error: 'RSVP non trouvé' });
     }
@@ -1007,8 +1066,20 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     if (!parsed.success) {
       return res.status(400).json({ error: firstError(parsed.error) });
     }
+    const rsvpId = rsvpIdParam(req.params.rsvpId);
+    if (rsvpId === null) {
+      return res.status(404).json({ error: 'RSVP non trouvé' });
+    }
     const body = parsed.data;
     const attending = body.attending ?? 'yes';
+    const phone = normalizePhone(body.phone);
+    if (!phone) {
+      return res.status(400).json({ error: 'Le numéro de téléphone est requis' });
+    }
+    // (event_id, phone) is UNIQUE — see the legacy edit route above.
+    if (phoneTaken(id, phone, rsvpId)) {
+      return res.status(409).json({ error: 'Une réponse existe déjà pour ce numéro' });
+    }
     const result = db.run(`
       UPDATE rsvp
       SET attending = ?, name = ?, email = ?, phone = ?, guests = ?,
@@ -1018,11 +1089,11 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       attending,
       body.name,
       body.email ? body.email : null,
-      normalizePhone(body.phone),
+      phone,
       guestCount(attending, body.guests),
       body.dietary_restrictions ? body.dietary_restrictions : null,
       body.message ? body.message : null,
-      req.params.rsvpId,
+      rsvpId,
       id
     ]);
     if (result.changes === 0) {
