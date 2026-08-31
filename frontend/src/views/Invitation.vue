@@ -1,172 +1,267 @@
 <template>
-  <div class="invitation-container">
-    <div v-for="(emoji, i) in themeDef.decorations" :key="i" class="decoration" aria-hidden="true">{{ emoji }}</div>
+  <!--
+    `theme-surface` re-points the shadcn tokens at the event's palette (see
+    src/assets/index.css), so every Button, Input and Card below is dressed by
+    the selected theme rather than by the neutral admin palette.
+  -->
+  <div class="theme-surface relative flex min-h-full flex-col items-center justify-center overflow-hidden px-4 py-6">
+    <div
+      v-for="(emoji, i) in themeDef.decorations"
+      :key="`${theme}-${i}`"
+      class="pointer-events-none absolute animate-float text-3xl opacity-30 select-none"
+      :class="decorationPositions[i % decorationPositions.length]"
+      :style="{ animationDelay: `${i}s` }"
+      aria-hidden="true"
+    >{{ emoji }}</div>
 
-    <main class="invitation-card">
-      <header class="invitation-header">
-        <div class="hero-emojis" aria-hidden="true"><span v-for="(e, i) in themeDef.heroEmojis" :key="i" class="hero-emoji">{{ e }}</span></div>
-        <h1 class="birthday-title">{{ themeDef.copy.title }}</h1>
-        <p class="birthday-subtitle">{{ themeDef.copy.subtitle }}</p>
+    <main class="relative w-full max-w-[500px] animate-card-in overflow-hidden rounded-[20px] bg-card text-card-foreground shadow-[0_25px_50px_rgba(0,0,0,0.1)]">
+      <header
+        class="relative overflow-hidden px-6 py-8 text-center text-[color:var(--theme-header-text,#fff)] sm:px-8"
+        :style="{ background: 'var(--theme-header-gradient, linear-gradient(135deg,#ff6b6b,#ff8e8e))' }"
+      >
+        <span
+          class="pointer-events-none absolute inset-0 opacity-[0.18]"
+          :style="{ background: 'radial-gradient(circle at 50% 0%, var(--theme-accent,#ffb703) 0%, transparent 60%)' }"
+          aria-hidden="true"
+        ></span>
+        <div class="relative flex justify-center gap-3.5" aria-hidden="true">
+          <span
+            v-for="(e, i) in themeDef.heroEmojis"
+            :key="i"
+            class="animate-hero-float text-[2.4rem] drop-shadow-[0_3px_6px_rgba(0,0,0,0.25)]"
+            :style="{ animationDelay: `${i}s` }"
+          >{{ e }}</span>
+        </div>
+        <h1 class="relative mt-2.5 font-display text-2xl leading-tight font-bold tracking-wide sm:text-[2rem]">
+          {{ themeDef.copy.title }}
+        </h1>
+        <p class="relative mt-2.5 text-lg opacity-90">{{ themeDef.copy.subtitle }}</p>
       </header>
 
-      <div v-if="notFound" class="invitation-body">
-        <div class="event-not-found" role="status">
-          <h2>🔍 Événement introuvable</h2>
-          <p>Cette invitation n'existe pas ou n'est plus disponible.</p>
+      <div v-if="notFound" class="p-6 sm:p-8">
+        <div class="rounded-2xl border-2 border-dashed bg-muted px-6 py-8 text-center">
+          <h2 class="text-lg font-bold text-[color:var(--theme-primary-dark,#c9184a)]">🔍 Événement introuvable</h2>
+          <p class="mt-2 text-muted-foreground">Cette invitation n'existe pas ou n'est plus disponible.</p>
         </div>
       </div>
 
-      <div v-else class="invitation-body">
-        <div class="identity">
-          <div class="birthday-person">{{ birthdayPerson }}</div>
-          <div class="age-badge" v-if="age">{{ age }} ans</div>
+      <div v-else class="p-6 sm:p-8">
+        <div class="text-center">
+          <p class="font-display text-[1.7rem] font-bold text-[color:var(--theme-primary,#ff6b6b)]">{{ birthdayPerson }}</p>
+          <p
+            v-if="age"
+            class="mt-3 inline-block rounded-full px-5 py-2.5 text-lg font-bold text-[color:var(--theme-badge-text,#fff)] shadow-[0_0_0_4px_var(--theme-primary-soft,#ff6b6b55),0_4px_15px_rgba(0,0,0,0.18)]"
+            :style="{ background: 'var(--theme-badge-gradient, linear-gradient(135deg,#ffd93d,#ff6b6b))' }"
+          >{{ age }} ans</p>
         </div>
 
-        <div class="countdown" v-if="countdown" role="status" :aria-label="countdownAria">
-          <template v-if="countdown.isToday"><span class="countdown-today">🎉 C'est aujourd'hui !</span></template>
-          <template v-else-if="countdown.isPast"><span class="countdown-today">🎂 Joyeux anniversaire !</span></template>
+        <div v-if="countdown" class="my-6 flex flex-wrap items-stretch justify-center gap-3" role="status" :aria-label="countdownAria">
+          <template v-if="countdown.isToday || countdown.isPast">
+            <span
+              class="inline-block rounded-full px-6 py-3 font-display font-bold text-[color:var(--theme-button-text,#fff)]"
+              :style="{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }"
+            >{{ countdown.isToday ? "🎉 C'est aujourd'hui !" : '🎂 Joyeux anniversaire !' }}</span>
+          </template>
           <template v-else>
-            <div class="countdown-unit"><span class="countdown-num">{{ countdown.days }}</span><span class="countdown-label">jours</span></div>
-            <div class="countdown-unit"><span class="countdown-num">{{ countdown.hours }}</span><span class="countdown-label">heures</span></div>
-            <div class="countdown-unit"><span class="countdown-num">{{ countdown.minutes }}</span><span class="countdown-label">min</span></div>
+            <div
+              v-for="unit in countdownUnits"
+              :key="unit.label"
+              class="flex min-w-14 flex-col items-center justify-center rounded-2xl px-2.5 py-3 sm:min-w-16"
+              :style="{ background: 'var(--theme-primary-soft, #ff6b6b55)' }"
+            >
+              <span class="font-display text-2xl leading-none font-bold text-[color:var(--theme-primary,#ff6b6b)] tabular-nums sm:text-[1.9rem]">
+                {{ unit.value }}
+              </span>
+              <span class="mt-1.5 text-[0.68rem] tracking-wider uppercase opacity-65">{{ unit.label }}</span>
+            </div>
           </template>
         </div>
 
-        <div class="event-details">
-          <div class="detail-tile" v-if="formattedDate">
-            <span class="detail-disc"><i class="fas fa-calendar-day" aria-hidden="true"></i></span>
-            <div class="detail-meta"><span class="detail-label">Date</span><span class="detail-value">{{ formattedDate }}</span></div>
-          </div>
-          <div class="detail-tile" v-if="eventTime">
-            <span class="detail-disc"><i class="fas fa-clock" aria-hidden="true"></i></span>
-            <div class="detail-meta"><span class="detail-label">Heure</span><span class="detail-value">{{ eventTime }}</span></div>
-          </div>
-          <div class="detail-tile" v-if="eventTown">
-            <span class="detail-disc"><i class="fas fa-city" aria-hidden="true"></i></span>
-            <div class="detail-meta"><span class="detail-label">Ville</span><span class="detail-value">{{ eventTown }}</span></div>
-          </div>
-          <div class="detail-tile detail-tile--wide" v-if="eventLocation">
-            <span class="detail-disc"><i class="fas fa-map-marker-alt" aria-hidden="true"></i></span>
-            <div class="detail-meta">
-              <span class="detail-label">Lieu</span>
-              <a v-if="mapUrl" :href="mapUrl" target="_blank" rel="noopener" class="map-link">{{ eventLocation }}</a>
-              <span v-else class="detail-value">{{ eventLocation }}</span>
+        <div class="my-6 grid gap-3 sm:grid-cols-2">
+          <div
+            v-for="detail in eventDetails"
+            :key="detail.label"
+            class="flex items-center gap-3 rounded-2xl bg-black/[0.035] p-3.5"
+            :class="detail.wide && 'sm:col-span-2'"
+          >
+            <span
+              class="flex size-10 shrink-0 items-center justify-center rounded-full text-[color:var(--theme-button-text,#fff)]"
+              :style="{ background: 'var(--theme-badge-gradient, var(--theme-primary,#ff6b6b))' }"
+            >
+              <component :is="detail.icon" class="size-4" aria-hidden="true" />
+            </span>
+            <div class="flex min-w-0 flex-col">
+              <span class="text-[0.72rem] tracking-wide uppercase opacity-60">{{ detail.label }}</span>
+              <a
+                v-if="detail.href"
+                :href="detail.href"
+                target="_blank"
+                rel="noopener"
+                class="font-semibold text-[color:var(--theme-primary,#ff6b6b)] underline underline-offset-2"
+              >{{ detail.value }}</a>
+              <span v-else class="font-semibold">{{ detail.value }}</span>
             </div>
           </div>
-          <div class="detail-tile" v-if="dresscode">
-            <span class="detail-disc"><i class="fas fa-tshirt" aria-hidden="true"></i></span>
-            <div class="detail-meta"><span class="detail-label">Tenue</span><span class="detail-value">{{ dresscode }}</span></div>
-          </div>
         </div>
 
-        <div class="action-row">
-          <a class="action-chip" :href="icsUrl"><i class="fas fa-calendar-plus" aria-hidden="true"></i> Calendrier (.ics)</a>
-          <a class="action-chip" :href="googleCalUrl" target="_blank" rel="noopener"><i class="fab fa-google" aria-hidden="true"></i> Google Agenda</a>
-          <button type="button" class="action-chip" @click="share"><i class="fas fa-share-nodes" aria-hidden="true"></i> Partager</button>
+        <div class="flex flex-wrap justify-center gap-2.5">
+          <Button as-child variant="outline" size="sm" class="rounded-full">
+            <a :href="icsUrl"><DownloadIcon /> Calendrier (.ics)</a>
+          </Button>
+          <Button v-if="googleCalUrl" as-child variant="outline" size="sm" class="rounded-full">
+            <a :href="googleCalUrl" target="_blank" rel="noopener"><CalendarPlusIcon /> Google Agenda</a>
+          </Button>
+          <Button type="button" variant="outline" size="sm" class="rounded-full" @click="share">
+            <Share2Icon /> Partager
+          </Button>
         </div>
 
-        <div class="rsvp-section">
-          <div v-if="hasConfirmedAttendance" class="confirmation-message" :class="{ declined: !isAttending }" role="status">
+        <div class="mt-8">
+          <!-- ---------- Already answered ---------- -->
+          <div
+            v-if="hasConfirmedAttendance"
+            class="rounded-2xl p-6 text-center text-white"
+            :class="isAttending
+              ? 'bg-linear-to-br from-[#43cea2] to-[#22a06b]'
+              : 'bg-linear-to-br from-[#ff7675] to-[#fd79a8]'"
+            role="status"
+          >
             <template v-if="isAttending">
-              <h2>🎉 Merci {{ confirmedName }} !</h2>
-              <p>Ta réponse est bien enregistrée. À très bientôt ! 🎈</p>
-              <div class="confirmation-details">
+              <h2 class="text-xl font-bold">🎉 Merci {{ confirmedName }} !</h2>
+              <p class="mt-2">Ta réponse est bien enregistrée. À très bientôt ! 🎈</p>
+              <div class="mt-4 space-y-1 opacity-90">
                 <p>👨‍👩‍👧‍👦 {{ confirmedGuests }} personne(s)</p>
                 <p v-if="confirmedMessage">💌 {{ confirmedMessage }}</p>
               </div>
             </template>
             <template v-else>
-              <h2>Merci {{ confirmedName }}</h2>
-              <p>Dommage que tu ne puisses pas venir. 😔</p>
-              <div class="confirmation-details" v-if="confirmedMessage">
-                <p>💌 {{ confirmedMessage }}</p>
-              </div>
+              <h2 class="text-xl font-bold">Merci {{ confirmedName }}</h2>
+              <p class="mt-2">Dommage que tu ne puisses pas venir. 😔</p>
+              <p v-if="confirmedMessage" class="mt-4 opacity-90">💌 {{ confirmedMessage }}</p>
             </template>
-            <div class="reset-section">
-              <button class="reset-button" @click="resetForm">Modifier ma réponse</button>
-            </div>
+            <Button
+              variant="outline"
+              class="mt-5 rounded-full border-white/30 bg-white/20 text-white hover:bg-white/30 hover:text-white"
+              @click="resetForm"
+            >Modifier ma réponse</Button>
           </div>
 
-          <div v-else-if="rsvpClosed" class="rsvp-closed" role="status">
-            <h2>🙏 Réponses closes</h2>
-            <p>La date limite de réponse ({{ formatDeadline }}) est passée.</p>
+          <!-- ---------- Closed ---------- -->
+          <div v-else-if="rsvpClosed" class="rounded-2xl border-2 border-dashed bg-muted px-6 py-6 text-center" role="status">
+            <h2 class="text-lg font-bold text-[color:var(--theme-primary-dark,#c9184a)]">🙏 Réponses closes</h2>
+            <p class="mt-2 text-muted-foreground">La date limite de réponse ({{ formatDeadline }}) est passée.</p>
           </div>
 
           <template v-else>
-            <p v-if="formatDeadline" class="deadline-note">⏳ Merci de répondre avant le {{ formatDeadline }}</p>
+            <p v-if="formatDeadline" class="mb-4 text-center font-semibold text-[color:var(--theme-primary-dark,#c9184a)]">
+              ⏳ Merci de répondre avant le {{ formatDeadline }}
+            </p>
 
-            <div class="rsvp-buttons" v-if="!showRsvpForm && !showLookupForm">
-              <button class="rsvp-button" @click="openRsvpForm">🎈 Je réponds à l'invitation</button>
-              <button class="lookup-button" @click="openLookupForm">✏️ Modifier ma réponse</button>
+            <div v-if="!showRsvpForm && !showLookupForm" class="flex flex-col items-stretch gap-3">
+              <Button
+                size="lg"
+                class="h-auto animate-rsvp-pulse rounded-full py-4 font-display text-lg text-[color:var(--theme-button-text,#fff)] shadow-lg hover:animate-none"
+                :style="{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }"
+                @click="openRsvpForm"
+              >🎈 Je réponds à l'invitation</Button>
+              <Button
+                size="lg"
+                class="h-auto rounded-full py-4 font-display text-lg text-[color:var(--theme-button-text,#fff)] shadow-lg"
+                :style="{ background: 'linear-gradient(135deg, var(--theme-secondary,#667eea), var(--theme-primary-dark,#764ba2))' }"
+                @click="openLookupForm"
+              >✏️ Modifier ma réponse</Button>
             </div>
 
-            <form v-if="showRsvpForm" class="rsvp-form" @submit.prevent="submitRSVP">
-              <h2 class="form-title">Réponds à l'invitation</h2>
+            <!-- ---------- RSVP form ---------- -->
+            <form v-if="showRsvpForm" class="mt-5 space-y-5 rounded-2xl bg-muted p-5 sm:p-6" @submit.prevent="submitRSVP">
+              <h2 class="text-center text-xl font-bold text-[color:var(--theme-primary,#ff6b6b)]">Réponds à l'invitation</h2>
 
-              <fieldset class="form-group radio-fieldset">
-                <legend>Statut <span aria-hidden="true">*</span></legend>
-                <div class="radio-group">
-                  <label class="radio-option" :class="{ selected: formData.attending === 'yes' }">
-                    <input type="radio" class="visually-hidden" value="yes" v-model="formData.attending" name="attending" />
-                    <span class="radio-text">Oui, je viens ! 🎈</span>
-                  </label>
-                  <label class="radio-option" :class="{ selected: formData.attending === 'no' }">
-                    <input type="radio" class="visually-hidden" value="no" v-model="formData.attending" name="attending" />
-                    <span class="radio-text">Non, je ne peux pas venir 😔</span>
-                  </label>
-                </div>
+              <fieldset class="space-y-3">
+                <legend class="mb-3 font-medium">Statut <span class="text-destructive" aria-hidden="true">*</span></legend>
+                <RadioGroup v-model="formData.attending" class="gap-3">
+                  <div
+                    v-for="opt in attendingOptions"
+                    :key="opt.value"
+                    class="flex items-center gap-3 rounded-xl border-2 bg-card p-3 transition-colors"
+                    :class="formData.attending === opt.value
+                      ? 'border-[color:var(--theme-primary,#ff6b6b)] bg-accent'
+                      : 'hover:border-[color:var(--theme-primary,#ff6b6b)]/50'"
+                  >
+                    <RadioGroupItem :id="`attending-${opt.value}`" :value="opt.value" />
+                    <Label :for="`attending-${opt.value}`" class="flex-1 cursor-pointer font-medium">{{ opt.label }}</Label>
+                  </div>
+                </RadioGroup>
               </fieldset>
 
-              <div class="form-group">
-                <label for="rsvp-name">👶 Nom de l'enfant <span aria-hidden="true">*</span></label>
-                <input id="rsvp-name" type="text" v-model="formData.name" required aria-required="true" placeholder="Prénom de l'enfant" />
+              <div class="grid gap-2">
+                <Label for="rsvp-name">👶 Nom de l'enfant <span class="text-destructive" aria-hidden="true">*</span></Label>
+                <Input id="rsvp-name" v-model="formData.name" class="h-11 bg-card" type="text" required placeholder="Prénom de l'enfant" />
               </div>
 
-              <div class="form-group">
-                <label for="rsvp-phone">📱 Téléphone <span aria-hidden="true">*</span></label>
-                <input id="rsvp-phone" type="tel" inputmode="tel" v-model="formData.phone" required aria-required="true" placeholder="06 12 34 56 78" />
+              <div class="grid gap-2">
+                <Label for="rsvp-phone">📱 Téléphone <span class="text-destructive" aria-hidden="true">*</span></Label>
+                <Input id="rsvp-phone" v-model="formData.phone" class="h-11 bg-card" type="tel" inputmode="tel" autocomplete="tel" required placeholder="06 12 34 56 78" />
               </div>
 
-              <div class="form-group">
-                <label for="rsvp-email">✉️ Email du parent</label>
-                <input id="rsvp-email" type="email" v-model="formData.email" placeholder="parent@example.com" />
+              <div class="grid gap-2">
+                <Label for="rsvp-email">✉️ Email du parent</Label>
+                <Input id="rsvp-email" v-model="formData.email" class="h-11 bg-card" type="email" inputmode="email" autocomplete="email" autocapitalize="none" placeholder="parent@example.com" />
               </div>
 
-              <div class="form-group" v-if="formData.attending === 'yes'">
-                <label for="rsvp-guests">👨‍👩‍👧‍👦 Nombre de personnes</label>
-                <select id="rsvp-guests" v-model.number="formData.guests">
-                  <option v-for="opt in guestOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                </select>
+              <div v-if="formData.attending === 'yes'" class="grid gap-2">
+                <Label for="rsvp-guests">👨‍👩‍👧‍👦 Nombre de personnes</Label>
+                <Select v-model="guestsValue">
+                  <SelectTrigger id="rsvp-guests" class="h-11 w-full bg-card min-w-0 *:data-[slot=select-value]:min-w-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="opt in guestOptions" :key="opt.value" :value="String(opt.value)">{{ opt.label }}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              <div class="form-group" v-if="formData.attending === 'yes'">
-                <label for="rsvp-diet">🥜 Allergies / régime alimentaire</label>
-                <textarea id="rsvp-diet" v-model="formData.dietary_restrictions" placeholder="Allergies, intolérances, régime particulier..."></textarea>
+              <div v-if="formData.attending === 'yes'" class="grid gap-2">
+                <Label for="rsvp-diet">🥜 Allergies / régime alimentaire</Label>
+                <Textarea id="rsvp-diet" v-model="formData.dietary_restrictions" class="bg-card" placeholder="Allergies, intolérances, régime particulier..." />
               </div>
 
-              <div class="form-group">
-                <label for="rsvp-message">💌 Message (optionnel)</label>
-                <textarea id="rsvp-message" v-model="formData.message" :placeholder="messagePlaceholder"></textarea>
+              <div class="grid gap-2">
+                <Label for="rsvp-message">💌 Message (optionnel)</Label>
+                <Textarea id="rsvp-message" v-model="formData.message" class="bg-card" :placeholder="messagePlaceholder" />
               </div>
 
-              <div v-if="errorMessage" class="rsvp-error" role="alert"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> {{ errorMessage }}</div>
+              <Alert v-if="errorMessage" variant="destructive" role="alert">
+                <CircleAlertIcon />
+                <AlertDescription>{{ errorMessage }}</AlertDescription>
+              </Alert>
 
-              <div class="form-actions">
-                <button type="button" class="btn-cancel" @click="cancelForm">Annuler</button>
-                <button type="submit" class="btn-submit" :disabled="isSubmitting">{{ isSubmitting ? 'Envoi...' : 'Envoyer ma réponse' }}</button>
+              <div class="flex flex-col gap-3 sm:flex-row">
+                <Button type="button" variant="outline" size="lg" class="flex-1" @click="cancelForm">Annuler</Button>
+                <Button type="submit" size="lg" class="flex-1" :disabled="isSubmitting">
+                  <Loader2Icon v-if="isSubmitting" class="animate-spin" />
+                  {{ isSubmitting ? 'Envoi...' : 'Envoyer ma réponse' }}
+                </Button>
               </div>
             </form>
 
-            <form v-if="showLookupForm" class="lookup-form" @submit.prevent="lookupRSVP">
-              <h2>Retrouver ma réponse</h2>
-              <div class="form-group">
-                <label for="lookup-phone">📱 Téléphone <span aria-hidden="true">*</span></label>
-                <input id="lookup-phone" type="tel" inputmode="tel" v-model="lookupPhoneNumber" required aria-required="true" placeholder="06 12 34 56 78" />
+            <!-- ---------- Lookup form ---------- -->
+            <form v-if="showLookupForm" class="mt-5 space-y-5 rounded-2xl bg-muted p-5 sm:p-6" @submit.prevent="lookupRSVP">
+              <h2 class="text-center text-xl font-bold text-[color:var(--theme-primary,#ff6b6b)]">Retrouver ma réponse</h2>
+              <div class="grid gap-2">
+                <Label for="lookup-phone">📱 Téléphone <span class="text-destructive" aria-hidden="true">*</span></Label>
+                <Input id="lookup-phone" v-model="lookupPhoneNumber" class="h-11 bg-card" type="tel" inputmode="tel" autocomplete="tel" required placeholder="06 12 34 56 78" />
+                <p class="text-sm text-muted-foreground">Le numéro utilisé lors de ta première réponse.</p>
               </div>
-              <div v-if="errorMessage" class="error-message" role="alert">{{ errorMessage }}</div>
-              <div class="form-buttons">
-                <button type="button" class="cancel-button" @click="cancelForm">Annuler</button>
-                <button type="submit" class="submit-button" :disabled="isLookingUp">{{ isLookingUp ? 'Recherche...' : 'Rechercher' }}</button>
+              <Alert v-if="errorMessage" variant="destructive" role="alert">
+                <CircleAlertIcon />
+                <AlertDescription>{{ errorMessage }}</AlertDescription>
+              </Alert>
+              <div class="flex flex-col gap-3 sm:flex-row">
+                <Button type="button" variant="outline" size="lg" class="flex-1" @click="cancelForm">Annuler</Button>
+                <Button type="submit" size="lg" class="flex-1" :disabled="isLookingUp">
+                  <Loader2Icon v-if="isLookingUp" class="animate-spin" />
+                  {{ isLookingUp ? 'Recherche...' : 'Rechercher' }}
+                </Button>
               </div>
             </form>
           </template>
@@ -174,19 +269,46 @@
       </div>
     </main>
 
-    <div class="admin-link">
-      <router-link to="/admin" class="admin-button">🔐 Admin</router-link>
+    <!-- The admin entry used to be pinned to the viewport corner, where it sat
+         on top of the build stamp on a phone. It is a host affordance, not a
+         guest one, so it goes quietly at the end of the page. -->
+    <div class="relative mt-6">
+      <Button as-child variant="secondary" size="sm" class="rounded-full bg-white/90 text-slate-600 shadow-md hover:bg-white">
+        <RouterLink to="/admin">🔐 Admin</RouterLink>
+      </Button>
     </div>
   </div>
 </template>
 
 <script>
+import { RouterLink } from 'vue-router';
+import { toast } from 'vue-sonner';
+import {
+  Building2Icon, CalendarDaysIcon, CalendarPlusIcon, CircleAlertIcon, ClockIcon,
+  DownloadIcon, Loader2Icon, MapPinIcon, Share2Icon, ShirtIcon
+} from '@lucide/vue';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { eventConfig, apiBaseUrl } from '../env.js';
 import { applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
 import { applySeo, eventSeo, ogImageUrl } from '../seo.js';
 
 export default {
   name: 'Invitation',
+  components: {
+    RouterLink,
+    Alert, AlertDescription,
+    Button, Input, Label,
+    RadioGroup, RadioGroupItem,
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    Textarea,
+    CalendarPlusIcon, CircleAlertIcon, DownloadIcon, Loader2Icon, Share2Icon
+  },
   props: {
     slug: { type: String, default: '' }
   },
@@ -197,6 +319,20 @@ export default {
     return {
       theme: DEFAULT_THEME,
       now: Date.now(),
+      // Where the floating emoji sit. Indexed by position in the theme's list,
+      // so a theme with more or fewer decorations still scatters evenly.
+      decorationPositions: [
+        'top-[10%] left-[15%]',
+        'top-[20%] right-[20%]',
+        'top-[60%] left-[10%]',
+        'top-[70%] right-[15%]',
+        'bottom-[20%] left-[20%]',
+        'bottom-[10%] right-[25%]'
+      ],
+      attendingOptions: [
+        { value: 'yes', label: 'Oui, je viens ! 🎈' },
+        { value: 'no', label: 'Non, je ne peux pas venir 😔' }
+      ],
       notFound: false,
       rsvpClosed: false,
       birthdayPerson: isDefault ? eventConfig.birthdayPerson : '',
@@ -222,6 +358,43 @@ export default {
     };
   },
   computed: {
+    // The Select works in strings; the payload and the option list are numbers.
+    guestsValue: {
+      get() {
+        return String(this.formData.guests);
+      },
+      set(value) {
+        this.formData.guests = Number(value);
+      }
+    },
+
+    // The countdown as three labelled figures, so the template stays flat.
+    countdownUnits() {
+      if (!this.countdown || this.countdown.isToday || this.countdown.isPast) return [];
+      return [
+        { value: this.countdown.days, label: 'jours' },
+        { value: this.countdown.hours, label: 'heures' },
+        { value: this.countdown.minutes, label: 'min' }
+      ];
+    },
+
+    // The filled-in facts, in display order. Building the list here keeps the
+    // "hide what we do not know" rule in one place instead of a v-if per tile.
+    eventDetails() {
+      const tiles = [];
+      if (this.formattedDate) tiles.push({ label: 'Date', value: this.formattedDate, icon: CalendarDaysIcon });
+      if (this.eventTime) tiles.push({ label: 'Heure', value: this.eventTime, icon: ClockIcon });
+      if (this.eventTown) tiles.push({ label: 'Ville', value: this.eventTown, icon: Building2Icon });
+      if (this.eventLocation) {
+        tiles.push({
+          label: 'Lieu', value: this.eventLocation, icon: MapPinIcon,
+          href: this.mapUrl || undefined, wide: true
+        });
+      }
+      if (this.dresscode) tiles.push({ label: 'Tenue', value: this.dresscode, icon: ShirtIcon });
+      return tiles;
+    },
+
     effectiveSlug() {
       return this.slug || 'default';
     },
@@ -421,16 +594,22 @@ export default {
         }
       } catch (err) {
         // User dismissed the native sheet — done. Any other failure falls
-        // through to the WhatsApp/clipboard fallback below.
+        // through to the clipboard path below.
         if (err && err.name === 'AbortError') return;
       }
-      // Fallback: WhatsApp share, then clipboard.
+      // No native share sheet (most desktops): copy the link and *offer*
+      // WhatsApp rather than opening a tab the visitor never asked for.
+      const whatsapp = `https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`;
       try {
-        await navigator.clipboard?.writeText(url);
-        this.errorMessage = '';
-      } catch { /* ignore clipboard failures */ }
-      window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, '_blank', 'noopener');
+        await navigator.clipboard.writeText(url);
+        toast.success('Lien copié', {
+          action: { label: 'WhatsApp', onClick: () => window.open(whatsapp, '_blank', 'noopener') }
+        });
+      } catch {
+        window.open(whatsapp, '_blank', 'noopener');
+      }
     },
+
     async submitRSVP() {
       this.isSubmitting = true;
       this.errorMessage = '';
@@ -502,100 +681,3 @@ export default {
 };
 </script>
 
-<style scoped>
-.invitation-container{min-height:100vh;background:var(--theme-bg-gradient,linear-gradient(135deg,#667eea,#764ba2));background-size:200% 200%;animation:gradientShift 12s ease infinite;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;position:relative;overflow:hidden;transition:background .4s ease}
-@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}to{background-position:0% 50%}}
-.decoration{position:absolute;font-size:2rem;opacity:.3;animation:float-781963a1 6s ease-in-out infinite;pointer-events:none}
-.decoration:nth-child(1){top:10%;left:15%;animation-delay:0s}
-.decoration:nth-child(2){top:20%;right:20%;animation-delay:1s}
-.decoration:nth-child(3){top:60%;left:10%;animation-delay:2s}
-.decoration:nth-child(4){top:70%;right:15%;animation-delay:3s}
-.decoration:nth-child(5){bottom:20%;left:20%;animation-delay:4s}
-.decoration:nth-child(6){bottom:10%;right:25%;animation-delay:5s}
-@keyframes float-781963a1{0%,to{transform:translateY(0) rotate(0)}50%{transform:translateY(-20px) rotate(10deg)}}
-.invitation-card{background:var(--theme-card-bg,#fff);color:var(--theme-card-text,#333);border-radius:20px;box-shadow:0 25px 50px #0000001a;max-width:500px;width:100%;overflow:hidden;animation:slideIn-781963a1 .8s ease-out}
-@keyframes slideIn-781963a1{0%{opacity:0;transform:translateY(50px)}to{opacity:1;transform:translateY(0)}}
-.invitation-header{background:var(--theme-header-gradient,linear-gradient(135deg,#ff6b6b,#ff8e8e));color:var(--theme-header-text,#fff);padding:34px 30px;text-align:center;position:relative;overflow:hidden}
-.invitation-header::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 0%,var(--theme-accent,#ffb703) 0%,transparent 60%);opacity:.18}
-.hero-emojis,.birthday-title,.birthday-subtitle{position:relative;z-index:1}
-.hero-emojis{display:flex;gap:14px;justify-content:center;margin-bottom:10px}
-.hero-emoji{font-size:2.4rem;filter:drop-shadow(0 3px 6px rgba(0,0,0,.25));animation:heroFloat 6s ease-in-out infinite}
-.hero-emoji:nth-child(2){animation-delay:1s}
-.hero-emoji:nth-child(3){animation-delay:2s}
-.hero-emoji:nth-child(4){animation-delay:3s}
-@keyframes heroFloat{0%,to{transform:translateY(0) rotate(0)}50%{transform:translateY(-8px) rotate(6deg)}}
-.birthday-title{font-family:var(--theme-font-display,'Comic Sans MS',cursive);font-size:2rem;line-height:1.15;margin-bottom:10px;font-weight:700;letter-spacing:.5px}
-.birthday-subtitle{opacity:.92;font-size:1.1rem}
-.invitation-body{padding:30px}
-.identity{text-align:center}
-.birthday-person{font-family:var(--theme-font-display,'Comic Sans MS',cursive);text-align:center;color:var(--theme-primary,#ff6b6b);font-size:1.7rem;margin-bottom:15px;font-weight:700}
-.age-badge{background:var(--theme-badge-gradient,linear-gradient(135deg,#ffd93d,#ff6b6b));color:var(--theme-badge-text,#fff);padding:10px 22px;border-radius:25px;text-align:center;font-weight:700;font-size:1.2rem;margin:0 auto;display:inline-block;box-shadow:0 0 0 4px var(--theme-primary-soft,#ff6b6b55),0 4px 15px rgba(0,0,0,.18)}
-.countdown{display:flex;gap:12px;justify-content:center;align-items:stretch;margin:22px 0;flex-wrap:wrap}
-.countdown-unit{display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--theme-primary-soft,#ff6b6b55);border-radius:14px;padding:12px 10px;min-width:64px}
-.countdown-num{font-family:var(--theme-font-display,'Comic Sans MS',cursive);font-size:1.9rem;font-weight:700;line-height:1;color:var(--theme-primary,#ff6b6b)}
-.countdown-label{margin-top:6px;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--theme-card-text,#333);opacity:.65}
-.countdown-today{display:inline-block;background:var(--theme-button-gradient,linear-gradient(135deg,#4ecdc4,#44a08d));color:var(--theme-button-text,#fff);font-family:var(--theme-font-display,'Comic Sans MS',cursive);font-weight:700;padding:12px 22px;border-radius:25px}
-.map-link{color:var(--theme-primary,#ff6b6b);text-decoration:underline}
-.action-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:10px 0 6px}
-.action-chip{display:inline-flex;align-items:center;gap:7px;background:#00000008;border:1.5px solid #0000001f;color:var(--theme-card-text,#333);border-radius:20px;padding:8px 14px;font-size:.85rem;font-weight:600;cursor:pointer;text-decoration:none;transition:all .2s ease;font-family:inherit}
-.action-chip:hover{border-color:var(--theme-primary,#ff6b6b);transform:translateY(-1px)}
-.deadline-note{text-align:center;font-size:.95rem;font-weight:600;color:var(--theme-primary-dark,#c9184a);margin-bottom:14px}
-.rsvp-closed{background:#f3f4f6;border:2px dashed #cbd5e1;border-radius:15px;padding:24px;text-align:center;color:#44505f}
-.rsvp-closed h2{margin-bottom:8px;color:var(--theme-primary-dark,#c9184a)}
-.event-not-found{background:#f3f4f6;border:2px dashed #cbd5e1;border-radius:15px;padding:30px 24px;text-align:center;color:#44505f}
-.event-not-found h2{margin-bottom:10px;color:var(--theme-primary-dark,#c9184a)}
-.event-details{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}
-.detail-tile{display:flex;align-items:center;gap:12px;background:rgba(0,0,0,.035);border-radius:14px;padding:14px}
-.detail-tile--wide{grid-column:1 / -1}
-.detail-disc{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:50%;background:var(--theme-badge-gradient,var(--theme-primary,#ff6b6b));color:var(--theme-button-text,#fff);font-size:1rem}
-.detail-meta{display:flex;flex-direction:column;min-width:0}
-.detail-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;opacity:.6;color:var(--theme-card-text,#333)}
-.detail-value{font-weight:600;color:var(--theme-card-text,#333)}
-.rsvp-section{margin-top:30px}
-.rsvp-buttons{text-align:center;display:flex;flex-direction:column;gap:15px;align-items:center}
-.rsvp-button,.lookup-button{font-family:var(--theme-font-display,inherit);color:var(--theme-button-text,#fff);border:none;padding:15px 30px;border-radius:25px;font-size:1.1rem;font-weight:600;cursor:pointer;transition:all .3s ease;min-width:200px}
-.rsvp-button{background:var(--theme-button-gradient,linear-gradient(135deg,#4ecdc4,#44a08d));box-shadow:0 4px 15px #00000033;animation:rsvpPulse 2.5s ease-in-out infinite}
-@keyframes rsvpPulse{0%,to{box-shadow:0 4px 15px #00000033}50%{box-shadow:0 4px 15px #00000033,0 0 0 8px var(--theme-primary-soft,#ff6b6b33)}}
-.rsvp-button:hover{transform:translateY(-2px);box-shadow:0 8px 25px #00000040;animation:none}
-.lookup-button{background:linear-gradient(135deg,var(--theme-secondary,#667eea),var(--theme-primary-dark,#764ba2));box-shadow:0 4px 15px #00000033}
-.lookup-button:hover{transform:translateY(-2px);box-shadow:0 8px 25px #00000040}
-.lookup-form{background:#f0f4ff;padding:25px;border-radius:15px;margin-top:20px;border:2px solid #e1e5e9}
-.lookup-form h2{color:var(--theme-primary,#667eea);font-size:1.3rem;margin-bottom:20px;text-align:center}
-.rsvp-form{background:#f8f9fa;padding:25px;border-radius:15px;margin-top:20px}
-.rsvp-form h2,.form-title{color:var(--theme-primary,#ff6b6b);font-size:1.3rem;margin-bottom:20px;text-align:center}
-.form-group{margin-bottom:20px}
-.radio-fieldset{border:none;padding:0;margin:0 0 20px}
-.radio-fieldset legend{margin-bottom:8px;color:#333;font-weight:500;padding:0}
-.form-group label{display:block;margin-bottom:8px;color:#333;font-weight:500}
-.form-group input,.form-group select{width:100%;padding:12px 15px;border:2px solid #e1e5e9;border-radius:10px;font-size:1rem;transition:border-color .3s ease}
-.form-group input:focus,.form-group select:focus{border-color:var(--theme-primary,#ff6b6b);outline:3px solid var(--theme-primary-soft,#ff6b6b55);outline-offset:1px}
-.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-.radio-group{display:flex;flex-direction:column;gap:12px}
-.radio-option{display:flex;align-items:center;cursor:pointer;padding:12px;border:2px solid #e1e5e9;border-radius:10px;transition:all .3s ease}
-.radio-option:hover{border-color:var(--theme-primary,#ff6b6b);background-color:#0000000a}
-.radio-option:focus-within{outline:3px solid var(--theme-primary-soft,#ff6b6b55);outline-offset:2px;border-color:var(--theme-primary,#ff6b6b)}
-.radio-option.selected{border-color:var(--theme-primary,#ff6b6b);background-color:#00000010}
-.radio-text{font-weight:500;color:#333}
-.form-group textarea{width:100%;padding:12px 15px;border:2px solid #e1e5e9;border-radius:10px;font-size:1rem;transition:border-color .3s ease;resize:vertical;min-height:80px;font-family:inherit}
-.form-group textarea:focus{border-color:var(--theme-primary,#ff6b6b);outline:3px solid var(--theme-primary-soft,#ff6b6b55);outline-offset:1px}
-.form-buttons{display:flex;gap:15px;margin-top:25px}
-.cancel-button,.submit-button{flex:1;padding:12px 20px;border:none;border-radius:10px;font-size:1rem;font-weight:600;cursor:pointer;transition:all .3s ease}
-.cancel-button{background:#e1e5e9;color:#666}
-.cancel-button:hover{background:#d1d5d9}
-.submit-button{background:var(--theme-button-gradient,linear-gradient(135deg,#ff6b6b,#ff8e8e));color:#fff}
-.submit-button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 15px #00000040}
-.submit-button:disabled{opacity:.7;cursor:not-allowed}
-.confirmation-message{background:linear-gradient(135deg,#43cea2,#22a06b);color:#fff;padding:25px;border-radius:15px;text-align:center;margin-top:20px}
-.confirmation-message h2{font-size:1.4rem;margin-bottom:15px}
-.confirmation-message.declined{background:linear-gradient(135deg,#ff7675,#fd79a8)}
-.confirmation-details{margin-top:15px;opacity:.9}
-.reset-section{margin-top:20px;text-align:center}
-.reset-button{background:#fff3;color:#fff;border:2px solid rgba(255,255,255,.3);padding:10px 20px;border-radius:25px;font-size:.9rem;font-weight:500;cursor:pointer;transition:all .3s ease}
-.reset-button:hover{background:#ffffff4d;transform:translateY(-1px)}
-.error-message{background:#ff4757;color:#fff;padding:15px;border-radius:10px;margin-top:15px;text-align:center}
-.admin-link{position:fixed;bottom:20px;right:20px}
-.admin-button{background:#ffffffe6;color:#666;padding:12px 20px;border-radius:25px;text-decoration:none;font-size:.9rem;font-weight:500;box-shadow:0 4px 15px #0000001a;transition:all .3s ease;display:flex;align-items:center;gap:8px}
-.admin-button:hover{background:#fff;transform:translateY(-2px);box-shadow:0 8px 25px #00000026}
-@media (max-width: 768px){.invitation-container{padding:15px}.invitation-card{max-width:100%}.invitation-header,.invitation-body{padding:20px}.birthday-title{font-size:1.5rem}.form-buttons{flex-direction:column}.rsvp-buttons{flex-direction:column;gap:10px}.rsvp-button,.lookup-button{min-width:auto;width:100%}.admin-link{bottom:15px;right:15px}}
-@media (max-width: 420px){.event-details{grid-template-columns:1fr}.hero-emoji{font-size:2rem}.countdown-unit{min-width:56px;padding:10px 8px}.countdown-num{font-size:1.6rem}}
-</style>

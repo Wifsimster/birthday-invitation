@@ -395,8 +395,8 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", 'https://umami.battistella.ovh'],
-        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
-        fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com', 'data:'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
         imgSrc: ["'self'", 'data:'],
         connectSrc: ["'self'", 'https://umami.battistella.ovh'],
         objectSrc: ["'none'"],
