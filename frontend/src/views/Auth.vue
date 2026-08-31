@@ -140,6 +140,7 @@
 <script>
 import { authClient } from '../auth-client.js';
 import { session, refresh, signOut, authProviders } from '../session.js';
+import { applySeo } from '../seo.js';
 
 // Route name -> form mode. `check-email` and `reset-sent` are transient states
 // the component enters after a successful submit; they have no route of their
@@ -231,9 +232,13 @@ export default {
       this.transientMode = null;
       this.error = null;
       this.notice = null;
+    },
+    mode() {
+      this.applyHeadForMode();
     }
   },
   async created() {
+    this.applyHeadForMode();
     this.providers = await authProviders();
     // A visitor arriving on /login who already has a session belongs elsewhere.
     if (this.mode === 'signin' && session.user) {
@@ -241,6 +246,17 @@ export default {
     }
   },
   methods: {
+    // Sign-in and registration have nothing to offer a search engine. The server
+    // shell already sends noindex for these paths (server/src/seo.ts); this keeps
+    // the head right across client-side navigation and gives the tab a real name.
+    applyHeadForMode() {
+      applySeo({
+        title: `${this.copy.title} | Invitation d'anniversaire`,
+        description: this.copy.subtitle,
+        robots: 'noindex, nofollow'
+      });
+    },
+
     submit() {
       const handlers = {
         signin: this.handleSignIn,
