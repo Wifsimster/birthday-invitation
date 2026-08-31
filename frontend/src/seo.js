@@ -42,7 +42,7 @@ function setLink(rel, href) {
  * Apply a page's metadata. `url` defaults to the current location, minus any
  * query string, so the canonical stays a single clean address per invitation.
  */
-export function applySeo({ title, description, robots = 'index, follow', url }) {
+export function applySeo({ title, description, robots = 'index, follow', url, image }) {
   const canonical = url || `${window.location.origin}${window.location.pathname}`;
   document.title = title;
   setMeta('meta[name="description"]', ['name', 'description'], description);
@@ -53,7 +53,21 @@ export function applySeo({ title, description, robots = 'index, follow', url }) 
   setMeta('meta[property="og:url"]', ['property', 'og:url'], canonical);
   setMeta('meta[name="twitter:title"]', ['name', 'twitter:title'], title);
   setMeta('meta[name="twitter:description"]', ['name', 'twitter:description'], description);
+  // Passing no image clears the share card the server injected — otherwise a
+  // route without one (the admin console) would keep advertising the previous
+  // page's card. Scrapers never see these updates; this only keeps the live
+  // document honest.
+  setMeta('meta[property="og:image"]', ['property', 'og:image'], image);
+  setMeta('meta[name="twitter:image"]', ['name', 'twitter:image'], image);
+  setMeta('meta[name="twitter:card"]', ['name', 'twitter:card'],
+    image ? 'summary_large_image' : 'summary');
   setLink('canonical', canonical);
+}
+
+/** Absolute URL of an event's share card, matching the server's own routes. */
+export function ogImageUrl(apiBaseUrl, slug) {
+  const path = slug ? `${apiBaseUrl}/events/${encodeURIComponent(slug)}/og.png` : `${apiBaseUrl}/og.png`;
+  return new URL(path, window.location.origin).href;
 }
 
 /** Title + description for one event. Mirrors buildEventMeta on the server. */
