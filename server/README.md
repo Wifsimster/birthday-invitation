@@ -12,6 +12,9 @@ native type stripping — there is no build step.
 | -------------- | ------------------------------------------------------------- |
 | `server.ts`    | Bootstrap — opens the DB, builds the app, listens, shuts down |
 | `src/app.ts`   | `createApp(db, options)` factory — routes, middleware, zod validation |
+| `src/auth.ts`  | Better Auth (email/password + Google) factory, roles, migration + admin-seed helpers |
+| `src/mailer.ts` | Resend/SMTP transport (nodemailer); logs instead of sending when unconfigured |
+| `src/emails.ts` | Verification and password-reset email templates |
 | `src/db.ts`    | Opens SQLite (better-sqlite3), runs schema/migrations, typed adapter |
 | `src/event.ts` | Reads event env vars; builds the `.ics` calendar invite       |
 | `src/logger.ts`| Shared pino structured logger                                 |
@@ -30,7 +33,9 @@ cannot drift away from the routes that actually run in production.
 - One RSVP per phone number, normalised to digits so the same number matches
   regardless of spacing/punctuation (re-submitting updates the existing row)
 - CSV export of the guest list and an `.ics` calendar invite
-- HTTP Basic auth on admin endpoints, failing closed when unconfigured
+- **Better Auth** email/password + Google authentication (cookie sessions),
+  open registration with email verification, and a `user`/`admin` role that
+  gates every admin endpoint
 
 ## API Endpoints
 
@@ -75,8 +80,88 @@ is rate-limited and returns only the fields the form needs (never `ip_address`).
 GET /api/settings            # { theme } — public, defaults to "fiesta"
 PUT /api/settings            # set the active theme (admin)
 ```
+The theme is stored on the **default event** row; the legacy routes above (and
+all the `/api/rsvp*` routes) resolve to that default event for backward
+compatibility with single-event deployments configured via env vars.
 
-### Admin endpoints (HTTP Basic auth)
+### Multi-event — public routes (per invitation `:slug`)
+```
+GET  /api/events/:slug                    # safe invitation fields + rsvp_closed
+POST /api/events/:slug/rsvp               # submit/update an RSVP for this event
+GET  /api/events/:slug/rsvp/lookup/:phone # look up this event's RSVP by phone
+GET  /api/events/:slug/event.ics          # calendar invite for this event
+```
+`GET /api/events/:slug` returns only public fields (`slug`, `person`, `age`,
+`date`, `time`, `town`, `location`, `dress_code`, `theme`, `rsvp_deadline`) plus
+a computed `rsvp_closed` flag — never internal ids/timestamps. Unknown slugs
+`404`. Submissions are scoped to the event: the **same phone can RSVP to several
+events**. Once an event's `rsvp_deadline` has passed, submissions `403`.
+
+### Multi-event — admin management
+```
+GET    /api/events            # list all events with aggregated RSVP counts
+POST   /api/events            # create an event (auto-slug from person if omitted)
+PUT    /api/events/:id        # update an event (partial)
+DELETE /api/events/:id        # delete an event (its RSVPs cascade)
+```
+The list items include `responses`, `confirmations`, `declined` and
+`total_guests`. Slugs are made unique automatically (`-2`, `-3`…); an explicit
+duplicate slug `409`s. The default event's slug is fixed (`default`) and the
+default event cannot be deleted (`400`).
+
+### Multi-event — admin per-event RSVPs
+```
+GET    /api/events/:id/rsvps             # list this event's RSVPs (newest first)
+GET    /api/events/:id/rsvps/count       # scoped counts
+GET    /api/events/:id/rsvps/export.csv  # scoped CSV (filename rsvps-<slug>.csv)
+POST   /api/events/:id/rsvps             # manually add (409 on duplicate phone)
+PUT    /api/events/:id/rsvp/:rsvpId      # edit (scoped to the event)
+DELETE /api/events/:id/rsvp/:rsvpId      # delete (scoped to the event)
+```
+An unknown event id `404`s. Edits/deletes only affect RSVPs that belong to the
+named event.
+
+### Authentication (Better Auth — email/password + Google)
+```
+GET  /api/auth-providers               # { emailPassword, google } — what's configured
+ALL  /api/auth/*                       # Better Auth handler
+POST /api/auth/sign-up/email           # { email, password, name } -> sends a verification email
+POST /api/auth/sign-in/email           # { email, password } -> sets a session cookie
+GET  /api/auth/sign-in/social          # starts the Google redirect (when configured)
+GET  /api/auth/verify-email?token=…     # confirms the address, then signs the user in
+POST /api/auth/request-password-reset  # { email, redirectTo } -> emails a reset link
+POST /api/auth/reset-password          # { token, newPassword }
+POST /api/auth/send-verification-email # re-sends the confirmation link
+POST /api/auth/sign-out                # clears the session
+GET  /api/auth/get-session             # current session (null when signed out)
+GET  /api/me                           # the signed-in account + its role (401 when signed out)
+```
+Registration is **open**: anyone may create an account with an email/password or
+with Google. Email/password accounts must follow the emailed confirmation link
+before they can sign in (`403` until then); Google accounts arrive verified.
+
+Signing up grants nothing. Every new account is created with `role: 'user'`, and
+the role field is declared `input: false` so it can never be set from a request
+body. `ADMIN_EMAIL` / `ADMIN_PASSWORD` seed the one bootstrap admin, written
+through the internal adapter (no verification email for an address the seed marks
+verified anyway) and re-granted the admin role on every boot.
+
+The auth tables (`user`, `session`, `account`, `verification`) are created by
+Better Auth's own migrations at boot, alongside the app's SQLite database. The
+`user` table carries the extra `role` column.
+
+### Account management (admin)
+```
+GET    /api/users             # every registered account (no credentials)
+PUT    /api/users/:id/role    # { role: "user" | "admin" }
+DELETE /api/users/:id         # delete an account, its sessions and credentials
+```
+Guarded against lockout and privilege games: an admin cannot demote or delete
+themselves, and the last remaining admin cannot be removed (`400`). Demoting an
+account deletes its sessions, so access is lost on the next request rather than
+at the next sign-in.
+
+### Admin endpoints (require a valid session **with the admin role**)
 ```
 POST   /api/rsvps            # manually add a submission (409 on duplicate phone)
 GET    /api/rsvps             # all submissions
@@ -85,6 +170,9 @@ GET    /api/rsvps/export.csv  # download all submissions as CSV
 PUT    /api/rsvp/:id          # edit a submission
 DELETE /api/rsvp/:id          # delete a submission
 ```
+Requests with no session get `401`. A valid session whose account has not been
+granted access gets `403` with `{ "code": "not_admin" }`, which the SPA turns
+into a "pending access" screen rather than a sign-in loop.
 
 ### Health Check
 ```
@@ -113,6 +201,23 @@ compile/emit step. CI runs typecheck + lint + tests, and builds the Docker image
 The server uses SQLite (via the synchronous `better-sqlite3` driver) with a simple schema:
 
 ```sql
+CREATE TABLE event (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL UNIQUE,
+  person TEXT NOT NULL DEFAULT '',
+  age TEXT NOT NULL DEFAULT '',
+  date TEXT NOT NULL DEFAULT '',          -- YYYY-MM-DD
+  time TEXT NOT NULL DEFAULT '',
+  town TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
+  dress_code TEXT NOT NULL DEFAULT '',
+  theme TEXT NOT NULL DEFAULT 'fiesta',
+  rsvp_deadline TEXT NOT NULL DEFAULT '', -- YYYY-MM-DD or ''
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE rsvp (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -123,20 +228,37 @@ CREATE TABLE rsvp (
   dietary_restrictions TEXT,
   message TEXT,
   ip_address TEXT,
+  event_id INTEGER REFERENCES event(id) ON DELETE CASCADE,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
--- UNIQUE index on phone enforces one RSVP per guest.
-CREATE UNIQUE INDEX idx_rsvp_phone ON rsvp(phone);
+-- One RSVP per phone *per event* (the unique constraint moved from phone to
+-- (event_id, phone) in migration v3).
+CREATE UNIQUE INDEX idx_rsvp_event_phone ON rsvp(event_id, phone);
 ```
 
-The database file is created automatically on first start (see `DB_PATH` below).
+Each invitation is an `event` row (theme, slug, details). A single
+`is_default = 1` row backs the legacy single-event routes, so env-configured
+deployments keep working: on boot `ensureDefaultEvent` seeds that row from the
+event environment variables (and migrates any previously stored global theme),
+but never clobbers it once an admin has edited it. The migration is idempotent
+and runs automatically; the database file is created on first start (see
+`DB_PATH` below).
 
 ## Security Features
 
 - Rate limiting: global (300/15min), RSVP submit (5/hr), phone lookup (20/hr),
-  admin auth (20/15min) — all proxy-aware via `trust proxy`
-- Constant-time admin credential comparison (`crypto.timingSafeEqual`)
+  admin login (20/15min), sign-up + password reset (10/hr), admin data routes
+  (300/15min) — all proxy-aware
+- Better Auth email/password sessions: passwords hashed (scrypt), httpOnly
+  signed session cookies, built-in CSRF (Origin) checks on state-changing routes
+- Open registration, but role-gated authorization: a new account reaches
+  nothing until an admin grants it, and `role` is never read from a request body
+- Email/password sign-up requires a confirmed address before a session is issued
+- Google account linking only adopts a local account that is itself verified,
+  so an unverified pre-registration can't capture someone's Google identity
+- Every mail-sending route (sign-up, password reset, resend) is rate-limited
+  separately (10/hr) so it can't be used to spam a third party
 - Restrictive Content-Security-Policy (allow-lists only the font/icon CDNs)
 - CORS disabled unless `CORS_ORIGIN` is set (same-origin SPA by default)
 - Helmet.js for the remaining security headers
@@ -145,7 +267,6 @@ The database file is created automatically on first start (see `DB_PATH` below).
   guest text as data, not formulas
 - Public phone-lookup is rate-limited and returns only form fields (no IP)
 - Logs redact the Authorization header/cookies and mask the lookup phone number
-- HTTP Basic auth on admin endpoints (fails closed when credentials are unset)
 
 ## Serving the SPA
 
@@ -161,7 +282,15 @@ for hashed `assets/`, no-cache for `index.html` / `env.js`, and an SPA fallback 
 | `PORT`                            | `3000`       | Port the server listens on (SPA + API)           |
 | `DB_PATH`                         | `../../data/rsvp.db` | SQLite database file location            |
 | `STATIC_DIR`                      | `../dist`    | Built SPA to serve (omit to run API-only)        |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | —          | Basic-auth credentials for admin endpoints       |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD`  | —            | Seeds the bootstrap admin account (password ≥ 8 chars) |
+| `ADMIN_NAME`                      | `Admin`      | Display name for the seeded admin                |
+| `BETTER_AUTH_SECRET`              | —            | Session signing secret (**required in production**) |
+| `BETTER_AUTH_URL`                 | —            | External origin for cookie/origin scoping (set behind a proxy) |
+| `MAIL_FROM`                       | —            | Sender address for verification/reset mail (**required in production**) |
+| `RESEND_API_KEY` / `SMTP_PASS`    | —            | SMTP credential (**required in production**) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` | `smtp.resend.com` / `465` / `resend` | SMTP endpoint (defaults target Resend) |
+| `SMTP_SECURE`                     | port `465`   | Implicit TLS; set `false` for STARTTLS on 587 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Enables Google sign-in when both are set |
 | `EVENT_RSVP_DEADLINE`             | —            | `YYYY-MM-DD`; closes RSVPs (API + UI) once passed |
 | `CORS_ORIGIN`                     | —            | Comma-separated cross-origin allow-list (off by default) |
 | `TRUST_PROXY`                     | `1`          | Number of proxy hops to trust for `req.ip`       |

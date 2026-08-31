@@ -1,206 +1,221 @@
 <template>
   <div class="admin-container">
-    <div v-if="!isAuthenticated" class="modal-overlay">
-      <div class="modal login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
-        <div class="modal-header"><h3 id="login-title"><span aria-hidden="true">🔐</span> Admin</h3></div>
-        <form class="auth-form" @submit.prevent="authenticate">
-          <div class="form-group">
-            <label for="login-username"><span aria-hidden="true">👤</span> Nom d'utilisateur</label>
-            <input id="login-username" class="form-input" type="text" v-model="credentials.username" required />
-          </div>
-          <div class="form-group">
-            <label for="login-password"><span aria-hidden="true">🔐</span> Mot de passe</label>
-            <input id="login-password" class="form-input" type="password" v-model="credentials.password" required />
-          </div>
-          <div v-if="authError" class="auth-error" role="alert">{{ authError }}</div>
-          <div class="modal-actions">
-            <button type="submit" class="save-btn" :disabled="authLoading">{{ authLoading ? 'Connexion...' : 'Se connecter' }}</button>
-          </div>
-        </form>
+    <header class="admin-header">
+      <div class="admin-header-title">
+        <h1>Administration</h1>
+        <p class="admin-header-subtitle">Gestion des événements et des confirmations</p>
       </div>
-    </div>
+      <div class="header-actions">
+        <router-link to="/" class="btn btn-ghost">← Voir l'invitation</router-link>
+        <button class="btn btn-danger-soft" @click="logout">Déconnexion</button>
+      </div>
+    </header>
 
-    <template v-else>
-      <header class="topbar">
-        <div class="topbar-inner">
-          <div class="brand">
-            <span class="brand-mark" aria-hidden="true">🎉</span>
-            <div class="brand-text">
-              <h1>Administration</h1>
-              <p>Gestion des réponses à l'invitation</p>
-            </div>
+    <!-- ===================== EVENTS OVERVIEW ===================== -->
+    <section class="events-panel">
+      <div class="events-panel-head">
+        <h2>🎈 Événements</h2>
+        <div class="events-panel-actions">
+          <button class="btn btn-secondary" @click="loadEvents">↻ Actualiser</button>
+          <button class="btn btn-primary" @click="openCreateEventModal">+ Nouvel événement</button>
+        </div>
+      </div>
+
+      <div v-if="eventsLoading && !events.length" class="loading" aria-live="polite">Chargement...</div>
+      <div v-else-if="eventsError" class="error" role="alert">{{ eventsError }}</div>
+      <div v-else-if="!events.length" class="no-data">Aucun événement pour le moment.</div>
+      <div v-else class="events-grid">
+        <div
+          v-for="ev in events"
+          :key="ev.id"
+          class="event-card"
+          :class="{ selected: ev.id === selectedEventId }"
+        >
+          <div class="event-card-top">
+            <span class="event-theme-icon" aria-hidden="true">{{ themeIcon(ev.theme) }}</span>
+            <span v-if="ev.is_default" class="event-badge">Actif</span>
           </div>
-          <div class="topbar-actions">
-            <button class="icon-btn" @click="loadData" :disabled="loading" title="Actualiser" aria-label="Actualiser">
-              <span aria-hidden="true" :class="{ spin: loading }">🔄</span>
-            </button>
-            <router-link to="/" class="ghost-btn">← Voir l'invitation</router-link>
-            <button class="ghost-btn danger" @click="logout">🚪 Déconnexion</button>
+          <h3 class="event-card-title">{{ ev.person || 'Sans nom' }}</h3>
+          <p class="event-card-meta">
+            <span v-if="ev.date">{{ formatEventDate(ev.date) }}</span>
+            <span v-if="ev.date && ev.town"> · </span>
+            <span v-if="ev.town">{{ ev.town }}</span>
+            <span v-if="!ev.date && !ev.town" class="event-card-meta-empty">Détails à compléter</span>
+          </p>
+          <p class="event-card-theme">{{ themeLabel(ev.theme) }}</p>
+          <div class="event-card-stats">
+            <span><strong>{{ ev.responses || 0 }}</strong> rép.</span>
+            <span><strong>{{ ev.confirmations || 0 }}</strong> conf.</span>
+            <span><strong>{{ ev.total_guests || 0 }}</strong> inv.</span>
+          </div>
+          <div class="event-card-actions">
+            <button class="btn btn-primary btn-sm" @click="selectEvent(ev)">Gérer</button>
+            <button class="btn btn-secondary btn-sm" @click="openEditEventModal(ev)">Modifier</button>
+            <button v-if="!ev.is_default" class="btn btn-danger-soft btn-sm" @click="openDeleteEventModal(ev)">Supprimer</button>
           </div>
         </div>
-        <nav class="tabs" aria-label="Sections d'administration">
+      </div>
+    </section>
+
+    <!-- ===================== SELECTED EVENT MANAGEMENT ===================== -->
+    <template v-if="selectedEvent">
+      <div class="selected-head">
+        <h2>Gestion : <span class="selected-name">{{ selectedEvent.person || 'Sans nom' }}</span></h2>
+        <button class="btn btn-ghost" @click="clearSelection">Fermer</button>
+      </div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-number">{{ stats.total_responses }}</div>
+          <div class="stat-label">Total réponses</div>
+        </div>
+        <div class="stat-card positive">
+          <div class="stat-number">{{ stats.confirmations }}</div>
+          <div class="stat-label">Confirmations</div>
+        </div>
+        <div class="stat-card negative">
+          <div class="stat-number">{{ stats.declined }}</div>
+          <div class="stat-label">Déclins</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">{{ stats.total_guests }}</div>
+          <div class="stat-label">Total invités</div>
+        </div>
+      </div>
+
+      <div class="theme-panel">
+        <h2>🎨 Thème de l'invitation</h2>
+        <p class="theme-hint">Choisis l'ambiance affichée aux invités. Le changement est immédiat.</p>
+        <div class="theme-grid">
           <button
-            v-for="tab in tabs"
-            :key="tab.id"
+            v-for="t in themes"
+            :key="t.id"
             type="button"
-            class="tab"
-            :class="{ active: activeTab === tab.id }"
-            :aria-current="activeTab === tab.id ? 'page' : undefined"
-            @click="activeTab = tab.id"
+            class="theme-card"
+            :class="{ active: t.id === currentTheme }"
+            :disabled="themeSaving"
+            @click="selectTheme(t.id)"
           >
-            <span aria-hidden="true">{{ tab.icon }}</span> {{ tab.label }}
+            <span class="theme-icon">{{ t.icon }}</span>
+            <span class="theme-label">{{ t.label }}</span>
+            <span class="theme-swatches">
+              <span class="swatch" :style="{ background: t.palette.primary }"></span>
+              <span class="swatch" :style="{ background: t.palette.secondary }"></span>
+              <span class="swatch" :style="{ background: t.palette.accent }"></span>
+            </span>
+            <span v-if="t.id === currentTheme" class="theme-check">✓ Actif</span>
           </button>
-        </nav>
-      </header>
+        </div>
+      </div>
 
-      <main class="admin-main">
-        <!-- Responses tab -->
-        <section v-show="activeTab === 'responses'" class="panel-stack" aria-label="Réponses">
-          <div class="stats">
-            <div class="stat-card">
-              <div class="stat-top"><span class="stat-icon" aria-hidden="true">📨</span><span class="stat-label">Total réponses</span></div>
-              <div class="stat-number">{{ stats.total_responses }}</div>
-            </div>
-            <div class="stat-card positive">
-              <div class="stat-top"><span class="stat-icon" aria-hidden="true">✅</span><span class="stat-label">Confirmations</span></div>
-              <div class="stat-number">{{ stats.confirmations }}</div>
-            </div>
-            <div class="stat-card negative">
-              <div class="stat-top"><span class="stat-icon" aria-hidden="true">❌</span><span class="stat-label">Déclins</span></div>
-              <div class="stat-number">{{ stats.declined }}</div>
-            </div>
-            <div class="stat-card accent">
-              <div class="stat-top"><span class="stat-icon" aria-hidden="true">👥</span><span class="stat-label">Total invités</span></div>
-              <div class="stat-number">{{ stats.total_guests }}</div>
-            </div>
-            <div class="stat-card rate">
-              <div class="stat-top"><span class="stat-icon" aria-hidden="true">📊</span><span class="stat-label">Taux d'acceptation</span></div>
-              <div class="stat-number">{{ acceptanceRate }}%</div>
-              <div class="rate-bar" role="img" :aria-label="`Taux d'acceptation ${acceptanceRate}%`">
-                <span class="rate-fill" :style="{ width: acceptanceRate + '%' }"></span>
+      <div class="share-panel">
+        <h2><span aria-hidden="true">🔗</span> Partager l'invitation</h2>
+        <p class="theme-hint">Diffuse ce lien ou ce QR code pour inviter tes convives.</p>
+        <div class="share-row">
+          <input class="form-input share-url" type="text" :value="invitationUrl" readonly aria-label="Lien de l'invitation" />
+          <button type="button" class="btn btn-primary" @click="copyLink">{{ linkCopied ? '✓ Copié' : 'Copier le lien' }}</button>
+        </div>
+        <img v-if="qrDataUrl" :src="qrDataUrl" alt="QR code de l'invitation" class="qr-img" />
+      </div>
+
+      <div class="list-actions">
+        <button class="btn btn-secondary" @click="loadEventData">↻ Actualiser</button>
+        <a class="btn btn-secondary" :href="csvUrl">⬇ Exporter CSV</a>
+        <button class="btn btn-primary" @click="openCreateModal">+ Ajouter une réponse</button>
+      </div>
+
+      <div class="rsvp-list">
+        <h2>Réponses</h2>
+        <div v-if="loading" class="loading" aria-live="polite">Chargement...</div>
+        <div v-else-if="error" class="error" role="alert">{{ error }}</div>
+        <div v-else-if="rsvps.length === 0" class="no-data">Aucune réponse pour le moment.</div>
+        <template v-else>
+          <div v-for="rsvp in rsvps" :key="rsvp.id" class="rsvp-item" :class="{ declined: rsvp.attending === 'no' }" aria-live="polite">
+            <div class="rsvp-header">
+              <h3>
+                <span class="status-indicator" :class="rsvp.attending === 'yes' ? 'accepted' : 'declined'" aria-hidden="true">{{ rsvp.attending === 'yes' ? '✅' : '❌' }}</span>
+                {{ rsvp.name }}
+              </h3>
+              <div class="rsvp-actions">
+                <button class="edit-btn" @click="openEditModal(rsvp)" title="Modifier" :aria-label="`Modifier la réponse de ${rsvp.name}`">✏️</button>
+                <button class="delete-btn" @click="openDeleteModal(rsvp)" title="Supprimer" :aria-label="`Supprimer la réponse de ${rsvp.name}`">🗑️</button>
               </div>
             </div>
-          </div>
-
-          <div class="card list-card">
-            <div class="list-toolbar">
-              <div class="search-box">
-                <span class="search-icon" aria-hidden="true">🔍</span>
-                <input
-                  class="search-input"
-                  type="search"
-                  v-model="search"
-                  placeholder="Rechercher un nom, email, téléphone..."
-                  aria-label="Rechercher une réponse"
-                />
+            <div class="rsvp-details">
+              <div class="detail">
+                <strong>Statut :</strong>
+                <span :class="rsvp.attending === 'yes' ? 'status-accepted' : 'status-declined'">{{ rsvp.attending === 'yes' ? 'Confirmé' : 'Décliné' }}</span>
               </div>
-              <div class="filter-chips" role="group" aria-label="Filtrer par statut">
-                <button
-                  v-for="f in filters"
-                  :key="f.id"
-                  type="button"
-                  class="chip"
-                  :class="{ active: statusFilter === f.id }"
-                  :aria-pressed="statusFilter === f.id"
-                  @click="statusFilter = f.id"
-                >{{ f.label }} <span class="chip-count">{{ filterCount(f.id) }}</span></button>
-              </div>
-              <div class="toolbar-controls">
-                <label class="sort-label" for="sort-select">Trier</label>
-                <select id="sort-select" class="sort-select" v-model="sortBy" aria-label="Trier les réponses">
-                  <option value="recent">Plus récentes</option>
-                  <option value="name">Nom (A-Z)</option>
-                  <option value="guests">Nombre d'invités</option>
-                </select>
-                <button class="tool-btn" @click="exportCsv" :disabled="rsvps.length === 0" title="Exporter en CSV">⬇️ CSV</button>
-                <button class="tool-btn primary" @click="openCreateModal">➕ Ajouter</button>
-              </div>
+              <div class="detail" v-if="rsvp.email"><strong>✉️ Email :</strong> {{ rsvp.email }}</div>
+              <div class="detail"><strong>📱 Téléphone :</strong> {{ rsvp.phone }}</div>
+              <div class="detail" v-if="rsvp.attending === 'yes'"><strong>👥 Nombre d'invités :</strong> {{ rsvp.guests }}</div>
+              <div class="detail" v-if="rsvp.dietary_restrictions"><strong>🥜 Allergies :</strong> {{ rsvp.dietary_restrictions }}</div>
+              <div class="detail"><strong>🕒 Mis à jour :</strong> {{ formatDate(rsvp.updated_at) }}</div>
             </div>
-
-            <div v-if="loading && rsvps.length === 0" class="loading" aria-live="polite">Chargement...</div>
-            <div v-else-if="error" class="error" role="alert">{{ error }}</div>
-            <div v-else-if="rsvps.length === 0" class="no-data">
-              <span class="no-data-icon" aria-hidden="true">📭</span>
-              <p>Aucune réponse pour le moment.</p>
-            </div>
-            <div v-else-if="filteredRsvps.length === 0" class="no-data">
-              <span class="no-data-icon" aria-hidden="true">🔎</span>
-              <p>Aucune réponse ne correspond à ta recherche.</p>
-              <button class="tool-btn" @click="resetFilters">Réinitialiser les filtres</button>
-            </div>
-            <template v-else>
-              <p class="result-count" aria-live="polite">{{ filteredRsvps.length }} réponse(s) affichée(s)</p>
-              <ul class="rsvp-list">
-                <li v-for="rsvp in filteredRsvps" :key="rsvp.id" class="rsvp-item" :class="{ declined: rsvp.attending === 'no' }">
-                  <div class="rsvp-header">
-                    <div class="rsvp-identity">
-                      <span class="status-badge" :class="rsvp.attending === 'yes' ? 'accepted' : 'declined'">
-                        {{ rsvp.attending === 'yes' ? '✅ Confirmé' : '❌ Décliné' }}
-                      </span>
-                      <h3>{{ rsvp.name }}</h3>
-                    </div>
-                    <div class="rsvp-actions">
-                      <button class="edit-btn" @click="openEditModal(rsvp)" title="Modifier" :aria-label="`Modifier la réponse de ${rsvp.name}`">✏️</button>
-                      <button class="delete-btn" @click="openDeleteModal(rsvp)" title="Supprimer" :aria-label="`Supprimer la réponse de ${rsvp.name}`">🗑️</button>
-                    </div>
-                  </div>
-                  <div class="rsvp-details">
-                    <div class="detail" v-if="rsvp.email"><span class="detail-key">✉️ Email</span><span>{{ rsvp.email }}</span></div>
-                    <div class="detail"><span class="detail-key">📱 Téléphone</span><span>{{ rsvp.phone }}</span></div>
-                    <div class="detail" v-if="rsvp.attending === 'yes'"><span class="detail-key">👥 Invités</span><span>{{ rsvp.guests }}</span></div>
-                    <div class="detail" v-if="rsvp.dietary_restrictions"><span class="detail-key">🥜 Allergies</span><span>{{ rsvp.dietary_restrictions }}</span></div>
-                    <div class="detail"><span class="detail-key">🕒 Mis à jour</span><span>{{ formatDate(rsvp.updated_at) }}</span></div>
-                  </div>
-                  <div v-if="rsvp.message" class="message">💌 {{ rsvp.message }}</div>
-                </li>
-              </ul>
-            </template>
+            <div v-if="rsvp.message" class="message">💌 {{ rsvp.message }}</div>
           </div>
-        </section>
-
-        <!-- Theme tab -->
-        <section v-show="activeTab === 'theme'" class="panel-stack" aria-label="Thème">
-          <div class="card theme-panel">
-            <h2>🎨 Thème de l'invitation</h2>
-            <p class="panel-hint">Choisis l'ambiance affichée aux invités. Le changement est immédiat.</p>
-            <div class="theme-grid">
-              <button
-                v-for="t in themes"
-                :key="t.id"
-                type="button"
-                class="theme-card"
-                :class="{ active: t.id === currentTheme }"
-                :disabled="themeSaving"
-                @click="selectTheme(t.id)"
-              >
-                <span class="theme-icon">{{ t.icon }}</span>
-                <span class="theme-label">{{ t.label }}</span>
-                <span class="theme-swatches">
-                  <span class="swatch" :style="{ background: t.palette.primary }"></span>
-                  <span class="swatch" :style="{ background: t.palette.secondary }"></span>
-                  <span class="swatch" :style="{ background: t.palette.accent }"></span>
-                </span>
-                <span v-if="t.id === currentTheme" class="theme-check">✓ Actif</span>
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <!-- Share tab -->
-        <section v-show="activeTab === 'share'" class="panel-stack" aria-label="Partage">
-          <div class="card share-panel">
-            <h2><span aria-hidden="true">🔗</span> Partager l'invitation</h2>
-            <p class="panel-hint">Diffuse ce lien ou ce QR code pour inviter tes convives.</p>
-            <div class="share-row">
-              <input class="form-input share-url" type="text" :value="invitationUrl" readonly aria-label="Lien de l'invitation" />
-              <button type="button" class="save-btn" @click="copyLink">{{ linkCopied ? '✓ Copié' : 'Copier le lien' }}</button>
-            </div>
-            <img v-if="qrDataUrl" :src="qrDataUrl" alt="QR code de l'invitation" class="qr-img" />
-          </div>
-        </section>
-      </main>
+        </template>
+      </div>
     </template>
 
+    <!-- ===================== ACCESS / USERS ===================== -->
+    <section class="users-panel">
+      <div class="events-panel-head">
+        <h2>👥 Accès</h2>
+        <button class="btn btn-secondary" @click="loadUsers">↻ Actualiser</button>
+      </div>
+      <p class="theme-hint">
+        Toute personne peut créer un compte, mais seuls les comptes
+        <strong>administrateur</strong> accèdent à cette page.
+      </p>
+
+      <div v-if="usersLoading && !users.length" class="loading" aria-live="polite">Chargement...</div>
+      <div v-else-if="usersError" class="error" role="alert">{{ usersError }}</div>
+      <table v-else class="users-table">
+        <thead>
+          <tr><th>Compte</th><th>Rôle</th><th class="users-actions-col">Actions</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="u in users" :key="u.id">
+            <td>
+              <div class="user-name">
+                {{ u.name || '—' }}
+                <span v-if="u.id === currentUserId" class="user-you">vous</span>
+              </div>
+              <div class="user-email">
+                {{ u.email }}
+                <span v-if="!u.emailVerified" class="user-unverified" title="Email non confirmé">non confirmé</span>
+              </div>
+            </td>
+            <td>
+              <span class="role-badge" :class="u.role">{{ u.role === 'admin' ? 'Administrateur' : 'Utilisateur' }}</span>
+            </td>
+            <td class="users-actions-col">
+              <button
+                v-if="u.role !== 'admin'"
+                class="btn btn-sm btn-primary"
+                :disabled="userBusyId === u.id"
+                @click="setUserRole(u, 'admin')"
+              >Donner l'accès</button>
+              <button
+                v-else
+                class="btn btn-sm btn-secondary"
+                :disabled="userBusyId === u.id || u.id === currentUserId"
+                @click="setUserRole(u, 'user')"
+              >Retirer l'accès</button>
+              <button
+                class="btn btn-sm btn-danger-soft"
+                :disabled="userBusyId === u.id || u.id === currentUserId"
+                @click="askDeleteUser(u)"
+              >Supprimer</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+
+    <!-- ===================== RSVP EDIT/CREATE MODAL ===================== -->
     <div v-if="showEditModal" class="modal-overlay">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-title">
         <div class="modal-header">
@@ -222,13 +237,14 @@
           <div class="form-group"><label for="edit-diet"><span aria-hidden="true">🥜</span> Allergies / régime</label><textarea id="edit-diet" class="form-input" v-model="editForm.dietary_restrictions"></textarea></div>
           <div class="form-group"><label for="edit-message"><span aria-hidden="true">💌</span> Message</label><textarea id="edit-message" class="form-input" v-model="editForm.message"></textarea></div>
           <div class="modal-actions">
-            <button type="button" class="cancel-btn" @click="closeEditModal">Annuler</button>
-            <button type="submit" class="save-btn" :disabled="editLoading">{{ editLoading ? 'Sauvegarde...' : (editMode === 'create' ? 'Ajouter' : 'Sauvegarder') }}</button>
+            <button type="button" class="btn btn-secondary" @click="closeEditModal">Annuler</button>
+            <button type="submit" class="btn btn-primary" :disabled="editLoading">{{ editLoading ? 'Sauvegarde...' : (editMode === 'create' ? 'Ajouter' : 'Sauvegarder') }}</button>
           </div>
         </form>
       </div>
     </div>
 
+    <!-- ===================== RSVP DELETE MODAL ===================== -->
     <div v-if="showDeleteModal" class="modal-overlay">
       <div class="modal delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-title">
         <div class="modal-header">
@@ -240,15 +256,90 @@
           <p class="warning">Cette action est irréversible.</p>
         </div>
         <div class="modal-actions">
-          <button type="button" class="cancel-btn" @click="closeDeleteModal">Annuler</button>
-          <button type="button" class="delete-confirm-btn" @click="deleteRsvp" :disabled="deleteLoading">{{ deleteLoading ? 'Suppression...' : 'Supprimer' }}</button>
+          <button type="button" class="btn btn-secondary" @click="closeDeleteModal">Annuler</button>
+          <button type="button" class="btn btn-danger" @click="deleteRsvp" :disabled="deleteLoading">{{ deleteLoading ? 'Suppression...' : 'Supprimer' }}</button>
         </div>
       </div>
     </div>
 
-    <div class="toast-stack" aria-live="polite" aria-atomic="false">
-      <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type" role="status">
-        <span aria-hidden="true">{{ t.type === 'success' ? '✓' : '⚠️' }}</span> {{ t.message }}
+    <!-- ===================== EVENT CREATE/EDIT MODAL ===================== -->
+    <div v-if="showEventModal" class="modal-overlay">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="event-title">
+        <div class="modal-header">
+          <h3 id="event-title">{{ eventMode === 'create' ? 'Nouvel événement' : 'Modifier l\'événement' }}</h3>
+          <button class="close-btn" ref="eventClose" @click="closeEventModal" aria-label="Fermer">×</button>
+        </div>
+        <form class="edit-form" @submit.prevent="saveEvent">
+          <div class="form-group">
+            <label for="event-person">Nom de l'enfant <span aria-hidden="true">*</span></label>
+            <input id="event-person" ref="eventPerson" class="form-input" v-model="eventForm.person" required aria-required="true" />
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label for="event-age">Âge</label><input id="event-age" class="form-input" v-model="eventForm.age" placeholder="5" /></div>
+            <div class="form-group"><label for="event-date">Date</label><input id="event-date" class="form-input" type="date" v-model="eventForm.date" /></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label for="event-time">Horaire</label><input id="event-time" class="form-input" v-model="eventForm.time" placeholder="15h00 - 17h00" /></div>
+            <div class="form-group"><label for="event-town">Ville</label><input id="event-town" class="form-input" v-model="eventForm.town" /></div>
+          </div>
+          <div class="form-group"><label for="event-location">Lieu</label><textarea id="event-location" class="form-input" v-model="eventForm.location"></textarea></div>
+          <div class="form-group"><label for="event-dress">Dress code</label><input id="event-dress" class="form-input" v-model="eventForm.dress_code" /></div>
+          <div class="form-group"><label for="event-deadline">Date limite de réponse</label><input id="event-deadline" class="form-input" type="date" v-model="eventForm.rsvp_deadline" /></div>
+          <div class="form-group">
+            <label for="event-theme">Thème</label>
+            <select id="event-theme" class="form-input" v-model="eventForm.theme">
+              <option v-for="t in themes" :key="t.id" :value="t.id">{{ t.icon }} {{ t.label }}</option>
+            </select>
+          </div>
+          <div class="form-group" v-if="!eventIsDefault">
+            <label for="event-slug">Lien (slug)</label>
+            <input id="event-slug" class="form-input" v-model="eventForm.slug" placeholder="laisser vide pour générer automatiquement" />
+            <p class="field-hint">Laisser vide pour générer automatiquement.</p>
+          </div>
+          <div v-if="eventError" class="auth-error" role="alert">{{ eventError }}</div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" @click="closeEventModal">Annuler</button>
+            <button type="submit" class="btn btn-primary" :disabled="eventSaving">{{ eventSaving ? 'Sauvegarde...' : (eventMode === 'create' ? 'Créer' : 'Sauvegarder') }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ===================== USER DELETE MODAL ===================== -->
+    <div v-if="userToDelete" class="modal-overlay">
+      <div class="modal delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-user-title">
+        <div class="modal-header">
+          <h3 id="delete-user-title">Supprimer le compte</h3>
+          <button class="close-btn" @click="userToDelete = null" aria-label="Fermer">×</button>
+        </div>
+        <div class="modal-content">
+          <p>Supprimer le compte de <strong>{{ userToDelete.email }}</strong> ?</p>
+          <p class="warning">La personne perdra immédiatement son accès. Cette action est irréversible.</p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" @click="userToDelete = null">Annuler</button>
+          <button type="button" class="btn btn-danger" :disabled="userBusyId" @click="deleteUser">
+            {{ userBusyId ? 'Suppression...' : 'Supprimer' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== EVENT DELETE MODAL ===================== -->
+    <div v-if="showDeleteEventModal" class="modal-overlay">
+      <div class="modal delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-event-title">
+        <div class="modal-header">
+          <h3 id="delete-event-title">Supprimer l'événement</h3>
+          <button class="close-btn" ref="deleteEventClose" @click="closeDeleteEventModal" aria-label="Fermer">×</button>
+        </div>
+        <div class="modal-content">
+          <p>Supprimer l'événement de <strong>{{ eventToDelete?.person }}</strong> ?</p>
+          <p class="warning">Toutes les réponses associées seront perdues. Cette action est irréversible.</p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" @click="closeDeleteEventModal">Annuler</button>
+          <button type="button" class="btn btn-danger" @click="deleteEvent" :disabled="deleteEventLoading">{{ deleteEventLoading ? 'Suppression...' : 'Supprimer' }}</button>
+        </div>
       </div>
     </div>
   </div>
@@ -257,7 +348,9 @@
 <script>
 import QRCode from 'qrcode';
 import { apiBaseUrl } from '../env.js';
-import { themeList, applyTheme, DEFAULT_THEME } from '../themes.js';
+import { session, refresh, signOut } from '../session.js';
+import { themeList, applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
+import { applySeo } from '../seo.js';
 
 export default {
   name: 'Admin',
@@ -266,108 +359,117 @@ export default {
       themes: themeList,
       currentTheme: DEFAULT_THEME,
       themeSaving: false,
-      isAuthenticated: false,
-      authHeader: '',
-      credentials: { username: '', password: '' },
-      authError: null,
-      authLoading: false,
+      refreshInterval: null,
+
+      // Accounts / access management
+      users: [],
+      usersLoading: false,
+      usersError: null,
+      userBusyId: null,
+      userToDelete: null,
+
+      // Events overview
+      events: [],
+      eventsLoading: false,
+      eventsError: null,
+      selectedEventId: null,
+
+      // Selected-event RSVP data
       loading: false,
       error: null,
-      refreshInterval: null,
       stats: { total_responses: 0, confirmations: 0, declined: 0, total_guests: 0 },
       rsvps: [],
-      activeTab: 'responses',
-      tabs: [
-        { id: 'responses', label: 'Réponses', icon: '📋' },
-        { id: 'theme', label: 'Thème', icon: '🎨' },
-        { id: 'share', label: 'Partage', icon: '🔗' }
-      ],
-      search: '',
-      statusFilter: 'all',
-      filters: [
-        { id: 'all', label: 'Toutes' },
-        { id: 'yes', label: 'Confirmées' },
-        { id: 'no', label: 'Déclinées' }
-      ],
-      sortBy: 'recent',
+
+      // RSVP edit/create modal
       showEditModal: false,
       editMode: 'edit',
       editForm: { id: null, attending: 'yes', name: '', email: '', phone: '', guests: 1, dietary_restrictions: '', message: '' },
       editLoading: false,
+
+      // RSVP delete modal
       showDeleteModal: false,
       rsvpToDelete: null,
       deleteLoading: false,
+
+      // Event create/edit modal
+      showEventModal: false,
+      eventMode: 'create',
+      eventIsDefault: false,
+      eventForm: { id: null, person: '', age: '', date: '', time: '', town: '', location: '', dress_code: '', rsvp_deadline: '', theme: DEFAULT_THEME, slug: '' },
+      eventSaving: false,
+      eventError: null,
+
+      // Event delete modal
+      showDeleteEventModal: false,
+      eventToDelete: null,
+      deleteEventLoading: false,
+
       qrDataUrl: '',
       linkCopied: false,
-      lastFocused: null,
-      toasts: [],
-      toastSeq: 0
+      lastFocused: null
     };
   },
   computed: {
+    // The signed-in admin, so the users table can mark "vous" and disable the
+    // actions the server would refuse anyway (self-demotion, self-deletion).
+    currentUserId() {
+      return session.user?.id ?? null;
+    },
+    selectedEvent() {
+      return this.events.find((e) => e.id === this.selectedEventId) || null;
+    },
     invitationUrl() {
-      return window.location.origin + '/';
+      const ev = this.selectedEvent;
+      if (!ev) return window.location.origin + '/';
+      return ev.is_default
+        ? window.location.origin + '/'
+        : window.location.origin + '/e/' + ev.slug;
     },
-    acceptanceRate() {
-      if (!this.stats.total_responses) return 0;
-      return Math.round((this.stats.confirmations / this.stats.total_responses) * 100);
-    },
-    filteredRsvps() {
-      const term = this.search.trim().toLowerCase();
-      let list = this.rsvps.filter((r) => {
-        if (this.statusFilter !== 'all' && r.attending !== this.statusFilter) return false;
-        if (!term) return true;
-        return [r.name, r.email, r.phone].some((v) => (v || '').toLowerCase().includes(term));
-      });
-      const sorted = [...list];
-      if (this.sortBy === 'name') {
-        sorted.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr'));
-      } else if (this.sortBy === 'guests') {
-        sorted.sort((a, b) => (b.guests || 0) - (a.guests || 0));
-      }
-      // 'recent' keeps the server order (created_at DESC, id DESC).
-      return sorted;
+    csvUrl() {
+      if (!this.selectedEventId) return '#';
+      return `${apiBaseUrl}/events/${this.selectedEventId}/rsvps/export.csv`;
     }
   },
   mounted() {
-    // The theme is public; load and apply it so the admin page matches the
-    // live invitation.
-    this.loadTheme();
+    // The console is behind a login and has nothing to offer a search engine.
+    applySeo({
+      title: 'Administration | Invitation d\'anniversaire',
+      description: 'Console d\'administration des invitations et des réponses.',
+      robots: 'noindex, nofollow'
+    });
     window.addEventListener('keydown', this.handleKeydown);
-    const saved = localStorage.getItem('adminAuth');
-    if (saved) {
-      this.authHeader = saved;
-      this.isAuthenticated = true;
-      this.loadData();
-      this.generateQr();
-      this.refreshInterval = setInterval(this.loadData, 30000);
-    }
+    this.loadEvents();
+    this.loadUsers();
+    this.refreshInterval = setInterval(this.autoRefresh, 30000);
   },
   beforeUnmount() {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
     window.removeEventListener('keydown', this.handleKeydown);
   },
+  watch: {
+    selectedEventId() {
+      const ev = this.selectedEvent;
+      if (ev) {
+        this.currentTheme = ev.theme || DEFAULT_THEME;
+        applyTheme(this.currentTheme);
+        this.generateQr();
+        this.loadEventData();
+      }
+    }
+  },
   methods: {
-    toast(message, type = 'success') {
-      const id = ++this.toastSeq;
-      this.toasts.push({ id, message, type });
-      setTimeout(() => {
-        this.toasts = this.toasts.filter((t) => t.id !== id);
-      }, 3500);
+    // ---- Theme metadata helpers (overview cards) ----
+    themeIcon(id) {
+      return getTheme(id).icon;
     },
-    filterCount(id) {
-      if (id === 'all') return this.rsvps.length;
-      return this.rsvps.filter((r) => r.attending === id).length;
+    themeLabel(id) {
+      return getTheme(id).label;
     },
-    resetFilters() {
-      this.search = '';
-      this.statusFilter = 'all';
-    },
+
     async generateQr() {
       try {
         this.qrDataUrl = await QRCode.toDataURL(this.invitationUrl);
       } catch {
-        // Leave the QR empty when generation fails.
         this.qrDataUrl = '';
       }
     },
@@ -380,32 +482,13 @@ export default {
         // Clipboard may be unavailable; the link stays visible to copy manually.
       }
     },
-    async exportCsv() {
-      try {
-        const res = await fetch(`${apiBaseUrl}/rsvps/export.csv`, { headers: { Authorization: this.authHeader } });
-        if (!res.ok) {
-          if (res.status === 401) { this.logout(); return; }
-          throw new Error('Export impossible');
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'rsvps.csv';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        this.toast('Export CSV téléchargé');
-      } catch (err) {
-        this.toast(err.message, 'error');
-      }
-    },
     handleKeydown(e) {
       if (e.key !== 'Escape') return;
       // The login modal is intentionally not dismissible.
       if (this.showEditModal) this.closeEditModal();
       else if (this.showDeleteModal) this.closeDeleteModal();
+      else if (this.showEventModal) this.closeEventModal();
+      else if (this.showDeleteEventModal) this.closeDeleteEventModal();
     },
     focusFirst(refName) {
       this.$nextTick(() => {
@@ -420,92 +503,164 @@ export default {
       this.lastFocused = null;
     },
     formatDate(value) {
-      return new Date(value).toLocaleString('fr-FR', {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleString('fr-FR', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
       });
     },
-    async loadTheme() {
+    formatEventDate(value) {
+      if (!value) return '';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return value;
+      return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    },
+
+    // ---- Session / access ----
+    //
+    // The router guard has already established that this visitor is an admin
+    // (see router.js), so the view no longer owns a sign-in form. It only has
+    // to react to *losing* that access mid-session — an admin revoked while the
+    // tab is open — which surfaces as a 401/403 on any admin call.
+    async logout() {
+      await signOut();
+      this.$router.replace('/login');
+    },
+
+    // Called by every admin fetch. Returns true when the response means "you
+    // are no longer allowed here", after sending the visitor somewhere useful.
+    //
+    // Both failure modes end up here: 401 is a session that ended, 403 the
+    // `not_admin` guard on an account demoted while the tab was open. Either
+    // way the 30s poll has to stop — otherwise the dashboard sits on an error
+    // and keeps spending the admin rate limit — and the cached session has to
+    // be re-read, or the router guard would wave the stale user straight back
+    // into /admin. Where to send them follows that re-read rather than the
+    // status: a session that survived means "no access yet", not "signed out".
+    async handleAuthFailure(res) {
+      if (res.status !== 401 && res.status !== 403) return false;
+      if (this.refreshInterval) {
+        clearInterval(this.refreshInterval);
+        this.refreshInterval = null;
+      }
+      const user = await refresh();
+      this.$router.replace(user ? '/pending' : '/login');
+      return true;
+    },
+
+    // Poll only the data that actually moves: events and their RSVPs. The
+    // account list changes rarely and has its own refresh button, and every
+    // extra polled call eats into the admin rate limit.
+    autoRefresh() {
+      this.loadEvents();
+      if (this.selectedEventId) this.loadEventData();
+    },
+
+    // ---- Accounts / access ----
+    async loadUsers() {
       try {
-        const res = await fetch(`${apiBaseUrl}/settings`);
-        if (res.ok) {
-          const { theme } = await res.json();
-          if (theme) {
-            this.currentTheme = theme;
-            applyTheme(theme);
-          }
-        }
-      } catch {
-        // Keep the default theme when settings can't be fetched.
+        this.usersLoading = true;
+        this.usersError = null;
+        const res = await fetch(`${apiBaseUrl}/users`, { credentials: 'include' });
+        if (await this.handleAuthFailure(res)) return;
+        if (!res.ok) throw new Error('Chargement des comptes impossible');
+        this.users = (await res.json()).users;
+      } catch (err) {
+        this.usersError = err.message || 'Chargement des comptes impossible';
+      } finally {
+        this.usersLoading = false;
       }
     },
-    async selectTheme(id) {
-      if (id === this.currentTheme || this.themeSaving) return;
-      this.themeSaving = true;
-      const previous = this.currentTheme;
-      // Optimistically re-skin so the change is instant.
-      this.currentTheme = id;
-      applyTheme(id);
+
+    async setUserRole(user, role) {
+      this.userBusyId = user.id;
+      this.usersError = null;
       try {
-        const res = await fetch(`${apiBaseUrl}/settings`, {
+        const res = await fetch(`${apiBaseUrl}/users/${user.id}/role`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: this.authHeader },
-          body: JSON.stringify({ theme: id })
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ role })
         });
+        if (await this.handleAuthFailure(res)) return;
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Modification impossible');
+        await this.loadUsers();
+      } catch (err) {
+        this.usersError = err.message || 'Modification impossible';
+      } finally {
+        this.userBusyId = null;
+      }
+    },
+
+    askDeleteUser(user) {
+      this.userToDelete = user;
+    },
+
+    async deleteUser() {
+      const target = this.userToDelete;
+      if (!target) return;
+      this.userBusyId = target.id;
+      this.usersError = null;
+      try {
+        const res = await fetch(`${apiBaseUrl}/users/${target.id}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        if (await this.handleAuthFailure(res)) return;
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Suppression impossible');
+        this.userToDelete = null;
+        await this.loadUsers();
+      } catch (err) {
+        this.usersError = err.message || 'Suppression impossible';
+      } finally {
+        this.userBusyId = null;
+      }
+    },
+
+    // ---- Events overview ----
+    async loadEvents() {
+      try {
+        this.eventsLoading = true;
+        this.eventsError = null;
+        const res = await fetch(`${apiBaseUrl}/events`, { credentials: 'include' });
         if (!res.ok) {
-          if (res.status === 401) { this.logout(); return; }
-          const err = await res.json();
-          throw new Error(err.error || 'Erreur lors du changement de thème');
+          if (await this.handleAuthFailure(res)) return;
+          throw new Error('Erreur lors de la récupération des événements');
         }
         const data = await res.json();
-        this.currentTheme = data.theme;
-        applyTheme(data.theme);
-        this.toast('Thème mis à jour');
+        this.events = data.events || [];
+        // Clear selection if the selected event no longer exists.
+        if (this.selectedEventId && !this.events.some((e) => e.id === this.selectedEventId)) {
+          this.selectedEventId = null;
+        }
       } catch (err) {
-        this.currentTheme = previous;
-        applyTheme(previous);
-        this.toast(err.message, 'error');
+        this.eventsError = err.message;
       } finally {
-        this.themeSaving = false;
+        this.eventsLoading = false;
       }
     },
-    async authenticate() {
-      this.authLoading = true;
-      this.authError = null;
-      try {
-        const token = btoa(`${this.credentials.username}:${this.credentials.password}`);
-        this.authHeader = `Basic ${token}`;
-        const res = await fetch(`${apiBaseUrl}/rsvps/count`, { headers: { Authorization: this.authHeader } });
-        if (!res.ok) throw new Error('Identifiants incorrects');
-        this.isAuthenticated = true;
-        localStorage.setItem('adminAuth', this.authHeader);
-        await this.loadData();
-        this.generateQr();
-        this.refreshInterval = setInterval(this.loadData, 30000);
-      } catch (err) {
-        this.authError = err.message;
-      } finally {
-        this.authLoading = false;
-      }
+    selectEvent(ev) {
+      this.selectedEventId = ev.id;
     },
-    logout() {
-      this.isAuthenticated = false;
-      this.authHeader = '';
-      this.credentials.username = '';
-      this.credentials.password = '';
-      localStorage.removeItem('adminAuth');
-      if (this.refreshInterval) clearInterval(this.refreshInterval);
+    clearSelection() {
+      this.selectedEventId = null;
     },
-    async loadData() {
-      if (!this.isAuthenticated) return;
+
+    // ---- Selected-event data ----
+    async loadEventData() {
+      if (!this.selectedEventId) return;
+      const id = this.selectedEventId;
       try {
         this.loading = true;
         this.error = null;
         const [countRes, listRes] = await Promise.all([
-          fetch(`${apiBaseUrl}/rsvps/count`, { headers: { Authorization: this.authHeader } }),
-          fetch(`${apiBaseUrl}/rsvps`, { headers: { Authorization: this.authHeader } })
+          fetch(`${apiBaseUrl}/events/${id}/rsvps/count`, { credentials: 'include' }),
+          fetch(`${apiBaseUrl}/events/${id}/rsvps`, { credentials: 'include' })
         ]);
         if (!countRes.ok || !listRes.ok) {
-          if (countRes.status === 401 || listRes.status === 401) { this.logout(); return; }
+          if (await this.handleAuthFailure(countRes) || await this.handleAuthFailure(listRes)) return;
           throw new Error('Erreur lors de la récupération des données');
         }
         const count = await countRes.json();
@@ -523,6 +678,43 @@ export default {
         this.loading = false;
       }
     },
+
+    // ---- Theme picker (scoped to selected event) ----
+    async selectTheme(id) {
+      if (!this.selectedEventId || id === this.currentTheme || this.themeSaving) return;
+      this.themeSaving = true;
+      const previous = this.currentTheme;
+      // Optimistically re-skin so the change is instant.
+      this.currentTheme = id;
+      applyTheme(id);
+      try {
+        const res = await fetch(`${apiBaseUrl}/events/${this.selectedEventId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ theme: id })
+        });
+        if (!res.ok) {
+          if (await this.handleAuthFailure(res)) return;
+          const err = await res.json();
+          throw new Error(err.error || 'Erreur lors du changement de thème');
+        }
+        const data = await res.json();
+        this.currentTheme = data.theme;
+        applyTheme(data.theme);
+        // Reflect the new theme in the local list.
+        const ev = this.events.find((e) => e.id === this.selectedEventId);
+        if (ev) ev.theme = data.theme;
+      } catch (err) {
+        this.currentTheme = previous;
+        applyTheme(previous);
+        alert(err.message);
+      } finally {
+        this.themeSaving = false;
+      }
+    },
+
+    // ---- RSVP edit/create ----
     openEditModal(rsvp) {
       this.lastFocused = document.activeElement;
       this.editMode = 'edit';
@@ -560,6 +752,8 @@ export default {
       this.restoreFocus();
     },
     async saveEdit() {
+      if (!this.selectedEventId) return;
+      const id = this.selectedEventId;
       this.editLoading = true;
       try {
         const body = JSON.stringify({
@@ -572,26 +766,28 @@ export default {
           message: this.editForm.message
         });
         const res = this.editMode === 'create'
-          ? await fetch(`${apiBaseUrl}/rsvps`, {
+          ? await fetch(`${apiBaseUrl}/events/${id}/rsvps`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: this.authHeader },
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body
           })
-          : await fetch(`${apiBaseUrl}/rsvp/${this.editForm.id}`, {
+          : await fetch(`${apiBaseUrl}/events/${id}/rsvp/${this.editForm.id}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', Authorization: this.authHeader },
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body
           });
         if (!res.ok) {
-          if (res.status === 401) { this.logout(); return; }
+          if (await this.handleAuthFailure(res)) return;
           const err = await res.json();
           throw new Error(err.error || (this.editMode === 'create' ? 'Erreur lors de l\'ajout' : 'Erreur lors de la modification'));
         }
-        await this.loadData();
-        this.toast(this.editMode === 'create' ? 'Réponse ajoutée' : 'Réponse mise à jour');
+        await this.loadEventData();
+        await this.loadEvents();
         this.closeEditModal();
       } catch (err) {
-        this.toast(err.message, 'error');
+        alert(err.message);
       } finally {
         this.editLoading = false;
       }
@@ -608,24 +804,156 @@ export default {
       this.restoreFocus();
     },
     async deleteRsvp() {
+      if (!this.selectedEventId) return;
+      const id = this.selectedEventId;
       this.deleteLoading = true;
       try {
-        const res = await fetch(`${apiBaseUrl}/rsvp/${this.rsvpToDelete.id}`, {
+        const res = await fetch(`${apiBaseUrl}/events/${id}/rsvp/${this.rsvpToDelete.id}`, {
           method: 'DELETE',
-          headers: { Authorization: this.authHeader }
+          credentials: 'include'
         });
         if (!res.ok) {
-          if (res.status === 401) { this.logout(); return; }
+          if (await this.handleAuthFailure(res)) return;
           const err = await res.json();
           throw new Error(err.error || 'Erreur lors de la suppression');
         }
-        await this.loadData();
-        this.toast('Réponse supprimée');
+        await this.loadEventData();
+        await this.loadEvents();
         this.closeDeleteModal();
       } catch (err) {
-        this.toast(err.message, 'error');
+        alert(err.message);
       } finally {
         this.deleteLoading = false;
+      }
+    },
+
+    // ---- Event create/edit ----
+    openCreateEventModal() {
+      this.lastFocused = document.activeElement;
+      this.eventMode = 'create';
+      this.eventIsDefault = false;
+      this.eventError = null;
+      this.eventForm = {
+        id: null, person: '', age: '', date: '', time: '', town: '',
+        location: '', dress_code: '', rsvp_deadline: '', theme: DEFAULT_THEME, slug: ''
+      };
+      this.showEventModal = true;
+      this.focusFirst('eventPerson');
+    },
+    openEditEventModal(ev) {
+      this.lastFocused = document.activeElement;
+      this.eventMode = 'edit';
+      this.eventIsDefault = !!ev.is_default;
+      this.eventError = null;
+      this.eventForm = {
+        id: ev.id,
+        person: ev.person || '',
+        age: ev.age || '',
+        date: ev.date || '',
+        time: ev.time || '',
+        town: ev.town || '',
+        location: ev.location || '',
+        dress_code: ev.dress_code || '',
+        rsvp_deadline: ev.rsvp_deadline || '',
+        theme: ev.theme || DEFAULT_THEME,
+        slug: ev.slug || ''
+      };
+      this.showEventModal = true;
+      this.focusFirst('eventPerson');
+    },
+    closeEventModal() {
+      this.showEventModal = false;
+      this.eventError = null;
+      this.restoreFocus();
+    },
+    async saveEvent() {
+      this.eventError = null;
+      if (!this.eventForm.person || !this.eventForm.person.trim()) {
+        this.eventError = 'Le nom est requis';
+        return;
+      }
+      this.eventSaving = true;
+      try {
+        const payload = {
+          person: this.eventForm.person.trim(),
+          age: this.eventForm.age,
+          date: this.eventForm.date,
+          time: this.eventForm.time,
+          town: this.eventForm.town,
+          location: this.eventForm.location,
+          dress_code: this.eventForm.dress_code,
+          rsvp_deadline: this.eventForm.rsvp_deadline,
+          theme: this.eventForm.theme
+        };
+        // Slug is only sent for non-default events when provided.
+        if (!this.eventIsDefault && this.eventForm.slug && this.eventForm.slug.trim()) {
+          payload.slug = this.eventForm.slug.trim();
+        }
+        const res = this.eventMode === 'create'
+          ? await fetch(`${apiBaseUrl}/events`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+          })
+          : await fetch(`${apiBaseUrl}/events/${this.eventForm.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+          });
+        if (!res.ok) {
+          if (await this.handleAuthFailure(res)) return;
+          const err = await res.json();
+          throw new Error(err.error || (this.eventMode === 'create' ? 'Erreur lors de la création' : 'Erreur lors de la modification'));
+        }
+        const saved = await res.json();
+        await this.loadEvents();
+        // Keep the selected event's theme preview in sync when editing it.
+        if (this.eventMode === 'edit' && saved && saved.id === this.selectedEventId) {
+          this.currentTheme = saved.theme || this.currentTheme;
+          applyTheme(this.currentTheme);
+          this.generateQr();
+        }
+        this.closeEventModal();
+      } catch (err) {
+        this.eventError = err.message;
+      } finally {
+        this.eventSaving = false;
+      }
+    },
+    openDeleteEventModal(ev) {
+      this.lastFocused = document.activeElement;
+      this.eventToDelete = ev;
+      this.showDeleteEventModal = true;
+      this.focusFirst('deleteEventClose');
+    },
+    closeDeleteEventModal() {
+      this.showDeleteEventModal = false;
+      this.eventToDelete = null;
+      this.restoreFocus();
+    },
+    async deleteEvent() {
+      if (!this.eventToDelete) return;
+      const id = this.eventToDelete.id;
+      this.deleteEventLoading = true;
+      try {
+        const res = await fetch(`${apiBaseUrl}/events/${id}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        if (!res.ok) {
+          if (await this.handleAuthFailure(res)) return;
+          const err = await res.json();
+          throw new Error(err.error || 'Erreur lors de la suppression');
+        }
+        if (this.selectedEventId === id) this.selectedEventId = null;
+        await this.loadEvents();
+        this.closeDeleteEventModal();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        this.deleteEventLoading = false;
       }
     }
   }
@@ -633,163 +961,270 @@ export default {
 </script>
 
 <style scoped>
-.admin-container{min-height:100vh;background:var(--theme-bg-gradient,linear-gradient(135deg,#667eea,#764ba2));background-size:200% 200%;animation:gradientShift 12s ease infinite;padding-bottom:40px;transition:background .4s ease}
-@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}to{background-position:0% 50%}}
+/*
+ * Admin design system — deliberately generic and theme-independent.
+ *
+ * The public invitation re-skins itself from the selected palette (the
+ * --theme-* custom properties), but the admin dashboard stays neutral so it
+ * reads as a tool regardless of which festive theme is live. All admin chrome
+ * is driven by the local design tokens below; the only place we surface the
+ * invitation palette is the theme picker (swatches + active state), where it
+ * acts as a genuine preview.
+ */
+.admin-container{
+  /* Color tokens */
+  --c-bg:#f1f5f9;
+  --c-surface:#ffffff;
+  --c-surface-subtle:#f8fafc;
+  --c-border:#e2e8f0;
+  --c-border-strong:#cbd5e1;
+  --c-text:#0f172a;
+  --c-text-muted:#64748b;
+  --c-text-subtle:#94a3b8;
+  --c-accent:#4f46e5;
+  --c-accent-hover:#4338ca;
+  --c-accent-soft:#eef2ff;
+  --c-success:#059669;
+  --c-success-soft:#ecfdf5;
+  --c-danger:#dc2626;
+  --c-danger-hover:#b91c1c;
+  --c-danger-soft:#fef2f2;
+  --c-focus-ring:rgba(79,70,229,.25);
+  /* Radii */
+  --r-sm:8px;
+  --r-md:12px;
+  --r-lg:16px;
+  --r-full:9999px;
+  /* Shadows */
+  --shadow-xs:0 1px 2px rgba(15,23,42,.06);
+  --shadow-sm:0 1px 3px rgba(15,23,42,.08),0 1px 2px rgba(15,23,42,.04);
+  --shadow-md:0 4px 12px rgba(15,23,42,.08);
+  /* Spacing rhythm for the page */
+  --content-max:1100px;
 
-/* Top bar */
-.topbar{position:sticky;top:0;z-index:50;background:#ffffffe6;backdrop-filter:blur(10px);box-shadow:0 4px 20px #00000018;margin-bottom:24px}
-.topbar-inner{max-width:1200px;margin:0 auto;display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;padding:16px 24px}
-.brand{display:flex;align-items:center;gap:14px}
-.brand-mark{font-size:2rem;line-height:1;filter:drop-shadow(0 2px 4px #00000022)}
-.brand-text h1{font-family:var(--theme-font-display,inherit);font-size:1.5rem;color:#1f2333;margin:0;line-height:1.1}
-.brand-text p{color:#6b7280;font-size:.85rem;margin:2px 0 0}
-.topbar-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-.icon-btn{background:#f1f3f9;border:none;width:40px;height:40px;border-radius:10px;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;transition:background .2s ease}
-.icon-btn:hover:not(:disabled){background:#e3e7f2}
-.icon-btn:disabled{opacity:.6;cursor:not-allowed}
-.icon-btn .spin{display:inline-block;animation:spin 1s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.ghost-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:#f1f3f9;color:#374151;border:none;border-radius:10px;cursor:pointer;font-size:.9rem;text-decoration:none;transition:all .2s ease}
-.ghost-btn:hover{background:#e3e7f2;transform:translateY(-1px)}
-.ghost-btn.danger{background:#fdeaea;color:#c0392b}
-.ghost-btn.danger:hover{background:#f9d6d6}
-.tabs{max-width:1200px;margin:0 auto;display:flex;gap:4px;padding:0 24px;overflow-x:auto}
-.tab{background:none;border:none;padding:12px 18px;cursor:pointer;font-size:.95rem;color:#6b7280;border-bottom:3px solid transparent;white-space:nowrap;transition:all .2s ease}
-.tab:hover{color:#1f2333}
-.tab.active{color:var(--theme-primary,#ff6b6b);border-bottom-color:var(--theme-primary,#ff6b6b);font-weight:700}
+  min-height:100vh;
+  background:var(--c-bg);
+  color:var(--c-text);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  padding:24px 20px 48px;
+  -webkit-font-smoothing:antialiased;
+}
+.admin-container > *{max-width:var(--content-max);margin-left:auto;margin-right:auto}
 
-.admin-main{max-width:1200px;margin:0 auto;padding:0 24px}
-.panel-stack{display:flex;flex-direction:column;gap:24px}
-.card{background:#fff;border-radius:16px;box-shadow:0 20px 40px #0000001a}
+/* ---- Buttons -------------------------------------------------------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  font:inherit;font-size:.9rem;font-weight:600;line-height:1;
+  padding:10px 18px;border:1px solid transparent;border-radius:var(--r-sm);
+  cursor:pointer;text-decoration:none;white-space:nowrap;
+  transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,transform .05s ease;
+}
+.btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn-block{width:100%}
+.btn-sm{padding:7px 12px;font-size:.82rem}
+.btn-primary{background:var(--c-accent);color:#fff}
+.btn-primary:hover:not(:disabled){background:var(--c-accent-hover)}
+.btn-secondary{background:var(--c-surface);color:var(--c-text);border-color:var(--c-border)}
+.btn-secondary:hover:not(:disabled){background:var(--c-surface-subtle);border-color:var(--c-border-strong)}
+.btn-ghost{background:transparent;color:var(--c-text-muted);border-color:transparent}
+.btn-ghost:hover:not(:disabled){background:var(--c-surface);color:var(--c-text);box-shadow:var(--shadow-xs)}
+.btn-danger{background:var(--c-danger);color:#fff}
+.btn-danger:hover:not(:disabled){background:var(--c-danger-hover)}
+.btn-danger-soft{background:var(--c-danger-soft);color:var(--c-danger);border-color:transparent}
+.btn-danger-soft:hover:not(:disabled){background:#fee2e2}
 
-/* Stats */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
-.stat-card{background:#fff;padding:20px;border-radius:16px;box-shadow:0 10px 24px #0000001a;border-top:4px solid #d1d5db}
-.stat-card.positive{border-top-color:#1b9e77}
-.stat-card.negative{border-top-color:#d64545}
-.stat-card.accent{border-top-color:var(--theme-secondary,#4361ee)}
-.stat-card.rate{border-top-color:var(--theme-primary,#ff6b6b)}
-.stat-top{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-.stat-icon{font-size:1.2rem}
-.stat-label{color:#6b7280;font-size:.85rem;font-weight:500}
-.stat-number{font-size:2.4rem;font-weight:800;color:#1f2333;line-height:1}
-.stat-card.positive .stat-number{color:#1b9e77}
-.stat-card.negative .stat-number{color:#d64545}
-.rate-bar{margin-top:12px;height:8px;background:#eef0f5;border-radius:99px;overflow:hidden}
-.rate-fill{display:block;height:100%;background:var(--theme-primary,#ff6b6b);border-radius:99px;transition:width .5s ease}
+/* ---- Header --------------------------------------------------------- */
+.admin-header{
+  display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;
+  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
+  padding:24px 28px;margin-bottom:24px;box-shadow:var(--shadow-sm);
+}
+.admin-header h1{font-size:1.5rem;font-weight:700;letter-spacing:-.02em;margin:0;color:var(--c-text)}
+.admin-header-subtitle{margin:4px 0 0;color:var(--c-text-muted);font-size:.9rem}
+.header-actions{display:flex;gap:10px;align-items:center}
 
-/* List card + toolbar */
-.list-card{padding:24px}
-.list-toolbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-bottom:20px}
-.search-box{position:relative;flex:1 1 240px;min-width:200px}
-.search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:.95rem;opacity:.6}
-.search-input{width:100%;padding:11px 14px 11px 40px;border:2px solid #e5e7eb;border-radius:10px;font-size:.95rem;box-sizing:border-box;transition:border-color .2s ease}
-.search-input:focus{outline:none;border-color:var(--theme-primary,#ff6b6b)}
-.filter-chips{display:flex;gap:8px;flex-wrap:wrap}
-.chip{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:2px solid #e5e7eb;background:#fff;border-radius:99px;cursor:pointer;font-size:.85rem;color:#4b5563;transition:all .2s ease}
-.chip:hover{border-color:var(--theme-primary,#ff6b6b)}
-.chip.active{background:var(--theme-primary,#ff6b6b);border-color:var(--theme-primary,#ff6b6b);color:var(--theme-button-text,#fff);font-weight:600}
-.chip-count{background:#00000014;border-radius:99px;padding:1px 8px;font-size:.78rem;font-weight:700}
-.chip.active .chip-count{background:#ffffff33}
-.toolbar-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.sort-label{color:#6b7280;font-size:.85rem}
-.sort-select{padding:9px 12px;border:2px solid #e5e7eb;border-radius:10px;font-size:.9rem;cursor:pointer;background:#fff}
-.sort-select:focus{outline:none;border-color:var(--theme-primary,#ff6b6b)}
-.tool-btn{padding:9px 16px;border:2px solid #e5e7eb;background:#fff;border-radius:10px;cursor:pointer;font-size:.9rem;color:#374151;transition:all .2s ease}
-.tool-btn:hover:not(:disabled){border-color:var(--theme-primary,#ff6b6b);transform:translateY(-1px)}
-.tool-btn:disabled{opacity:.5;cursor:not-allowed}
-.tool-btn.primary{background:var(--theme-primary,#ff6b6b);border-color:var(--theme-primary,#ff6b6b);color:var(--theme-button-text,#fff);font-weight:600}
-.tool-btn.primary:hover{filter:brightness(.94)}
-.result-count{color:#6b7280;font-size:.85rem;margin-bottom:12px}
+/* ---- Events overview ------------------------------------------------ */
+.events-panel{
+  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
+  padding:24px 28px;margin-bottom:24px;box-shadow:var(--shadow-sm);
+}
+.events-panel-head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;margin-bottom:18px}
+.events-panel-head h2{font-size:1.1rem;font-weight:700;color:var(--c-text);margin:0}
+.events-panel-actions{display:flex;gap:10px;flex-wrap:wrap}
+.events-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.event-card{
+  display:flex;flex-direction:column;gap:8px;
+  background:var(--c-surface-subtle);border:1px solid var(--c-border);border-radius:var(--r-md);
+  padding:18px 20px;box-shadow:var(--shadow-xs);transition:border-color .15s ease,box-shadow .15s ease;
+}
+.event-card.selected{border-color:var(--c-accent);box-shadow:0 0 0 1px var(--c-accent)}
+.event-card-top{display:flex;justify-content:space-between;align-items:center}
+.event-theme-icon{font-size:1.8rem;line-height:1}
+.event-badge{background:var(--c-success-soft);color:var(--c-success);font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:var(--r-full);text-transform:uppercase;letter-spacing:.04em}
+.event-card-title{margin:0;font-size:1.1rem;font-weight:700;color:var(--c-text)}
+.event-card-meta{margin:0;color:var(--c-text-muted);font-size:.85rem}
+.event-card-meta-empty{font-style:italic;color:var(--c-text-subtle)}
+.event-card-theme{margin:0;color:var(--c-text-subtle);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.event-card-stats{display:flex;gap:14px;margin:4px 0 8px;color:var(--c-text-muted);font-size:.85rem}
+.event-card-stats strong{color:var(--c-text);font-weight:700}
+.event-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
 
-/* RSVP list */
-.rsvp-list{list-style:none;display:flex;flex-direction:column;gap:14px}
-.rsvp-item{background:#f8f9fb;border-left:4px solid var(--theme-primary,#ff6b6b);padding:18px 20px;border-radius:0 12px 12px 0;transition:box-shadow .2s ease}
-.rsvp-item:hover{box-shadow:0 6px 18px #0000000f}
-.rsvp-item.declined{border-left-color:#ff7675;background:#fff3f3}
-.rsvp-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
-.rsvp-identity{display:flex;flex-direction:column;gap:6px}
-.status-badge{align-self:flex-start;font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:99px}
-.status-badge.accepted{background:#e3f7f0;color:#1b9e77}
-.status-badge.declined{background:#ffe5e5;color:#d64545}
-.rsvp-identity h3{color:#1f2333;margin:0;font-size:1.15rem}
-.rsvp-actions{display:flex;gap:8px}
-.edit-btn,.delete-btn{background:none;border:none;font-size:1.1rem;cursor:pointer;padding:6px 8px;border-radius:8px;transition:background-color .2s ease}
-.edit-btn:hover{background-color:#e3f2fd}
-.delete-btn:hover{background-color:#ffebee}
-.rsvp-details{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 18px;margin-bottom:10px}
-.detail{display:flex;flex-direction:column;gap:2px;color:#374151;font-size:.92rem}
-.detail-key{color:#9ca3af;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.02em}
-.message{background:#fff;padding:12px 14px;border-radius:10px;margin-top:6px;font-style:italic;color:#374151;border:1px solid #eef0f5}
-.loading{text-align:center;padding:50px;color:#6b7280}
-.error{background:#ff4757;color:#fff;padding:18px;margin:10px 0;border-radius:12px;text-align:center}
-.no-data{text-align:center;color:#6b7280;padding:48px 20px;display:flex;flex-direction:column;align-items:center;gap:12px}
-.no-data-icon{font-size:2.5rem}
+/* ---- Selected event head ------------------------------------------- */
+.selected-head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;margin-bottom:18px}
+.selected-head h2{font-size:1.2rem;font-weight:700;color:var(--c-text);margin:0}
+.selected-name{color:var(--c-accent)}
 
-/* Theme panel */
-.theme-panel{padding:26px 30px}
-.theme-panel h2{color:#1f2333;margin-bottom:4px}
-.panel-hint{color:#6b7280;font-size:.9rem;margin-bottom:18px}
-.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
-.theme-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 12px;border:2px solid #e6e6e6;border-radius:14px;background:#fafafa;cursor:pointer;transition:all .2s ease;font-family:inherit}
-.theme-card:hover:not(:disabled){transform:translateY(-3px);border-color:var(--theme-primary,#ff6b6b);box-shadow:0 8px 20px #0000001f}
+/* ---- Stats ---------------------------------------------------------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{
+  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);
+  padding:20px 22px;box-shadow:var(--shadow-xs);
+}
+.stat-number{font-size:2rem;font-weight:700;line-height:1;letter-spacing:-.02em;color:var(--c-text);margin-bottom:8px}
+.stat-card.positive .stat-number{color:var(--c-success)}
+.stat-card.negative .stat-number{color:var(--c-danger)}
+.stat-label{color:var(--c-text-muted);font-size:.8rem;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+
+/* ---- Panels (theme + share) ---------------------------------------- */
+.theme-panel,.share-panel{
+  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
+  padding:24px 28px;margin-bottom:24px;box-shadow:var(--shadow-sm);
+}
+.theme-panel h2,.share-panel h2,.rsvp-list h2{font-size:1.1rem;font-weight:700;color:var(--c-text);margin:0 0 4px}
+.theme-hint{color:var(--c-text-muted);font-size:.875rem;margin:0 0 18px}
+.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.theme-card{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:16px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);
+  background:var(--c-surface-subtle);cursor:pointer;font:inherit;
+  transition:border-color .15s ease,box-shadow .15s ease,transform .1s ease,background-color .15s ease;
+}
+.theme-card:hover:not(:disabled){transform:translateY(-2px);border-color:var(--c-border-strong);box-shadow:var(--shadow-sm);background:var(--c-surface)}
+.theme-card:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring)}
 .theme-card:disabled{opacity:.6;cursor:not-allowed}
-.theme-card.active{border-color:var(--theme-primary,#ff6b6b);background:#fff;box-shadow:0 0 0 3px var(--theme-primary-soft,#ff6b6b55)}
-.theme-icon{font-size:2rem;line-height:1}
-.theme-label{font-weight:600;color:#333;font-size:.95rem;text-align:center}
+.theme-card.active{border-color:var(--c-accent);background:var(--c-accent-soft);box-shadow:0 0 0 1px var(--c-accent)}
+.theme-icon{font-size:1.9rem;line-height:1}
+.theme-label{font-weight:600;color:var(--c-text);font-size:.9rem;text-align:center}
 .theme-swatches{display:flex;gap:5px}
-.swatch{width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0000001a}
-.theme-check{font-size:.78rem;font-weight:700;color:var(--theme-primary,#ff6b6b)}
+.swatch{width:16px;height:16px;border-radius:var(--r-full);border:2px solid var(--c-surface);box-shadow:0 0 0 1px var(--c-border-strong)}
+.theme-check{font-size:.75rem;font-weight:700;color:var(--c-accent)}
 
-/* Share panel */
-.share-panel{padding:26px 30px}
-.share-panel h2{color:#1f2333;margin-bottom:4px}
-.share-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
-.share-url{flex:1 1 260px;min-width:0}
-.qr-img{display:block;width:200px;height:200px;border:8px solid #fff;border-radius:14px;box-shadow:0 8px 20px #0000001a}
+/* ---- Share panel ---------------------------------------------------- */
+.share-row{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin-bottom:16px}
+.share-url{flex:1;min-width:220px}
+.qr-img{display:block;width:160px;height:160px;border:1px solid var(--c-border);border-radius:var(--r-md);padding:8px;background:var(--c-surface)}
 
-/* Forms / modals */
-.form-input:disabled{background-color:#f5f5f5;color:#666;cursor:not-allowed}
-.modal-overlay{position:fixed;inset:0;background:#00000080;display:flex;justify-content:center;align-items:center;z-index:1000;padding:20px}
-.modal{background:#fff;border-radius:16px;max-width:500px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 40px #0003}
-.login-modal{max-width:400px}
-.modal-header{display:flex;justify-content:space-between;align-items:center;padding:20px 25px;border-bottom:1px solid #eee}
-.modal-header h3{margin:0;color:#1f2333}
-.close-btn{background:none;border:none;font-size:1.5rem;cursor:pointer;color:#999;padding:5px;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center}
-.close-btn:hover{background:#f5f5f5;color:#333}
-.modal-content,.edit-form,.auth-form{padding:20px 25px}
-.form-group{margin-bottom:20px}
-.form-group label{display:block;margin-bottom:5px;font-weight:500;color:#333}
-.form-input{width:100%;padding:10px 15px;border:2px solid #ddd;border-radius:8px;font-size:1rem;transition:border-color .3s ease;box-sizing:border-box}
-.form-input:focus{outline:none;border-color:var(--theme-primary,#ff6b6b)}
-.modal-actions{display:flex;justify-content:flex-end;gap:10px;padding:20px 25px;border-top:1px solid #eee}
-.cancel-btn,.save-btn,.delete-confirm-btn{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:1rem;transition:all .3s ease}
-.cancel-btn{background:#f5f5f5;color:#666}
-.cancel-btn:hover{background:#e0e0e0}
-.save-btn{background:var(--theme-primary,#ff6b6b);color:var(--theme-button-text,#fff)}
-.save-btn:hover:not(:disabled){filter:brightness(.92)}
-.save-btn:disabled{opacity:.7;cursor:not-allowed}
-.delete-confirm-btn{background:#dc3545;color:#fff}
-.delete-confirm-btn:hover:not(:disabled){background:#c82333}
-.delete-confirm-btn:disabled{opacity:.7;cursor:not-allowed}
+/* ---- List actions --------------------------------------------------- */
+.list-actions{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:24px}
+
+/* ---- RSVP list ------------------------------------------------------ */
+.rsvp-list{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);padding:24px 28px;box-shadow:var(--shadow-sm)}
+.rsvp-list h2{margin-bottom:18px}
+.rsvp-item{
+  background:var(--c-surface);border:1px solid var(--c-border);border-left:3px solid var(--c-success);
+  padding:18px 20px;margin-bottom:12px;border-radius:var(--r-md);
+}
+.rsvp-item:last-child{margin-bottom:0}
+.rsvp-item.declined{border-left-color:var(--c-danger);background:var(--c-danger-soft)}
+.rsvp-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.rsvp-header h3,.rsvp-item h3{display:flex;align-items:center;gap:8px;color:var(--c-text);font-size:1rem;font-weight:700;margin:0}
+.rsvp-actions{display:flex;gap:6px}
+.edit-btn,.delete-btn{
+  background:transparent;border:1px solid transparent;font-size:1rem;cursor:pointer;
+  padding:6px 8px;border-radius:var(--r-sm);line-height:1;transition:background-color .15s ease,border-color .15s ease;
+}
+.edit-btn:hover{background:var(--c-accent-soft);border-color:var(--c-border)}
+.delete-btn:hover{background:var(--c-danger-soft);border-color:var(--c-border)}
+.rsvp-details{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 16px;margin-bottom:12px}
+.detail{color:var(--c-text-muted);font-size:.9rem}
+.detail strong{color:var(--c-text);font-weight:600}
+.message{background:var(--c-surface-subtle);border:1px solid var(--c-border);padding:12px 14px;border-radius:var(--r-sm);margin-top:12px;font-style:italic;color:var(--c-text-muted);font-size:.9rem}
+/* ---- Accounts / access ---------------------------------------------- */
+.users-panel{
+  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
+  padding:20px 24px 24px;margin-top:24px;box-shadow:var(--shadow-sm);
+}
+.users-panel h2{font-size:1.1rem;font-weight:700;color:var(--c-text);margin:0}
+.users-panel .theme-hint{margin:4px 0 16px}
+.users-table{width:100%;border-collapse:collapse;font-size:.9rem}
+.users-table th{
+  text-align:left;padding:8px 12px;font-size:.75rem;font-weight:600;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--c-text-subtle);
+  border-bottom:1px solid var(--c-border);
+}
+.users-table td{padding:12px;border-bottom:1px solid var(--c-border);vertical-align:middle}
+.users-table tr:last-child td{border-bottom:none}
+.users-actions-col,.users-table th.users-actions-col{text-align:right;white-space:nowrap}
+.users-actions-col .btn + .btn{margin-left:8px}
+.user-name{font-weight:600;color:var(--c-text);display:flex;align-items:center;gap:8px}
+.user-email{color:var(--c-text-muted);font-size:.82rem;margin-top:2px}
+.user-you{
+  font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+  background:var(--c-accent-soft);color:var(--c-accent);padding:2px 6px;border-radius:var(--r-full);
+}
+.user-unverified{color:var(--c-danger);font-size:.75rem;margin-left:6px}
+.role-badge{
+  display:inline-block;padding:4px 10px;border-radius:var(--r-full);
+  font-size:.78rem;font-weight:600;background:var(--c-surface-subtle);color:var(--c-text-muted);
+}
+.role-badge.admin{background:var(--c-accent-soft);color:var(--c-accent)}
+
+/* On narrow screens the actions wrap under the account rather than forcing a
+   horizontal scroll on the whole table. */
+@media (max-width:640px){
+  .users-table,.users-table tbody,.users-table tr,.users-table td{display:block;width:100%}
+  .users-table thead{display:none}
+  .users-table tr{padding:12px 0;border-bottom:1px solid var(--c-border)}
+  .users-table td{border-bottom:none;padding:4px 0}
+  .users-actions-col,.users-table th.users-actions-col{text-align:left;white-space:normal;margin-top:8px}
+  .users-actions-col .btn + .btn{margin-left:8px}
+}
+
+.loading,.no-data{text-align:center;padding:48px 20px;color:var(--c-text-muted)}
+.error{background:var(--c-danger-soft);color:var(--c-danger);border:1px solid #fecaca;padding:16px;margin:16px 0;border-radius:var(--r-md);text-align:center;font-weight:500}
+.status-indicator{font-size:1.05rem}
+.status-accepted{color:var(--c-success);font-weight:600}
+.status-declined{color:var(--c-danger);font-weight:600}
+
+/* ---- Forms ---------------------------------------------------------- */
+.form-group{margin-bottom:18px}
+.form-group label{display:block;margin-bottom:6px;font-weight:600;color:var(--c-text);font-size:.875rem}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.field-hint{margin:6px 0 0;color:var(--c-text-subtle);font-size:.8rem}
+.form-input{
+  width:100%;padding:10px 12px;border:1px solid var(--c-border-strong);border-radius:var(--r-sm);
+  font:inherit;font-size:.95rem;color:var(--c-text);background:var(--c-surface);box-sizing:border-box;
+  transition:border-color .15s ease,box-shadow .15s ease;
+}
+.form-input::placeholder{color:var(--c-text-subtle)}
+.form-input:focus{outline:none;border-color:var(--c-accent);box-shadow:0 0 0 3px var(--c-focus-ring)}
+.form-input:disabled{background:var(--c-surface-subtle);color:var(--c-text-muted);cursor:not-allowed}
+textarea.form-input{min-height:80px;resize:vertical}
+
+/* ---- Modals --------------------------------------------------------- */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(2px);display:flex;justify-content:center;align-items:center;z-index:1000;padding:20px}
+.modal{background:var(--c-surface);border-radius:var(--r-lg);max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 50px rgba(15,23,42,.25);border:1px solid var(--c-border)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid var(--c-border)}
+.modal-header h3{margin:0;color:var(--c-text);font-size:1.1rem;font-weight:700}
+.close-btn{background:transparent;border:none;font-size:1.4rem;cursor:pointer;color:var(--c-text-subtle);width:32px;height:32px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;transition:background-color .15s ease,color .15s ease}
+.close-btn:hover{background:var(--c-surface-subtle);color:var(--c-text)}
+.modal-content,.edit-form{padding:20px 24px}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;padding:18px 24px;border-top:1px solid var(--c-border)}
+/* When the footer lives inside a padded form, break it out so its separator
+   and background span the full modal width and sit flush at the bottom,
+   matching the delete modals where .modal-actions is a direct child. */
+.edit-form .modal-actions{margin:20px -24px -20px}
 .delete-modal .modal-content{text-align:center}
-.warning{color:#dc3545;font-weight:500;margin-top:10px}
-.auth-error{color:#ff4757;background:#ffeaea;padding:10px;border-radius:5px;margin-top:10px;text-align:center}
+.delete-modal .modal-content p{color:var(--c-text-muted);margin:0 0 8px}
+.warning{color:var(--c-danger);font-weight:600;margin-top:8px!important}
+.auth-error{color:var(--c-danger);background:var(--c-danger-soft);border:1px solid #fecaca;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;text-align:center;font-size:.875rem}
 
-/* Toasts */
-.toast-stack{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:10px;z-index:1100}
-.toast{display:flex;align-items:center;gap:8px;background:#1f2333;color:#fff;padding:12px 18px;border-radius:12px;box-shadow:0 10px 30px #00000033;font-size:.92rem;animation:toastIn .25s ease}
-.toast.success{background:#1b9e77}
-.toast.error{background:#d64545}
-@keyframes toastIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-
-@media (max-width:768px){
-  .topbar-inner{padding:14px 16px}
-  .admin-main{padding:0 16px}
-  .tabs{padding:0 16px}
-  .brand-text p{display:none}
-  .list-toolbar{flex-direction:column;align-items:stretch}
-  .toolbar-controls{justify-content:space-between}
-  .toast-stack{left:16px;right:16px;bottom:16px}
+@media (max-width:600px){
+  .admin-header{flex-direction:column;align-items:flex-start}
+  .header-actions{width:100%}
+  .header-actions .btn{flex:1}
+  .form-row{grid-template-columns:1fr}
 }
 </style>

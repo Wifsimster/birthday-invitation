@@ -47,11 +47,14 @@ COPY infra/inject-env.sh /inject-env.sh
 COPY infra/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /inject-env.sh /docker-entrypoint.sh
 
-# Drop privileges: the alpine image ships an unprivileged `node` user. Create the
-# DB directory and hand /app to that user so the entrypoint (env injection into
-# dist/) and SQLite writes (data/) work without root.
-RUN mkdir -p /app/data && chown -R node:node /app
-USER node
+# The alpine image ships an unprivileged `node` user. Create the DB directory and
+# hand /app to that user so env injection (dist/) and SQLite writes (data/) work
+# without root. `su-exec` lets the entrypoint drop to `node` after reconciling the
+# ownership of the persisted data volume — which may pre-date this non-root image
+# and still be owned by root. The container therefore starts as root, but the
+# server process itself runs as the unprivileged `node` user.
+RUN apk add --no-cache su-exec \
+ && mkdir -p /app/data && chown -R node:node /app
 
 # Node serves SPA + API on port 3000
 ENV PORT=3000

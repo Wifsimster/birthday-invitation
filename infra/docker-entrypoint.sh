@@ -7,6 +7,16 @@ set -e
 # Write dist/env.js from environment variables.
 /inject-env.sh
 
-# Replace the shell with the Node process so it receives signals (SIGTERM) and
-# the server's graceful shutdown runs.
+# The server runs as the unprivileged `node` user. When started as root (the
+# normal case), reconcile ownership of the persisted data volume first — it may
+# pre-date the non-root image and still be owned by root, which makes SQLite's
+# WAL pragma fail with SQLITE_READONLY — then drop privileges with su-exec.
+# `exec` replaces the shell so the server receives signals (SIGTERM) and its
+# graceful shutdown runs. If already unprivileged (e.g. `docker run --user`),
+# exec the server directly.
+if [ "$(id -u)" = "0" ]; then
+  chown -R node:node /app/data
+  exec su-exec node node /app/server/server.ts
+fi
+
 exec node /app/server/server.ts

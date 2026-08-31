@@ -24,6 +24,23 @@ export interface SettingsRow {
   updated_at: string;
 }
 
+export interface EventRow {
+  id: number;
+  slug: string;
+  person: string;
+  age: string;
+  date: string;
+  time: string;
+  town: string;
+  location: string;
+  dress_code: string;
+  theme: string;
+  rsvp_deadline: string;
+  is_default: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface RunResult {
   lastID: number | bigint;
   changes: number;
@@ -104,6 +121,52 @@ const MIGRATIONS: ((db: Db) => void)[] = [
   value TEXT NOT NULL,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 )`);
+  },
+  // v3: multi-event support. An `event` table holds each invitation (theme,
+  // slug, details); rsvp rows gain an `event_id` and uniqueness moves to
+  // (event_id, phone). A single default event keeps the legacy single-event
+  // routes (env-configured) working unchanged.
+  (db) => {
+    db.run(`CREATE TABLE IF NOT EXISTS event (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL UNIQUE,
+  person TEXT NOT NULL DEFAULT '',
+  age TEXT NOT NULL DEFAULT '',
+  date TEXT NOT NULL DEFAULT '',
+  time TEXT NOT NULL DEFAULT '',
+  town TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
+  dress_code TEXT NOT NULL DEFAULT '',
+  theme TEXT NOT NULL DEFAULT 'fiesta',
+  rsvp_deadline TEXT NOT NULL DEFAULT '',
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
+    // Ensure exactly one default event exists.
+    const hasDefault = db.get<{ id: number }>('SELECT id FROM event WHERE is_default = 1 LIMIT 1');
+    if (!hasDefault) {
+      db.run("INSERT OR IGNORE INTO event (slug, is_default) VALUES ('default', 1)");
+      db.run("UPDATE event SET is_default = 1 WHERE slug = 'default'");
+    }
+
+    // Add event_id to rsvp (idempotent in the codebase's defensive style).
+    try {
+      db.run('ALTER TABLE rsvp ADD COLUMN event_id INTEGER REFERENCES event(id) ON DELETE CASCADE');
+    } catch (err) {
+      if (!/duplicate column name/.test((err as Error).message)) throw err;
+    }
+
+    // Backfill existing rsvps onto the default event.
+    const defaultRow = db.get<{ id: number }>('SELECT id FROM event WHERE is_default = 1 ORDER BY id LIMIT 1');
+    if (defaultRow) {
+      db.run('UPDATE rsvp SET event_id = ? WHERE event_id IS NULL', [defaultRow.id]);
+    }
+
+    // Swap the unique index: one RSVP per phone *per event*.
+    db.run('DROP INDEX IF EXISTS idx_rsvp_phone');
+    db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_rsvp_event_phone ON rsvp(event_id, phone)');
   }
 ];
 

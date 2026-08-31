@@ -4,35 +4,58 @@
 
     <main class="invitation-card">
       <header class="invitation-header">
+        <div class="hero-emojis" aria-hidden="true"><span v-for="(e, i) in themeDef.heroEmojis" :key="i" class="hero-emoji">{{ e }}</span></div>
         <h1 class="birthday-title">{{ themeDef.copy.title }}</h1>
         <p class="birthday-subtitle">{{ themeDef.copy.subtitle }}</p>
       </header>
 
-      <div class="invitation-body">
-        <div class="birthday-person">{{ birthdayPerson }}</div>
-        <div class="age-badge">{{ age }} ans</div>
+      <div v-if="notFound" class="invitation-body">
+        <div class="event-not-found" role="status">
+          <h2>🔍 Événement introuvable</h2>
+          <p>Cette invitation n'existe pas ou n'est plus disponible.</p>
+        </div>
+      </div>
+
+      <div v-else class="invitation-body">
+        <div class="identity">
+          <div class="birthday-person">{{ birthdayPerson }}</div>
+          <div class="age-badge" v-if="age">{{ age }} ans</div>
+        </div>
+
+        <div class="countdown" v-if="countdown" role="status" :aria-label="countdownAria">
+          <template v-if="countdown.isToday"><span class="countdown-today">🎉 C'est aujourd'hui !</span></template>
+          <template v-else-if="countdown.isPast"><span class="countdown-today">🎂 Joyeux anniversaire !</span></template>
+          <template v-else>
+            <div class="countdown-unit"><span class="countdown-num">{{ countdown.days }}</span><span class="countdown-label">jours</span></div>
+            <div class="countdown-unit"><span class="countdown-num">{{ countdown.hours }}</span><span class="countdown-label">heures</span></div>
+            <div class="countdown-unit"><span class="countdown-num">{{ countdown.minutes }}</span><span class="countdown-label">min</span></div>
+          </template>
+        </div>
 
         <div class="event-details">
-          <div class="detail-item">
-            <i class="fas fa-calendar-day detail-icon" aria-hidden="true"></i>
-            <span>{{ formatDate(eventDate) }}</span>
+          <div class="detail-tile" v-if="formattedDate">
+            <span class="detail-disc"><i class="fas fa-calendar-day" aria-hidden="true"></i></span>
+            <div class="detail-meta"><span class="detail-label">Date</span><span class="detail-value">{{ formattedDate }}</span></div>
           </div>
-          <div class="detail-item">
-            <i class="fas fa-clock detail-icon" aria-hidden="true"></i>
-            <span>{{ eventTime }}</span>
+          <div class="detail-tile" v-if="eventTime">
+            <span class="detail-disc"><i class="fas fa-clock" aria-hidden="true"></i></span>
+            <div class="detail-meta"><span class="detail-label">Heure</span><span class="detail-value">{{ eventTime }}</span></div>
           </div>
-          <div class="detail-item" v-if="eventTown">
-            <i class="fas fa-city detail-icon" aria-hidden="true"></i>
-            <span>{{ eventTown }}</span>
+          <div class="detail-tile" v-if="eventTown">
+            <span class="detail-disc"><i class="fas fa-city" aria-hidden="true"></i></span>
+            <div class="detail-meta"><span class="detail-label">Ville</span><span class="detail-value">{{ eventTown }}</span></div>
           </div>
-          <div class="detail-item" v-if="eventLocation">
-            <i class="fas fa-map-marker-alt detail-icon" aria-hidden="true"></i>
-            <a v-if="mapUrl" :href="mapUrl" target="_blank" rel="noopener" class="map-link">{{ eventLocation }}</a>
-            <span v-else>{{ eventLocation }}</span>
+          <div class="detail-tile detail-tile--wide" v-if="eventLocation">
+            <span class="detail-disc"><i class="fas fa-map-marker-alt" aria-hidden="true"></i></span>
+            <div class="detail-meta">
+              <span class="detail-label">Lieu</span>
+              <a v-if="mapUrl" :href="mapUrl" target="_blank" rel="noopener" class="map-link">{{ eventLocation }}</a>
+              <span v-else class="detail-value">{{ eventLocation }}</span>
+            </div>
           </div>
-          <div class="detail-item" v-if="dresscode">
-            <i class="fas fa-tshirt detail-icon" aria-hidden="true"></i>
-            <span>{{ dresscode }}</span>
+          <div class="detail-tile" v-if="dresscode">
+            <span class="detail-disc"><i class="fas fa-tshirt" aria-hidden="true"></i></span>
+            <div class="detail-meta"><span class="detail-label">Tenue</span><span class="detail-value">{{ dresscode }}</span></div>
           </div>
         </div>
 
@@ -112,9 +135,7 @@
               <div class="form-group" v-if="formData.attending === 'yes'">
                 <label for="rsvp-guests">👨‍👩‍👧‍👦 Nombre de personnes</label>
                 <select id="rsvp-guests" v-model.number="formData.guests">
-                  <option :value="1">1 personne (juste l'enfant)</option>
-                  <option :value="2">2 personnes (enfant + 1 accompagnateur)</option>
-                  <option :value="3">3 personnes (enfant + 2 accompagnateurs)</option>
+                  <option v-for="opt in guestOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
               </div>
 
@@ -162,20 +183,30 @@
 <script>
 import { eventConfig, apiBaseUrl } from '../env.js';
 import { applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
+import { applySeo, eventSeo, ogImageUrl } from '../seo.js';
 
 export default {
   name: 'Invitation',
+  props: {
+    slug: { type: String, default: '' }
+  },
   data() {
+    // Only seed from the env.js fallback on the default route, to avoid a blank
+    // flash; the API response is the source of truth and overrides this.
+    const isDefault = !this.slug;
     return {
       theme: DEFAULT_THEME,
-      birthdayPerson: eventConfig.birthdayPerson,
-      age: eventConfig.age,
-      eventDate: eventConfig.eventDate,
-      eventTime: eventConfig.eventTime,
-      eventTown: eventConfig.eventTown,
-      eventLocation: eventConfig.eventLocation,
-      dresscode: eventConfig.dresscode,
-      rsvpDeadline: eventConfig.rsvpDeadline,
+      now: Date.now(),
+      notFound: false,
+      rsvpClosed: false,
+      birthdayPerson: isDefault ? eventConfig.birthdayPerson : '',
+      age: isDefault ? eventConfig.age : '',
+      eventDate: isDefault ? eventConfig.eventDate : null,
+      eventTime: isDefault ? eventConfig.eventTime : '',
+      eventTown: isDefault ? eventConfig.eventTown : '',
+      eventLocation: isDefault ? eventConfig.eventLocation : '',
+      dresscode: isDefault ? eventConfig.dresscode : '',
+      rsvpDeadline: isDefault ? eventConfig.rsvpDeadline : '',
       showRsvpForm: false,
       showLookupForm: false,
       hasConfirmedAttendance: false,
@@ -191,17 +222,59 @@ export default {
     };
   },
   computed: {
+    effectiveSlug() {
+      return this.slug || 'default';
+    },
     themeDef() {
       return getTheme(this.theme);
+    },
+    // The three usual answers, plus the recorded value when a response the host
+    // entered by hand carries more people than the form normally offers — the
+    // select would otherwise render blank and silently drop the guest's count.
+    guestOptions() {
+      const options = [
+        { value: 1, label: "1 personne (juste l'enfant)" },
+        { value: 2, label: '2 personnes (enfant + 1 accompagnateur)' },
+        { value: 3, label: '3 personnes (enfant + 2 accompagnateurs)' }
+      ];
+      const current = Number(this.formData.guests);
+      if (Number.isInteger(current) && current > 3) {
+        options.push({ value: current, label: `${current} personnes` });
+      }
+      return options;
     },
     messagePlaceholder() {
       return this.formData.attending === 'yes'
         ? 'Un petit mot pour nous dire votre joie de venir...'
         : "Un petit mot pour s'excuser...";
     },
-    rsvpClosed() {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(this.rsvpDeadline)) return false;
-      return Date.now() > new Date(`${this.rsvpDeadline}T23:59:59`).getTime();
+    formattedDate() {
+      return this.formatDate(this.eventDate);
+    },
+    eventStart() {
+      if (!this.eventDate) return null;
+      const d = this.eventDate instanceof Date ? this.eventDate : new Date(this.eventDate);
+      return Number.isNaN(d.getTime()) ? null : d;
+    },
+    countdown() {
+      if (!this.eventStart) return null;
+      const diff = this.eventStart.getTime() - this.now;
+      const dayMs = 86400000;
+      if (this.eventStart.toDateString() === new Date(this.now).toDateString()) {
+        return { isToday: true };
+      }
+      if (diff <= 0) return { isPast: true };
+      return {
+        days: Math.floor(diff / dayMs),
+        hours: Math.floor((diff % dayMs) / 3600000),
+        minutes: Math.floor((diff % 3600000) / 60000)
+      };
+    },
+    countdownAria() {
+      if (!this.countdown) return '';
+      if (this.countdown.isToday) return "C'est aujourd'hui";
+      if (this.countdown.isPast) return 'La fête est passée';
+      return `Encore ${this.countdown.days} jours`;
     },
     formatDeadline() {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(this.rsvpDeadline)) return '';
@@ -209,7 +282,7 @@ export default {
         .toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     },
     icsUrl() {
-      return `${apiBaseUrl}/event.ics`;
+      return `${apiBaseUrl}/events/${encodeURIComponent(this.effectiveSlug)}/event.ics`;
     },
     mapUrl() {
       const q = [this.eventLocation, this.eventTown].filter(Boolean).join(', ');
@@ -235,26 +308,82 @@ export default {
       return `https://calendar.google.com/calendar/render?${params.toString()}`;
     }
   },
-  async mounted() {
-    // Paint the default theme immediately, then upgrade to the admin-selected
-    // theme once the public settings endpoint responds.
+  mounted() {
+    this._countdownTimer = setInterval(() => { this.now = Date.now(); }, 60000);
+    // Paint the (fallback) theme immediately, then upgrade to the event's theme
+    // once the public event endpoint responds.
     applyTheme(this.theme);
-    try {
-      const res = await fetch(`${apiBaseUrl}/settings`);
-      if (res.ok) {
-        const { theme } = await res.json();
-        if (theme) {
-          this.theme = theme;
-          applyTheme(theme);
-        }
-      }
-    } catch {
-      // Keep the default theme when settings can't be fetched.
+    // No updateSeo() here: the server already injected this event's tags into
+    // the shell. Overwriting them with the seed values before the fetch lands
+    // would only downgrade them (and lose them entirely if the fetch fails).
+    this.loadEvent();
+  },
+  watch: {
+    slug() {
+      this.loadEvent();
     }
   },
+  beforeUnmount() {
+    clearInterval(this._countdownTimer);
+  },
   methods: {
+    async loadEvent() {
+      this.notFound = false;
+      try {
+        const res = await fetch(`${apiBaseUrl}/events/${encodeURIComponent(this.effectiveSlug)}`);
+        if (res.status === 404) {
+          this.notFound = true;
+          this.updateSeo();
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+        this.birthdayPerson = data.person || '';
+        // Free-form on the server ("5", "18 mois"): keep the string so the badge
+        // and the title match the share card instead of blanking on a non-number.
+        this.age = String(data.age ?? '').trim();
+        this.eventDate = data.date ? new Date(data.date) : null;
+        this.eventTime = data.time || '';
+        this.eventTown = data.town || '';
+        this.eventLocation = data.location || '';
+        this.dresscode = data.dress_code || '';
+        this.rsvpDeadline = data.rsvp_deadline || '';
+        this.rsvpClosed = !!data.rsvp_closed;
+        if (data.theme) {
+          this.theme = data.theme;
+          applyTheme(data.theme);
+        }
+        this.updateSeo();
+      } catch {
+        // Keep whatever we have (fallback paint) when the event can't be fetched.
+      }
+    },
+    // Keep the tab title, the share sheet and the canonical URL in step with the
+    // event actually on screen. The first paint's tags come from the server.
+    updateSeo() {
+      if (this.notFound) {
+        applySeo({
+          title: 'Événement introuvable',
+          description: 'Cette invitation n\'existe pas ou n\'est plus disponible.',
+          robots: 'noindex, follow'
+        });
+        return;
+      }
+      const { title, description } = eventSeo({
+        person: this.birthdayPerson,
+        age: this.age,
+        formattedDate: this.formattedDate,
+        time: this.eventTime,
+        town: this.eventTown,
+        location: this.eventLocation,
+        rsvpClosed: this.rsvpClosed
+      });
+      applySeo({ title, description, image: ogImageUrl(apiBaseUrl, this.slug) });
+    },
     formatDate(date) {
-      return date.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const d = date instanceof Date ? date : (date ? new Date(date) : null);
+      if (!d || Number.isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     },
     openRsvpForm() {
       this.errorMessage = '';
@@ -306,7 +435,7 @@ export default {
       this.isSubmitting = true;
       this.errorMessage = '';
       try {
-        const res = await fetch(`${apiBaseUrl}/rsvp`, {
+        const res = await fetch(`${apiBaseUrl}/events/${encodeURIComponent(this.effectiveSlug)}/rsvp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -342,7 +471,7 @@ export default {
         if (!this.lookupPhoneNumber || this.lookupPhoneNumber.trim().length === 0) {
           throw new Error('Le numéro de téléphone est requis');
         }
-        const res = await fetch(`${apiBaseUrl}/rsvp/lookup/${encodeURIComponent(this.lookupPhoneNumber.trim())}`, {
+        const res = await fetch(`${apiBaseUrl}/events/${encodeURIComponent(this.effectiveSlug)}/rsvp/lookup/${encodeURIComponent(this.lookupPhoneNumber.trim())}`, {
           headers: { 'Content-Type': 'application/json' }
         });
         if (!res.ok) {
@@ -386,12 +515,26 @@ export default {
 @keyframes float-781963a1{0%,to{transform:translateY(0) rotate(0)}50%{transform:translateY(-20px) rotate(10deg)}}
 .invitation-card{background:var(--theme-card-bg,#fff);color:var(--theme-card-text,#333);border-radius:20px;box-shadow:0 25px 50px #0000001a;max-width:500px;width:100%;overflow:hidden;animation:slideIn-781963a1 .8s ease-out}
 @keyframes slideIn-781963a1{0%{opacity:0;transform:translateY(50px)}to{opacity:1;transform:translateY(0)}}
-.invitation-header{background:var(--theme-header-gradient,linear-gradient(135deg,#ff6b6b,#ff8e8e));color:var(--theme-header-text,#fff);padding:34px 30px;text-align:center}
+.invitation-header{background:var(--theme-header-gradient,linear-gradient(135deg,#ff6b6b,#ff8e8e));color:var(--theme-header-text,#fff);padding:34px 30px;text-align:center;position:relative;overflow:hidden}
+.invitation-header::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 0%,var(--theme-accent,#ffb703) 0%,transparent 60%);opacity:.18}
+.hero-emojis,.birthday-title,.birthday-subtitle{position:relative;z-index:1}
+.hero-emojis{display:flex;gap:14px;justify-content:center;margin-bottom:10px}
+.hero-emoji{font-size:2.4rem;filter:drop-shadow(0 3px 6px rgba(0,0,0,.25));animation:heroFloat 6s ease-in-out infinite}
+.hero-emoji:nth-child(2){animation-delay:1s}
+.hero-emoji:nth-child(3){animation-delay:2s}
+.hero-emoji:nth-child(4){animation-delay:3s}
+@keyframes heroFloat{0%,to{transform:translateY(0) rotate(0)}50%{transform:translateY(-8px) rotate(6deg)}}
 .birthday-title{font-family:var(--theme-font-display,'Comic Sans MS',cursive);font-size:2rem;line-height:1.15;margin-bottom:10px;font-weight:700;letter-spacing:.5px}
 .birthday-subtitle{opacity:.92;font-size:1.1rem}
 .invitation-body{padding:30px}
+.identity{text-align:center}
 .birthday-person{font-family:var(--theme-font-display,'Comic Sans MS',cursive);text-align:center;color:var(--theme-primary,#ff6b6b);font-size:1.7rem;margin-bottom:15px;font-weight:700}
-.age-badge{background:var(--theme-badge-gradient,linear-gradient(135deg,#ffd93d,#ff6b6b));color:var(--theme-badge-text,#fff);padding:10px 22px;border-radius:25px;text-align:center;font-weight:700;font-size:1.2rem;margin:0 auto 25px;display:inline-block;box-shadow:0 4px 15px #0000002e}
+.age-badge{background:var(--theme-badge-gradient,linear-gradient(135deg,#ffd93d,#ff6b6b));color:var(--theme-badge-text,#fff);padding:10px 22px;border-radius:25px;text-align:center;font-weight:700;font-size:1.2rem;margin:0 auto;display:inline-block;box-shadow:0 0 0 4px var(--theme-primary-soft,#ff6b6b55),0 4px 15px rgba(0,0,0,.18)}
+.countdown{display:flex;gap:12px;justify-content:center;align-items:stretch;margin:22px 0;flex-wrap:wrap}
+.countdown-unit{display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--theme-primary-soft,#ff6b6b55);border-radius:14px;padding:12px 10px;min-width:64px}
+.countdown-num{font-family:var(--theme-font-display,'Comic Sans MS',cursive);font-size:1.9rem;font-weight:700;line-height:1;color:var(--theme-primary,#ff6b6b)}
+.countdown-label{margin-top:6px;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--theme-card-text,#333);opacity:.65}
+.countdown-today{display:inline-block;background:var(--theme-button-gradient,linear-gradient(135deg,#4ecdc4,#44a08d));color:var(--theme-button-text,#fff);font-family:var(--theme-font-display,'Comic Sans MS',cursive);font-weight:700;padding:12px 22px;border-radius:25px}
 .map-link{color:var(--theme-primary,#ff6b6b);text-decoration:underline}
 .action-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:10px 0 6px}
 .action-chip{display:inline-flex;align-items:center;gap:7px;background:#00000008;border:1.5px solid #0000001f;color:var(--theme-card-text,#333);border-radius:20px;padding:8px 14px;font-size:.85rem;font-weight:600;cursor:pointer;text-decoration:none;transition:all .2s ease;font-family:inherit}
@@ -399,14 +542,21 @@ export default {
 .deadline-note{text-align:center;font-size:.95rem;font-weight:600;color:var(--theme-primary-dark,#c9184a);margin-bottom:14px}
 .rsvp-closed{background:#f3f4f6;border:2px dashed #cbd5e1;border-radius:15px;padding:24px;text-align:center;color:#44505f}
 .rsvp-closed h2{margin-bottom:8px;color:var(--theme-primary-dark,#c9184a)}
-.event-details{margin:25px 0}
-.detail-item{display:flex;align-items:center;margin-bottom:15px;font-size:1rem;color:var(--theme-card-text,#333)}
-.detail-icon{color:var(--theme-primary,#ff6b6b);margin-right:12px;width:20px;text-align:center}
+.event-not-found{background:#f3f4f6;border:2px dashed #cbd5e1;border-radius:15px;padding:30px 24px;text-align:center;color:#44505f}
+.event-not-found h2{margin-bottom:10px;color:var(--theme-primary-dark,#c9184a)}
+.event-details{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}
+.detail-tile{display:flex;align-items:center;gap:12px;background:rgba(0,0,0,.035);border-radius:14px;padding:14px}
+.detail-tile--wide{grid-column:1 / -1}
+.detail-disc{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:50%;background:var(--theme-badge-gradient,var(--theme-primary,#ff6b6b));color:var(--theme-button-text,#fff);font-size:1rem}
+.detail-meta{display:flex;flex-direction:column;min-width:0}
+.detail-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;opacity:.6;color:var(--theme-card-text,#333)}
+.detail-value{font-weight:600;color:var(--theme-card-text,#333)}
 .rsvp-section{margin-top:30px}
 .rsvp-buttons{text-align:center;display:flex;flex-direction:column;gap:15px;align-items:center}
 .rsvp-button,.lookup-button{font-family:var(--theme-font-display,inherit);color:var(--theme-button-text,#fff);border:none;padding:15px 30px;border-radius:25px;font-size:1.1rem;font-weight:600;cursor:pointer;transition:all .3s ease;min-width:200px}
-.rsvp-button{background:var(--theme-button-gradient,linear-gradient(135deg,#4ecdc4,#44a08d));box-shadow:0 4px 15px #00000033}
-.rsvp-button:hover{transform:translateY(-2px);box-shadow:0 8px 25px #00000040}
+.rsvp-button{background:var(--theme-button-gradient,linear-gradient(135deg,#4ecdc4,#44a08d));box-shadow:0 4px 15px #00000033;animation:rsvpPulse 2.5s ease-in-out infinite}
+@keyframes rsvpPulse{0%,to{box-shadow:0 4px 15px #00000033}50%{box-shadow:0 4px 15px #00000033,0 0 0 8px var(--theme-primary-soft,#ff6b6b33)}}
+.rsvp-button:hover{transform:translateY(-2px);box-shadow:0 8px 25px #00000040;animation:none}
 .lookup-button{background:linear-gradient(135deg,var(--theme-secondary,#667eea),var(--theme-primary-dark,#764ba2));box-shadow:0 4px 15px #00000033}
 .lookup-button:hover{transform:translateY(-2px);box-shadow:0 8px 25px #00000040}
 .lookup-form{background:#f0f4ff;padding:25px;border-radius:15px;margin-top:20px;border:2px solid #e1e5e9}
@@ -418,7 +568,7 @@ export default {
 .radio-fieldset legend{margin-bottom:8px;color:#333;font-weight:500;padding:0}
 .form-group label{display:block;margin-bottom:8px;color:#333;font-weight:500}
 .form-group input,.form-group select{width:100%;padding:12px 15px;border:2px solid #e1e5e9;border-radius:10px;font-size:1rem;transition:border-color .3s ease}
-.form-group input:focus,.form-group select:focus{outline:none;border-color:var(--theme-primary,#ff6b6b)}
+.form-group input:focus,.form-group select:focus{border-color:var(--theme-primary,#ff6b6b);outline:3px solid var(--theme-primary-soft,#ff6b6b55);outline-offset:1px}
 .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .radio-group{display:flex;flex-direction:column;gap:12px}
 .radio-option{display:flex;align-items:center;cursor:pointer;padding:12px;border:2px solid #e1e5e9;border-radius:10px;transition:all .3s ease}
@@ -427,7 +577,7 @@ export default {
 .radio-option.selected{border-color:var(--theme-primary,#ff6b6b);background-color:#00000010}
 .radio-text{font-weight:500;color:#333}
 .form-group textarea{width:100%;padding:12px 15px;border:2px solid #e1e5e9;border-radius:10px;font-size:1rem;transition:border-color .3s ease;resize:vertical;min-height:80px;font-family:inherit}
-.form-group textarea:focus{outline:none;border-color:var(--theme-primary,#ff6b6b)}
+.form-group textarea:focus{border-color:var(--theme-primary,#ff6b6b);outline:3px solid var(--theme-primary-soft,#ff6b6b55);outline-offset:1px}
 .form-buttons{display:flex;gap:15px;margin-top:25px}
 .cancel-button,.submit-button{flex:1;padding:12px 20px;border:none;border-radius:10px;font-size:1rem;font-weight:600;cursor:pointer;transition:all .3s ease}
 .cancel-button{background:#e1e5e9;color:#666}
@@ -447,4 +597,5 @@ export default {
 .admin-button{background:#ffffffe6;color:#666;padding:12px 20px;border-radius:25px;text-decoration:none;font-size:.9rem;font-weight:500;box-shadow:0 4px 15px #0000001a;transition:all .3s ease;display:flex;align-items:center;gap:8px}
 .admin-button:hover{background:#fff;transform:translateY(-2px);box-shadow:0 8px 25px #00000026}
 @media (max-width: 768px){.invitation-container{padding:15px}.invitation-card{max-width:100%}.invitation-header,.invitation-body{padding:20px}.birthday-title{font-size:1.5rem}.form-buttons{flex-direction:column}.rsvp-buttons{flex-direction:column;gap:10px}.rsvp-button,.lookup-button{min-width:auto;width:100%}.admin-link{bottom:15px;right:15px}}
+@media (max-width: 420px){.event-details{grid-template-columns:1fr}.hero-emoji{font-size:2rem}.countdown-unit{min-width:56px;padding:10px 8px}.countdown-num{font-size:1.6rem}}
 </style>
