@@ -12,7 +12,9 @@ native type stripping — there is no build step.
 | -------------- | ------------------------------------------------------------- |
 | `server.ts`    | Bootstrap — opens the DB, builds the app, listens, shuts down |
 | `src/app.ts`   | `createApp(db, options)` factory — routes, middleware, zod validation |
-| `src/auth.ts`  | Better Auth (email/password) factory, migration + admin-seed helpers |
+| `src/auth.ts`  | Better Auth (email/password + Google) factory, roles, migration + admin-seed helpers |
+| `src/mailer.ts` | Resend/SMTP transport (nodemailer); logs instead of sending when unconfigured |
+| `src/emails.ts` | Verification and password-reset email templates |
 | `src/db.ts`    | Opens SQLite (better-sqlite3), runs schema/migrations, typed adapter |
 | `src/event.ts` | Reads event env vars; builds the `.ics` calendar invite       |
 | `src/logger.ts`| Shared pino structured logger                                 |
@@ -31,8 +33,9 @@ cannot drift away from the routes that actually run in production.
 - One RSVP per phone number, normalised to digits so the same number matches
   regardless of spacing/punctuation (re-submitting updates the existing row)
 - CSV export of the guest list and an `.ics` calendar invite
-- **Better Auth** email/password authentication on admin endpoints (cookie
-  sessions); single admin seeded from the environment, public sign-up disabled
+- **Better Auth** email/password + Google authentication (cookie sessions),
+  open registration with email verification, and a `user`/`admin` role that
+  gates every admin endpoint
 
 ## API Endpoints
 
@@ -118,20 +121,47 @@ DELETE /api/events/:id/rsvp/:rsvpId      # delete (scoped to the event)
 An unknown event id `404`s. Edits/deletes only affect RSVPs that belong to the
 named event.
 
-### Authentication (Better Auth — email/password)
+### Authentication (Better Auth — email/password + Google)
 ```
-ALL  /api/auth/*              # Better Auth handler (sign-in, sign-out, session…)
-POST /api/auth/sign-in/email  # { email, password } -> sets a session cookie
-POST /api/auth/sign-out       # clears the session
-GET  /api/auth/get-session    # current session (null when signed out)
+GET  /api/auth-providers               # { emailPassword, google } — what's configured
+ALL  /api/auth/*                       # Better Auth handler
+POST /api/auth/sign-up/email           # { email, password, name } -> sends a verification email
+POST /api/auth/sign-in/email           # { email, password } -> sets a session cookie
+GET  /api/auth/sign-in/social          # starts the Google redirect (when configured)
+GET  /api/auth/verify-email?token=…     # confirms the address, then signs the user in
+POST /api/auth/request-password-reset  # { email, redirectTo } -> emails a reset link
+POST /api/auth/reset-password          # { token, newPassword }
+POST /api/auth/send-verification-email # re-sends the confirmation link
+POST /api/auth/sign-out                # clears the session
+GET  /api/auth/get-session             # current session (null when signed out)
+GET  /api/me                           # the signed-in account + its role (401 when signed out)
 ```
-Public self-service registration is disabled: `POST /api/auth/sign-up/*` is
-blocked (`403`). The single admin account is seeded server-side from
-`ADMIN_EMAIL` / `ADMIN_PASSWORD` on first start. The auth tables
-(`user`, `session`, `account`, `verification`) are created by Better Auth's own
-migrations at boot, alongside the app's SQLite database.
+Registration is **open**: anyone may create an account with an email/password or
+with Google. Email/password accounts must follow the emailed confirmation link
+before they can sign in (`403` until then); Google accounts arrive verified.
 
-### Admin endpoints (require a valid admin session cookie)
+Signing up grants nothing. Every new account is created with `role: 'user'`, and
+the role field is declared `input: false` so it can never be set from a request
+body. `ADMIN_EMAIL` / `ADMIN_PASSWORD` seed the one bootstrap admin, written
+through the internal adapter (no verification email for an address the seed marks
+verified anyway) and re-granted the admin role on every boot.
+
+The auth tables (`user`, `session`, `account`, `verification`) are created by
+Better Auth's own migrations at boot, alongside the app's SQLite database. The
+`user` table carries the extra `role` column.
+
+### Account management (admin)
+```
+GET    /api/users             # every registered account (no credentials)
+PUT    /api/users/:id/role    # { role: "user" | "admin" }
+DELETE /api/users/:id         # delete an account, its sessions and credentials
+```
+Guarded against lockout and privilege games: an admin cannot demote or delete
+themselves, and the last remaining admin cannot be removed (`400`). Demoting an
+account deletes its sessions, so access is lost on the next request rather than
+at the next sign-in.
+
+### Admin endpoints (require a valid session **with the admin role**)
 ```
 POST   /api/rsvps            # manually add a submission (409 on duplicate phone)
 GET    /api/rsvps             # all submissions
@@ -140,7 +170,9 @@ GET    /api/rsvps/export.csv  # download all submissions as CSV
 PUT    /api/rsvp/:id          # edit a submission
 DELETE /api/rsvp/:id          # delete a submission
 ```
-Unauthenticated requests to these routes get `401`.
+Requests with no session get `401`. A valid session whose account has not been
+granted access gets `403` with `{ "code": "not_admin" }`, which the SPA turns
+into a "pending access" screen rather than a sign-in loop.
 
 ### Health Check
 ```
@@ -216,10 +248,17 @@ and runs automatically; the database file is created on first start (see
 ## Security Features
 
 - Rate limiting: global (300/15min), RSVP submit (5/hr), phone lookup (20/hr),
-  admin login (20/15min), admin data routes (100/15min) — all proxy-aware
+  admin login (20/15min), sign-up + password reset (10/hr), admin data routes
+  (300/15min) — all proxy-aware
 - Better Auth email/password sessions: passwords hashed (scrypt), httpOnly
   signed session cookies, built-in CSRF (Origin) checks on state-changing routes
-- Public sign-up disabled — only the env-seeded admin account can sign in
+- Open registration, but role-gated authorization: a new account reaches
+  nothing until an admin grants it, and `role` is never read from a request body
+- Email/password sign-up requires a confirmed address before a session is issued
+- Google account linking only adopts a local account that is itself verified,
+  so an unverified pre-registration can't capture someone's Google identity
+- Every mail-sending route (sign-up, password reset, resend) is rate-limited
+  separately (10/hr) so it can't be used to spam a third party
 - Restrictive Content-Security-Policy (allow-lists only the font/icon CDNs)
 - CORS disabled unless `CORS_ORIGIN` is set (same-origin SPA by default)
 - Helmet.js for the remaining security headers
@@ -243,10 +282,15 @@ for hashed `assets/`, no-cache for `index.html` / `env.js`, and an SPA fallback 
 | `PORT`                            | `3000`       | Port the server listens on (SPA + API)           |
 | `DB_PATH`                         | `../../data/rsvp.db` | SQLite database file location            |
 | `STATIC_DIR`                      | `../dist`    | Built SPA to serve (omit to run API-only)        |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD`  | —            | Seeds the single admin account (password ≥ 8 chars) |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD`  | —            | Seeds the bootstrap admin account (password ≥ 8 chars) |
 | `ADMIN_NAME`                      | `Admin`      | Display name for the seeded admin                |
 | `BETTER_AUTH_SECRET`              | —            | Session signing secret (**required in production**) |
 | `BETTER_AUTH_URL`                 | —            | External origin for cookie/origin scoping (set behind a proxy) |
+| `MAIL_FROM`                       | —            | Sender address for verification/reset mail (**required in production**) |
+| `RESEND_API_KEY` / `SMTP_PASS`    | —            | SMTP credential (**required in production**) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` | `smtp.resend.com` / `465` / `resend` | SMTP endpoint (defaults target Resend) |
+| `SMTP_SECURE`                     | port `465`   | Implicit TLS; set `false` for STARTTLS on 587 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Enables Google sign-in when both are set |
 | `EVENT_RSVP_DEADLINE`             | —            | `YYYY-MM-DD`; closes RSVPs (API + UI) once passed |
 | `CORS_ORIGIN`                     | —            | Comma-separated cross-origin allow-list (off by default) |
 | `TRUST_PROXY`                     | `1`          | Number of proxy hops to trust for `req.ip`       |

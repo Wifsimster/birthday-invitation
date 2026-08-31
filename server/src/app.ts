@@ -441,11 +441,17 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     message: { error: 'Trop de recherches, veuillez réessayer plus tard.' }
   });
 
-  // Strict limiter on admin endpoints to blunt automated abuse. Sign-in itself
-  // is throttled separately by loginLimiter (above).
+  // Limiter on admin endpoints to blunt automated abuse. Sign-in itself is
+  // throttled separately by loginLimiter (above).
+  //
+  // The dashboard polls every 30s (events + the selected event's counts and
+  // RSVPs), which is ~90 requests per 15 minutes on its own — a ceiling of 100
+  // meant a second open tab started getting 429s. These routes are already
+  // behind an authenticated admin session, so the limiter is a backstop against
+  // a runaway client rather than the primary control.
   const adminLimiter = rateLimit({
     windowMs: rateLimits.adminWindowMs ?? 15 * 60 * 1000,
-    max: rateLimits.adminMax ?? 100,
+    max: rateLimits.adminMax ?? 300,
     message: { error: 'Trop de tentatives, veuillez réessayer plus tard.' }
   });
   // Every admin route is rate-limited then requires a valid admin session.
