@@ -496,12 +496,13 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   // Health check also verifies the database is reachable/writable-ish so the
   // probe fails when SQLite is unusable, not just when the process is up.
   app.get('/api/health', asyncHandler((_req, res) => {
+    const timestamp = new Date().toISOString();
     try {
       db.get('SELECT 1');
     } catch {
-      return res.status(503).json({ status: 'unavailable', timestamp: new Date().toISOString() });
+      return res.status(503).json({ status: 'unavailable', timestamp });
     }
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+    res.json({ status: 'OK', timestamp });
   }));
 
   // --- Accounts -------------------------------------------------------------
