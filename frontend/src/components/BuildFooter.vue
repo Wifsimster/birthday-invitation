@@ -1,6 +1,15 @@
 <template>
-  <footer class="build-footer">
-    <span class="build-footer__text">v{{ appVersion }} · build {{ buildLabel }}</span>
+  <!--
+    The build stamp used to be a fixed pill floating over the page, which sat on
+    top of whatever happened to be at the bottom of the viewport — on a phone it
+    covered the "pick an event" hint and the last stat card. It is a footnote,
+    not chrome, so it now sits in the normal flow at the end of the document and
+    scrolls away with everything else.
+  -->
+  <footer class="pointer-events-none flex justify-center px-3 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+    <span
+      class="pointer-events-auto rounded-full bg-black/25 px-3 py-[5px] text-[0.72rem] leading-none tracking-[0.02em] text-white backdrop-blur-[4px] select-all"
+    >v{{ appVersion }} · build {{ buildLabel }}</span>
   </footer>
 </template>
 
@@ -23,30 +32,3 @@ export default {
   }
 };
 </script>
-
-<style scoped>
-.build-footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: center;
-  padding: 6px 12px;
-  pointer-events: none;
-  z-index: 50;
-}
-.build-footer__text {
-  font-family: Poppins, sans-serif;
-  font-size: 0.72rem;
-  line-height: 1;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.28);
-  border-radius: 999px;
-  padding: 5px 12px;
-  letter-spacing: 0.02em;
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
-  pointer-events: auto;
-}
-</style>

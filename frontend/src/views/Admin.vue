@@ -1,455 +1,886 @@
 <template>
-  <div class="admin-container">
-    <header class="topbar">
-      <div class="topbar-inner">
-        <div class="topbar-brand">
-          <span class="topbar-mark" aria-hidden="true">🎉</span>
-          <span>
-            <span class="topbar-title">Administration</span>
-            <span class="topbar-subtitle">Événements et confirmations</span>
-          </span>
+  <div class="flex min-h-full flex-col bg-background">
+    <!-- ===================== TOPBAR =====================
+      The actions used to sit side by side and simply ran out of room on a
+      phone, squeezing the brand down to a bare emoji. The invitation link and
+      sign-out now collapse into a menu below `sm`, so the bar keeps its title
+      and every control keeps a 44px touch target. -->
+    <header class="sticky top-0 z-40 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+      <div class="mx-auto flex h-14 w-full max-w-6xl items-center gap-2 px-4">
+        <span class="text-xl" aria-hidden="true">🎉</span>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-semibold leading-tight">Administration</p>
+          <p class="truncate text-xs leading-tight text-muted-foreground">Événements et confirmations</p>
         </div>
-        <div class="topbar-actions">
-          <button
-            class="icon-btn"
-            :class="{ spinning: refreshing }"
-            :disabled="refreshing"
-            title="Tout actualiser"
-            aria-label="Tout actualiser"
-            @click="refreshAll"
-          >↻</button>
-          <router-link to="/" class="btn btn-ghost">
-            ← <span class="hide-sm">Voir l'</span>invitation
-          </router-link>
-          <button class="btn btn-danger-soft" @click="logout">Déconnexion</button>
-        </div>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          :disabled="refreshing"
+          title="Tout actualiser"
+          aria-label="Tout actualiser"
+          @click="refreshAll"
+        >
+          <RefreshCwIcon :class="refreshing && 'animate-spin'" />
+        </Button>
+
+        <Button as-child variant="outline" size="sm" class="hidden sm:inline-flex">
+          <RouterLink to="/">
+            <ExternalLinkIcon />
+            Voir l'invitation
+          </RouterLink>
+        </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger as-child>
+            <Button variant="ghost" size="icon" aria-label="Menu du compte">
+              <CircleUserIcon />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" class="w-56">
+            <DropdownMenuLabel class="truncate font-normal text-muted-foreground">
+              {{ session.user?.email || 'Compte' }}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem as-child class="sm:hidden">
+              <RouterLink to="/">
+                <ExternalLinkIcon />
+                Voir l'invitation
+              </RouterLink>
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" @select="logout">
+              <LogOutIcon />
+              Déconnexion
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
 
-    <!-- ===================== EVENTS OVERVIEW ===================== -->
-    <section class="events-panel">
-      <div class="events-panel-head">
-        <h2>🎈 Événements</h2>
-        <div class="events-panel-actions">
-          <button class="btn btn-secondary" @click="loadEvents">↻ Actualiser</button>
-          <button class="btn btn-primary" @click="openCreateEventModal">+ Nouvel événement</button>
-        </div>
-      </div>
+    <main class="mx-auto w-full max-w-6xl flex-1 space-y-5 px-4 py-5">
+      <!-- ===================== EVENTS OVERVIEW ===================== -->
+      <Card>
+        <CardHeader>
+          <CardTitle class="flex items-center gap-2">
+            <span aria-hidden="true">🎈</span> Événements
+          </CardTitle>
+          <CardDescription>Sélectionne une fête pour gérer ses réponses, son thème et son lien.</CardDescription>
+          <CardAction>
+            <Button size="sm" @click="openCreateEventModal">
+              <PlusIcon />
+              Nouvel événement
+            </Button>
+          </CardAction>
+        </CardHeader>
 
-      <div v-if="eventsLoading && !events.length" class="loading" aria-live="polite">Chargement...</div>
-      <div v-else-if="eventsError" class="error" role="alert">{{ eventsError }}</div>
-      <div v-else-if="!events.length" class="no-data">Aucun événement pour le moment.</div>
-      <div v-else class="events-grid">
-        <div
-          v-for="ev in events"
-          :key="ev.id"
-          class="event-card"
-          :class="{ selected: ev.id === selectedEventId }"
-        >
-          <div class="event-card-top">
-            <span class="event-theme-icon" aria-hidden="true">{{ themeIcon(ev.theme) }}</span>
-            <span v-if="ev.is_default" class="event-badge">Actif</span>
+        <CardContent>
+          <div v-if="eventsLoading && !events.length" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-live="polite">
+            <span class="sr-only">Chargement des événements...</span>
+            <Skeleton v-for="n in 3" :key="n" class="h-44 w-full rounded-xl" />
           </div>
-          <h3 class="event-card-title">{{ ev.person || 'Sans nom' }}</h3>
-          <p class="event-card-meta">
-            <span v-if="ev.date">{{ formatEventDate(ev.date) }}</span>
-            <span v-if="ev.date && ev.town"> · </span>
-            <span v-if="ev.town">{{ ev.town }}</span>
-            <span v-if="!ev.date && !ev.town" class="event-card-meta-empty">Détails à compléter</span>
-          </p>
-          <p class="event-card-theme">{{ themeLabel(ev.theme) }}</p>
-          <div class="event-card-stats">
-            <span><strong>{{ ev.responses || 0 }}</strong> rép.</span>
-            <span><strong>{{ ev.confirmations || 0 }}</strong> conf.</span>
-            <span><strong>{{ ev.total_guests || 0 }}</strong> inv.</span>
-          </div>
-          <div class="event-card-actions">
-            <button class="btn btn-primary btn-sm" @click="selectEvent(ev)">Gérer</button>
-            <button class="btn btn-secondary btn-sm" @click="openEditEventModal(ev)">Modifier</button>
-            <button v-if="!ev.is_default" class="btn btn-danger-soft btn-sm" @click="openDeleteEventModal(ev)">Supprimer</button>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <!-- ===================== SECTION TABS =====================
-      The screen used to be one long scroll: picking an event pushed its
-      responses below the theme and share panels. The per-event work is split
-      across tabs instead; "Accès" is account-level so it stays reachable even
-      with no event selected. -->
-    <nav class="tabs" aria-label="Sections d'administration">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        type="button"
-        class="tab"
-        :class="{ active: activeTab === tab.id, disabled: tab.needsEvent && !selectedEvent }"
-        :aria-current="activeTab === tab.id ? 'page' : undefined"
-        @click="activeTab = tab.id"
-      >
-        <span aria-hidden="true">{{ tab.icon }}</span> {{ tab.label }}
-        <span v-if="tab.id === 'responses' && selectedEvent" class="tab-count">{{ stats.total_responses }}</span>
-        <span v-if="tab.id === 'access'" class="tab-count">{{ users.length }}</span>
-      </button>
-    </nav>
+          <Alert v-else-if="eventsError" variant="destructive" role="alert">
+            <CircleAlertIcon />
+            <AlertTitle>Chargement impossible</AlertTitle>
+            <AlertDescription>{{ eventsError }}</AlertDescription>
+          </Alert>
 
-    <!-- ===================== SELECTED EVENT MANAGEMENT ===================== -->
-    <p v-if="tabNeedsEvent && !selectedEvent" class="no-data">
-      <span class="no-data-icon" aria-hidden="true">👆</span>
-      Choisis un événement ci-dessus pour voir cette section.
-    </p>
-
-    <template v-if="selectedEvent && tabNeedsEvent">
-      <div class="selected-head">
-        <h2>Gestion : <span class="selected-name">{{ selectedEvent.person || 'Sans nom' }}</span></h2>
-        <button class="btn btn-ghost" @click="clearSelection">Fermer</button>
-      </div>
-
-      <div v-show="activeTab === 'responses'" class="stats">
-        <div class="stat-card">
-          <div class="stat-icon" aria-hidden="true">📨</div>
-          <div class="stat-number">{{ stats.total_responses }}</div>
-          <div class="stat-label">Total réponses</div>
-        </div>
-        <div class="stat-card positive">
-          <div class="stat-icon" aria-hidden="true">✅</div>
-          <div class="stat-number">{{ stats.confirmations }}</div>
-          <div class="stat-label">Confirmations</div>
-        </div>
-        <div class="stat-card negative">
-          <div class="stat-icon" aria-hidden="true">❌</div>
-          <div class="stat-number">{{ stats.declined }}</div>
-          <div class="stat-label">Déclins</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" aria-hidden="true">👥</div>
-          <div class="stat-number">{{ stats.total_guests }}</div>
-          <div class="stat-label">Total invités</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon" aria-hidden="true">📊</div>
-          <div class="stat-number">{{ acceptanceRate }}%</div>
-          <div class="rate-bar" role="img" :aria-label="`Taux d'acceptation ${acceptanceRate} %`">
-            <span class="rate-fill" :style="{ width: acceptanceRate + '%' }"></span>
-          </div>
-          <div class="stat-label">Taux d'acceptation</div>
-        </div>
-      </div>
-
-      <div v-show="activeTab === 'theme'" class="theme-panel">
-        <h2>🎨 Thème de l'invitation</h2>
-        <p class="theme-hint">Choisis l'ambiance affichée aux invités. Le changement est immédiat.</p>
-        <div class="theme-grid">
-          <button
-            v-for="t in themes"
-            :key="t.id"
-            type="button"
-            class="theme-card"
-            :class="{ active: t.id === currentTheme }"
-            :disabled="themeSaving"
-            @click="selectTheme(t.id)"
-          >
-            <span class="theme-icon">{{ t.icon }}</span>
-            <span class="theme-label">{{ t.label }}</span>
-            <span class="theme-swatches">
-              <span class="swatch" :style="{ background: t.palette.primary }"></span>
-              <span class="swatch" :style="{ background: t.palette.secondary }"></span>
-              <span class="swatch" :style="{ background: t.palette.accent }"></span>
-            </span>
-            <span v-if="t.id === currentTheme" class="theme-check">✓ Actif</span>
-          </button>
-        </div>
-      </div>
-
-      <div v-show="activeTab === 'share'" class="share-panel">
-        <h2><span aria-hidden="true">🔗</span> Partager l'invitation</h2>
-        <p class="theme-hint">Diffuse ce lien ou ce QR code pour inviter tes convives.</p>
-        <div class="share-row">
-          <input class="form-input share-url" type="text" :value="invitationUrl" readonly aria-label="Lien de l'invitation" />
-          <button type="button" class="btn btn-primary" @click="copyLink">{{ linkCopied ? '✓ Copié' : 'Copier le lien' }}</button>
-        </div>
-        <img v-if="qrDataUrl" :src="qrDataUrl" alt="QR code de l'invitation" class="qr-img" />
-      </div>
-
-      <div v-show="activeTab === 'responses'" class="list-actions">
-        <button class="btn btn-secondary" @click="loadEventData">↻ Actualiser</button>
-        <a class="btn btn-secondary" :href="csvUrl">⬇ Exporter CSV</a>
-        <button class="btn btn-primary" @click="openCreateModal">+ Ajouter une réponse</button>
-      </div>
-
-      <div v-show="activeTab === 'responses'" class="rsvp-list">
-        <h2>Réponses</h2>
-
-        <!-- Search, status chips and sort. All client-side over the already
-             loaded list, so filtering never costs a request. -->
-        <div v-if="rsvps.length" class="toolbar-controls">
-          <input
-            v-model.trim="searchQuery"
-            class="form-input search-input"
-            type="search"
-            placeholder="Rechercher un nom, un email, un téléphone..."
-            aria-label="Rechercher une réponse"
-          />
-          <div class="filter-chips" role="group" aria-label="Filtrer par statut">
-            <button
-              v-for="f in statusFilters"
-              :key="f.id"
-              type="button"
-              class="chip"
-              :class="{ active: statusFilter === f.id }"
-              :aria-pressed="statusFilter === f.id"
-              @click="statusFilter = f.id"
-            >{{ f.label }} <span class="chip-count">{{ statusCounts[f.id] }}</span></button>
-          </div>
-          <select v-model="sortBy" class="form-input sort-select" aria-label="Trier les réponses">
-            <option value="recent">Plus récentes</option>
-            <option value="name">Nom (A→Z)</option>
-            <option value="guests">Nombre d'invités</option>
-          </select>
-        </div>
-
-        <div v-if="loading" class="loading" aria-live="polite">Chargement...</div>
-        <div v-else-if="error" class="error" role="alert">{{ error }}</div>
-        <div v-else-if="rsvps.length === 0" class="no-data">
-          <span class="no-data-icon" aria-hidden="true">📭</span>
-          Aucune réponse pour le moment.
-        </div>
-        <div v-else-if="filteredRsvps.length === 0" class="no-data">
-          <span class="no-data-icon" aria-hidden="true">🔍</span>
-          Aucune réponse ne correspond à cette recherche.
-          <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters">Réinitialiser</button>
-        </div>
-        <template v-else>
-          <p class="result-count" aria-live="polite">
-            {{ filteredRsvps.length }} réponse{{ filteredRsvps.length > 1 ? 's' : '' }} affichée{{ filteredRsvps.length > 1 ? 's' : '' }}
-            <template v-if="filteredRsvps.length !== rsvps.length">sur {{ rsvps.length }}</template>
-          </p>
-          <div v-for="rsvp in filteredRsvps" :key="rsvp.id" class="rsvp-item" :class="{ declined: rsvp.attending === 'no' }" aria-live="polite">
-            <div class="rsvp-header">
-              <h3>
-                <span class="status-indicator" :class="rsvp.attending === 'yes' ? 'accepted' : 'declined'" aria-hidden="true">{{ rsvp.attending === 'yes' ? '✅' : '❌' }}</span>
-                {{ rsvp.name }}
-              </h3>
-              <div class="rsvp-actions">
-                <button class="edit-btn" @click="openEditModal(rsvp)" title="Modifier" :aria-label="`Modifier la réponse de ${rsvp.name}`">✏️</button>
-                <button class="delete-btn" @click="openDeleteModal(rsvp)" title="Supprimer" :aria-label="`Supprimer la réponse de ${rsvp.name}`">🗑️</button>
-              </div>
+          <div v-else-if="!events.length" class="flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-10 text-center">
+            <span class="text-3xl" aria-hidden="true">🎂</span>
+            <div>
+              <p class="font-medium">Aucun événement pour le moment</p>
+              <p class="text-sm text-muted-foreground">Crée une première fête pour ouvrir les invitations.</p>
             </div>
-            <div class="rsvp-details">
-              <div class="detail">
-                <strong>Statut :</strong>
-                <span :class="rsvp.attending === 'yes' ? 'status-accepted' : 'status-declined'">{{ rsvp.attending === 'yes' ? 'Confirmé' : 'Décliné' }}</span>
-              </div>
-              <div class="detail" v-if="rsvp.email"><strong>✉️ Email :</strong> {{ rsvp.email }}</div>
-              <div class="detail"><strong>📱 Téléphone :</strong> {{ rsvp.phone }}</div>
-              <div class="detail" v-if="rsvp.attending === 'yes'"><strong>👥 Nombre d'invités :</strong> {{ rsvp.guests }}</div>
-              <div class="detail" v-if="rsvp.dietary_restrictions"><strong>🥜 Allergies :</strong> {{ rsvp.dietary_restrictions }}</div>
-              <div class="detail"><strong>🕒 Mis à jour :</strong> {{ formatDate(rsvp.updated_at) }}</div>
-            </div>
-            <div v-if="rsvp.message" class="message">💌 {{ rsvp.message }}</div>
+            <Button size="sm" @click="openCreateEventModal">
+              <PlusIcon />
+              Nouvel événement
+            </Button>
           </div>
+
+          <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <!-- The whole card selects the event: the title button carries a
+                 stretched hit area so there is still exactly one focusable
+                 control for it, and the menu sits above that layer. -->
+            <div
+              v-for="ev in events"
+              :key="ev.id"
+              class="relative flex flex-col gap-3 rounded-xl border bg-card p-4 transition-colors"
+              :class="ev.id === selectedEventId
+                ? 'border-primary ring-3 ring-ring/25'
+                : 'hover:border-primary/40 hover:bg-accent/40'"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <span class="text-2xl" aria-hidden="true">{{ themeIcon(ev.theme) }}</span>
+                <div class="relative z-10 flex items-center gap-1">
+                  <Badge v-if="ev.is_default" class="bg-success text-success-foreground">Actif</Badge>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger as-child>
+                      <Button variant="ghost" size="icon-sm" :aria-label="`Actions pour ${ev.person || 'cet événement'}`">
+                        <EllipsisVerticalIcon />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem @select="openEditEventModal(ev)">
+                        <PencilIcon />
+                        Modifier
+                      </DropdownMenuItem>
+                      <DropdownMenuItem @select="copyEventLink(ev)">
+                        <LinkIcon />
+                        Copier le lien
+                      </DropdownMenuItem>
+                      <template v-if="!ev.is_default">
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" @select="openDeleteEventModal(ev)">
+                          <Trash2Icon />
+                          Supprimer
+                        </DropdownMenuItem>
+                      </template>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+
+              <div class="min-w-0">
+                <h3 class="truncate font-semibold">
+                  <button
+                    type="button"
+                    class="text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
+                    :aria-pressed="ev.id === selectedEventId"
+                    @click="selectEvent(ev)"
+                  >{{ ev.person || 'Sans nom' }}</button>
+                </h3>
+                <p class="mt-0.5 text-sm text-muted-foreground">
+                  <template v-if="ev.date || ev.town">
+                    <span v-if="ev.date">{{ formatEventDate(ev.date) }}</span>
+                    <span v-if="ev.date && ev.town"> · </span>
+                    <span v-if="ev.town">{{ ev.town }}</span>
+                  </template>
+                  <em v-else class="not-italic opacity-70">Détails à compléter</em>
+                </p>
+                <p class="mt-1 text-xs uppercase tracking-wide text-muted-foreground">{{ themeLabel(ev.theme) }}</p>
+              </div>
+
+              <dl class="mt-auto flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                <div class="flex items-baseline gap-1">
+                  <dt class="order-2 text-muted-foreground">rép.</dt>
+                  <dd class="order-1 font-semibold">{{ ev.responses || 0 }}</dd>
+                </div>
+                <div class="flex items-baseline gap-1">
+                  <dt class="order-2 text-muted-foreground">conf.</dt>
+                  <dd class="order-1 font-semibold text-success">{{ ev.confirmations || 0 }}</dd>
+                </div>
+                <div class="flex items-baseline gap-1">
+                  <dt class="order-2 text-muted-foreground">inv.</dt>
+                  <dd class="order-1 font-semibold">{{ ev.total_guests || 0 }}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <!-- ===================== SECTION TABS ===================== -->
+      <Tabs v-model="activeTab" class="gap-4">
+        <!-- Full width on a phone so the four tabs share the strip; back to
+             shadcn's content width once there is room to spare. -->
+        <TabsList class="w-full justify-start overflow-x-auto sm:w-fit">
+          <!-- Four labels plus their emoji overflow a 390px strip and the last
+               one gets clipped mid-word; the emoji are decoration, so they are
+               the part that goes. -->
+          <TabsTrigger v-for="tab in tabs" :key="tab.id" :value="tab.id" class="text-xs sm:text-sm">
+            <span class="hidden sm:inline" aria-hidden="true">{{ tab.icon }}</span>
+            {{ tab.label }}
+            <Badge v-if="tab.id === 'responses' && selectedEvent" variant="secondary">{{ stats.total_responses }}</Badge>
+            <Badge v-if="tab.id === 'access'" variant="secondary">{{ users.length }}</Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        <!-- Shared "no event picked yet" state for the per-event tabs. -->
+        <template v-for="tab in tabs" :key="`empty-${tab.id}`">
+          <TabsContent v-if="tab.needsEvent && !selectedEvent" :value="tab.id">
+            <div class="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-12 text-center">
+              <span class="text-3xl" aria-hidden="true">👆</span>
+              <p class="font-medium">Choisis un événement</p>
+              <p class="text-sm text-muted-foreground">Sélectionne une fête ci-dessus pour voir cette section.</p>
+            </div>
+          </TabsContent>
         </template>
-      </div>
-    </template>
 
-    <!-- ===================== ACCESS / USERS ===================== -->
-    <section v-show="activeTab === 'access'" class="users-panel">
-      <div class="events-panel-head">
-        <h2>👥 Accès</h2>
-        <button class="btn btn-secondary" @click="loadUsers">↻ Actualiser</button>
-      </div>
-      <p class="theme-hint">
-        Toute personne peut créer un compte, mais seuls les comptes
-        <strong>administrateur</strong> accèdent à cette page.
-      </p>
-
-      <div v-if="usersLoading && !users.length" class="loading" aria-live="polite">Chargement...</div>
-      <div v-else-if="usersError" class="error" role="alert">{{ usersError }}</div>
-      <table v-else class="users-table">
-        <thead>
-          <tr><th>Compte</th><th>Rôle</th><th class="users-actions-col">Actions</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="u in users" :key="u.id">
-            <td>
-              <div class="user-name">
-                {{ u.name || '—' }}
-                <span v-if="u.id === currentUserId" class="user-you">vous</span>
-              </div>
-              <div class="user-email">
-                {{ u.email }}
-                <span v-if="!u.emailVerified" class="user-unverified" title="Email non confirmé">non confirmé</span>
-              </div>
-            </td>
-            <td>
-              <span class="role-badge" :class="u.role">{{ u.role === 'admin' ? 'Administrateur' : 'Utilisateur' }}</span>
-            </td>
-            <td class="users-actions-col">
-              <button
-                v-if="u.role !== 'admin'"
-                class="btn btn-sm btn-primary"
-                :disabled="userBusyId === u.id"
-                @click="setUserRole(u, 'admin')"
-              >Donner l'accès</button>
-              <button
-                v-else
-                class="btn btn-sm btn-secondary"
-                :disabled="userBusyId === u.id || u.id === currentUserId"
-                @click="setUserRole(u, 'user')"
-              >Retirer l'accès</button>
-              <button
-                class="btn btn-sm btn-danger-soft"
-                :disabled="userBusyId === u.id || u.id === currentUserId"
-                @click="askDeleteUser(u)"
-              >Supprimer</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
-
-
-    <!-- ===================== RSVP EDIT/CREATE MODAL ===================== -->
-    <div v-if="showEditModal" class="modal-overlay">
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-title">
-        <div class="modal-header">
-          <h3 id="edit-title">{{ editMode === 'create' ? 'Ajouter une réponse' : 'Modifier la réponse' }}</h3>
-          <button class="close-btn" ref="editClose" @click="closeEditModal" aria-label="Fermer">×</button>
-        </div>
-        <form class="edit-form" @submit.prevent="saveEdit">
-          <div class="form-group">
-            <label for="edit-status">Statut <span aria-hidden="true">*</span></label>
-            <select id="edit-status" class="form-input" v-model="editForm.attending" required aria-required="true">
-              <option value="yes">Confirmé</option>
-              <option value="no">Décliné</option>
-            </select>
+        <!-- ---------- Responses ---------- -->
+        <TabsContent v-if="selectedEvent" value="responses" class="space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-lg font-semibold">
+              Gestion : <span class="text-primary">{{ selectedEvent.person || 'Sans nom' }}</span>
+            </h2>
+            <Button variant="ghost" size="sm" @click="clearSelection">
+              <XIcon />
+              Fermer
+            </Button>
           </div>
-          <div class="form-group"><label for="edit-name">Nom <span aria-hidden="true">*</span></label><input id="edit-name" ref="editName" class="form-input" v-model="editForm.name" required aria-required="true" /></div>
-          <div class="form-group"><label for="edit-email"><span aria-hidden="true">✉️</span> Email</label><input id="edit-email" class="form-input" type="email" v-model="editForm.email" /></div>
-          <div class="form-group"><label for="edit-phone"><span aria-hidden="true">📱</span> Téléphone <span aria-hidden="true">*</span></label><input id="edit-phone" class="form-input" v-model="editForm.phone" required aria-required="true" /></div>
-          <div class="form-group"><label for="edit-guests">Nombre d'invités</label><input id="edit-guests" class="form-input" type="number" min="0" max="10" v-model.number="editForm.guests" /></div>
-          <div class="form-group"><label for="edit-diet"><span aria-hidden="true">🥜</span> Allergies / régime</label><textarea id="edit-diet" class="form-input" v-model="editForm.dietary_restrictions"></textarea></div>
-          <div class="form-group"><label for="edit-message"><span aria-hidden="true">💌</span> Message</label><textarea id="edit-message" class="form-input" v-model="editForm.message"></textarea></div>
-          <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" @click="closeEditModal">Annuler</button>
-            <button type="submit" class="btn btn-primary" :disabled="editLoading">{{ editLoading ? 'Sauvegarde...' : (editMode === 'create' ? 'Ajouter' : 'Sauvegarder') }}</button>
+
+          <!-- Two columns on a phone instead of one: the cards were stacking
+               full-width, so the five figures took a whole screen to read. -->
+          <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <div class="rounded-xl border bg-card p-4">
+              <div class="text-lg" aria-hidden="true">📨</div>
+              <div class="mt-1 text-2xl font-bold tabular-nums">{{ stats.total_responses }}</div>
+              <div class="text-xs uppercase tracking-wide text-muted-foreground">Total réponses</div>
+            </div>
+            <div class="rounded-xl border bg-card p-4">
+              <div class="text-lg" aria-hidden="true">✅</div>
+              <div class="mt-1 text-2xl font-bold tabular-nums text-success">{{ stats.confirmations }}</div>
+              <div class="text-xs uppercase tracking-wide text-muted-foreground">Confirmations</div>
+            </div>
+            <div class="rounded-xl border bg-card p-4">
+              <div class="text-lg" aria-hidden="true">❌</div>
+              <div class="mt-1 text-2xl font-bold tabular-nums text-destructive">{{ stats.declined }}</div>
+              <div class="text-xs uppercase tracking-wide text-muted-foreground">Déclins</div>
+            </div>
+            <div class="rounded-xl border bg-card p-4">
+              <div class="text-lg" aria-hidden="true">👥</div>
+              <div class="mt-1 text-2xl font-bold tabular-nums">{{ stats.total_guests }}</div>
+              <div class="text-xs uppercase tracking-wide text-muted-foreground">Total invités</div>
+            </div>
+            <div class="col-span-2 rounded-xl border bg-card p-4 lg:col-span-1">
+              <div class="text-lg" aria-hidden="true">📊</div>
+              <div class="mt-1 text-2xl font-bold tabular-nums">{{ acceptanceRate }}%</div>
+              <Progress
+                :model-value="acceptanceRate"
+                class="my-2"
+                :aria-label="`Taux d'acceptation ${acceptanceRate} %`"
+              />
+              <div class="text-xs uppercase tracking-wide text-muted-foreground">Taux d'acceptation</div>
+            </div>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Réponses</CardTitle>
+              <CardDescription>Les réponses arrivent en direct, la liste se rafraîchit toute seule.</CardDescription>
+              <CardAction class="flex flex-wrap justify-end gap-2">
+                <Button variant="outline" size="sm" :disabled="loading" @click="loadEventData">
+                  <RefreshCwIcon :class="loading && 'animate-spin'" />
+                  <span class="sr-only sm:not-sr-only">Actualiser</span>
+                </Button>
+                <Button as-child variant="outline" size="sm">
+                  <a :href="csvUrl">
+                    <DownloadIcon />
+                    <span class="sr-only sm:not-sr-only">Exporter CSV</span>
+                  </a>
+                </Button>
+                <Button size="sm" @click="openCreateModal">
+                  <PlusIcon />
+                  Ajouter
+                </Button>
+              </CardAction>
+            </CardHeader>
+
+            <CardContent class="space-y-4">
+              <!-- Search, status filter and sort. All client-side over the
+                   already loaded list, so filtering never costs a request. -->
+              <div v-if="rsvps.length" class="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <div class="relative">
+                  <SearchIcon class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    ref="search"
+                    v-model.trim="searchQuery"
+                    class="pl-9"
+                    type="search"
+                    placeholder="Rechercher un nom, un email, un téléphone..."
+                    aria-label="Rechercher une réponse"
+                  />
+                </div>
+                <Select v-model="sortBy">
+                  <SelectTrigger class="w-full sm:w-48 min-w-0 *:data-[slot=select-value]:min-w-0" aria-label="Trier les réponses">
+                    <ArrowUpDownIcon />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recent">Plus récentes</SelectItem>
+                    <SelectItem value="name">Nom (A→Z)</SelectItem>
+                    <SelectItem value="guests">Nombre d'invités</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div class="flex flex-wrap gap-2 sm:col-span-2" role="group" aria-label="Filtrer par statut">
+                  <Button
+                    v-for="f in statusFilters"
+                    :key="f.id"
+                    type="button"
+                    size="sm"
+                    :variant="statusFilter === f.id ? 'default' : 'outline'"
+                    :aria-pressed="statusFilter === f.id"
+                    @click="statusFilter = f.id"
+                  >
+                    {{ f.label }}
+                    <Badge :variant="statusFilter === f.id ? 'secondary' : 'outline'">{{ statusCounts[f.id] }}</Badge>
+                  </Button>
+                </div>
+              </div>
+
+              <div v-if="loading && !rsvps.length" class="space-y-3" aria-live="polite">
+                <span class="sr-only">Chargement des réponses...</span>
+                <Skeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-xl" />
+              </div>
+
+              <Alert v-else-if="error" variant="destructive" role="alert">
+                <CircleAlertIcon />
+                <AlertTitle>Chargement impossible</AlertTitle>
+                <AlertDescription>{{ error }}</AlertDescription>
+              </Alert>
+
+              <div v-else-if="!rsvps.length" class="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-12 text-center">
+                <span class="text-3xl" aria-hidden="true">📭</span>
+                <p class="font-medium">Aucune réponse pour le moment</p>
+                <p class="text-sm text-muted-foreground">Partage le lien de l'invitation pour lancer les réponses.</p>
+                <Button variant="outline" size="sm" @click="activeTab = 'share'">
+                  <LinkIcon />
+                  Partager l'invitation
+                </Button>
+              </div>
+
+              <div v-else-if="!filteredRsvps.length" class="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-12 text-center">
+                <span class="text-3xl" aria-hidden="true">🔍</span>
+                <p class="font-medium">Aucun résultat</p>
+                <p class="text-sm text-muted-foreground">Aucune réponse ne correspond à cette recherche.</p>
+                <Button variant="outline" size="sm" @click="resetFilters">Réinitialiser</Button>
+              </div>
+
+              <template v-else>
+                <p class="text-sm text-muted-foreground" aria-live="polite">
+                  {{ filteredRsvps.length }} réponse{{ filteredRsvps.length > 1 ? 's' : '' }} affichée{{ filteredRsvps.length > 1 ? 's' : '' }}
+                  <template v-if="filteredRsvps.length !== rsvps.length">sur {{ rsvps.length }}</template>
+                </p>
+
+                <ul class="space-y-3">
+                  <li
+                    v-for="rsvp in filteredRsvps"
+                    :key="rsvp.id"
+                    class="rounded-xl border bg-card p-4"
+                    :class="rsvp.attending === 'yes' ? 'border-l-4 border-l-success' : 'border-l-4 border-l-destructive'"
+                  >
+                    <div class="flex items-start justify-between gap-2">
+                      <h3 class="flex min-w-0 items-center gap-2 font-semibold">
+                        <span aria-hidden="true">{{ rsvp.attending === 'yes' ? '✅' : '❌' }}</span>
+                        <span class="truncate">{{ rsvp.name }}</span>
+                      </h3>
+                      <div class="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          :aria-label="`Modifier la réponse de ${rsvp.name}`"
+                          @click="openEditModal(rsvp)"
+                        >
+                          <PencilIcon />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          class="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          :aria-label="`Supprimer la réponse de ${rsvp.name}`"
+                          @click="openDeleteModal(rsvp)"
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <dl class="mt-3 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+                      <div class="flex gap-2">
+                        <dt class="font-medium text-muted-foreground">Statut</dt>
+                        <dd :class="rsvp.attending === 'yes' ? 'font-semibold text-success' : 'font-semibold text-destructive'">
+                          {{ rsvp.attending === 'yes' ? 'Confirmé' : 'Décliné' }}
+                        </dd>
+                      </div>
+                      <div v-if="rsvp.email" class="flex min-w-0 gap-2">
+                        <dt class="font-medium text-muted-foreground">✉️ Email</dt>
+                        <dd class="truncate">
+                          <a class="underline-offset-4 hover:underline" :href="`mailto:${rsvp.email}`">{{ rsvp.email }}</a>
+                        </dd>
+                      </div>
+                      <div class="flex gap-2">
+                        <dt class="font-medium text-muted-foreground">📱 Téléphone</dt>
+                        <dd>
+                          <a class="underline-offset-4 hover:underline" :href="`tel:${rsvp.phone}`">{{ rsvp.phone }}</a>
+                        </dd>
+                      </div>
+                      <div v-if="rsvp.attending === 'yes'" class="flex gap-2">
+                        <dt class="font-medium text-muted-foreground">👥 Invités</dt>
+                        <dd>{{ rsvp.guests }}</dd>
+                      </div>
+                      <div v-if="rsvp.dietary_restrictions" class="flex gap-2 sm:col-span-2">
+                        <dt class="font-medium text-muted-foreground">🥜 Allergies</dt>
+                        <dd>{{ rsvp.dietary_restrictions }}</dd>
+                      </div>
+                      <div class="flex gap-2 sm:col-span-2">
+                        <dt class="font-medium text-muted-foreground">🕒 Mis à jour</dt>
+                        <dd class="text-muted-foreground">{{ formatDate(rsvp.updated_at) }}</dd>
+                      </div>
+                    </dl>
+
+                    <p v-if="rsvp.message" class="mt-3 rounded-lg bg-muted px-3 py-2 text-sm">💌 {{ rsvp.message }}</p>
+                  </li>
+                </ul>
+              </template>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <!-- ---------- Theme ---------- -->
+        <TabsContent v-if="selectedEvent" value="theme">
+          <Card>
+            <CardHeader>
+              <CardTitle class="flex items-center gap-2"><span aria-hidden="true">🎨</span> Thème de l'invitation</CardTitle>
+              <CardDescription>Choisis l'ambiance affichée aux invités. Le changement est immédiat.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                <button
+                  v-for="t in themes"
+                  :key="t.id"
+                  type="button"
+                  class="flex flex-col items-center gap-2 rounded-xl border bg-card p-4 text-center outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
+                  :class="t.id === currentTheme ? 'border-primary ring-3 ring-ring/25' : 'hover:border-primary/40 hover:bg-accent/40'"
+                  :disabled="themeSaving"
+                  :aria-pressed="t.id === currentTheme"
+                  @click="selectTheme(t.id)"
+                >
+                  <span class="text-2xl" aria-hidden="true">{{ t.icon }}</span>
+                  <span class="text-sm font-medium">{{ t.label }}</span>
+                  <span class="flex gap-1" aria-hidden="true">
+                    <span class="size-3 rounded-full ring-1 ring-black/10" :style="{ background: t.palette.primary }"></span>
+                    <span class="size-3 rounded-full ring-1 ring-black/10" :style="{ background: t.palette.secondary }"></span>
+                    <span class="size-3 rounded-full ring-1 ring-black/10" :style="{ background: t.palette.accent }"></span>
+                  </span>
+                  <Badge v-if="t.id === currentTheme" class="bg-success text-success-foreground">
+                    <CheckIcon />
+                    Actif
+                  </Badge>
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <!-- ---------- Share ---------- -->
+        <TabsContent v-if="selectedEvent" value="share">
+          <Card>
+            <CardHeader>
+              <CardTitle class="flex items-center gap-2"><span aria-hidden="true">🔗</span> Partager l'invitation</CardTitle>
+              <CardDescription>Diffuse ce lien ou ce QR code pour inviter tes convives.</CardDescription>
+            </CardHeader>
+            <CardContent class="space-y-4">
+              <div class="flex flex-col gap-2 sm:flex-row">
+                <Input :model-value="invitationUrl" readonly aria-label="Lien de l'invitation" @focus="$event.target.select()" />
+                <Button class="shrink-0" @click="copyLink">
+                  <CheckIcon v-if="linkCopied" />
+                  <CopyIcon v-else />
+                  {{ linkCopied ? 'Copié' : 'Copier le lien' }}
+                </Button>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <Button as-child variant="outline" size="sm">
+                  <a :href="whatsAppShareUrl" target="_blank" rel="noopener">
+                    <SendIcon />
+                    Envoyer sur WhatsApp
+                  </a>
+                </Button>
+                <Button as-child variant="outline" size="sm">
+                  <a :href="invitationUrl" target="_blank" rel="noopener">
+                    <ExternalLinkIcon />
+                    Ouvrir l'invitation
+                  </a>
+                </Button>
+                <Button v-if="qrDataUrl" as-child variant="outline" size="sm">
+                  <a :href="qrDataUrl" :download="qrFileName">
+                    <DownloadIcon />
+                    Télécharger le QR
+                  </a>
+                </Button>
+              </div>
+              <img
+                v-if="qrDataUrl"
+                :src="qrDataUrl"
+                alt="QR code de l'invitation"
+                class="mx-auto size-48 rounded-xl border bg-white p-2 sm:mx-0"
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <!-- ---------- Access / users ---------- -->
+        <TabsContent value="access">
+          <Card>
+            <CardHeader>
+              <CardTitle class="flex items-center gap-2"><span aria-hidden="true">👥</span> Accès</CardTitle>
+              <CardDescription>
+                Toute personne peut créer un compte, mais seuls les comptes
+                <strong class="font-medium">administrateur</strong> accèdent à cette page.
+              </CardDescription>
+              <CardAction>
+                <Button variant="outline" size="sm" :disabled="usersLoading" @click="loadUsers">
+                  <RefreshCwIcon :class="usersLoading && 'animate-spin'" />
+                  <span class="sr-only sm:not-sr-only">Actualiser</span>
+                </Button>
+              </CardAction>
+            </CardHeader>
+
+            <CardContent>
+              <div v-if="usersLoading && !users.length" class="space-y-2" aria-live="polite">
+                <span class="sr-only">Chargement des comptes...</span>
+                <Skeleton v-for="n in 3" :key="n" class="h-14 w-full rounded-lg" />
+              </div>
+
+              <Alert v-else-if="usersError" variant="destructive" role="alert">
+                <CircleAlertIcon />
+                <AlertTitle>Chargement impossible</AlertTitle>
+                <AlertDescription>{{ usersError }}</AlertDescription>
+              </Alert>
+
+              <!-- A table below `sm` turned into stacked cells with no headers,
+                   so small screens get purpose-built rows instead. -->
+              <template v-else>
+                <ul class="divide-y sm:hidden">
+                  <li v-for="u in users" :key="u.id" class="flex flex-col gap-2 py-3">
+                    <div class="min-w-0">
+                      <p class="flex items-center gap-2 font-medium">
+                        <span class="truncate">{{ u.name || '—' }}</span>
+                        <Badge v-if="u.id === currentUserId" variant="secondary">vous</Badge>
+                      </p>
+                      <p class="truncate text-sm text-muted-foreground">{{ u.email }}</p>
+                      <div class="mt-1 flex flex-wrap gap-1">
+                        <Badge :variant="u.role === 'admin' ? 'default' : 'outline'">
+                          {{ u.role === 'admin' ? 'Administrateur' : 'Utilisateur' }}
+                        </Badge>
+                        <Badge v-if="!u.emailVerified" variant="outline" class="text-muted-foreground">non confirmé</Badge>
+                      </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <Button
+                        v-if="u.role !== 'admin'"
+                        size="sm"
+                        :disabled="userBusyId === u.id"
+                        @click="setUserRole(u, 'admin')"
+                      >Donner l'accès</Button>
+                      <Button
+                        v-else
+                        variant="secondary"
+                        size="sm"
+                        :disabled="userBusyId === u.id || u.id === currentUserId"
+                        @click="setUserRole(u, 'user')"
+                      >Retirer l'accès</Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        class="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        :disabled="userBusyId === u.id || u.id === currentUserId"
+                        @click="askDeleteUser(u)"
+                      >Supprimer</Button>
+                    </div>
+                  </li>
+                </ul>
+
+                <div class="hidden sm:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Compte</TableHead>
+                        <TableHead>Rôle</TableHead>
+                        <TableHead class="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow v-for="u in users" :key="u.id">
+                        <TableCell>
+                          <div class="flex items-center gap-2 font-medium">
+                            {{ u.name || '—' }}
+                            <Badge v-if="u.id === currentUserId" variant="secondary">vous</Badge>
+                          </div>
+                          <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                            {{ u.email }}
+                            <Badge v-if="!u.emailVerified" variant="outline" title="Email non confirmé">non confirmé</Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge :variant="u.role === 'admin' ? 'default' : 'outline'">
+                            {{ u.role === 'admin' ? 'Administrateur' : 'Utilisateur' }}
+                          </Badge>
+                        </TableCell>
+                        <TableCell class="text-right whitespace-nowrap">
+                          <Button
+                            v-if="u.role !== 'admin'"
+                            size="sm"
+                            :disabled="userBusyId === u.id"
+                            @click="setUserRole(u, 'admin')"
+                          >Donner l'accès</Button>
+                          <Button
+                            v-else
+                            variant="secondary"
+                            size="sm"
+                            :disabled="userBusyId === u.id || u.id === currentUserId"
+                            @click="setUserRole(u, 'user')"
+                          >Retirer l'accès</Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            class="ml-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            :disabled="userBusyId === u.id || u.id === currentUserId"
+                            @click="askDeleteUser(u)"
+                          >Supprimer</Button>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </template>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </main>
+
+    <!-- ===================== RSVP CREATE/EDIT ===================== -->
+    <Dialog v-model:open="showEditModal">
+      <DialogScrollContent class="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{{ editMode === 'create' ? 'Ajouter une réponse' : 'Modifier la réponse' }}</DialogTitle>
+          <DialogDescription>
+            {{ editMode === 'create'
+              ? 'Enregistre une réponse reçue par téléphone ou de vive voix.'
+              : 'Mets à jour la réponse de cet invité.' }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <form id="rsvp-form" class="grid gap-4" @submit.prevent="saveEdit">
+          <div class="grid gap-2">
+            <Label for="edit-status">Statut <span class="text-destructive" aria-hidden="true">*</span></Label>
+            <Select v-model="editForm.attending">
+              <SelectTrigger id="edit-status" class="w-full min-w-0 *:data-[slot=select-value]:min-w-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="yes">Confirmé</SelectItem>
+                <SelectItem value="no">Décliné</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="grid gap-2">
+            <Label for="edit-name">Nom <span class="text-destructive" aria-hidden="true">*</span></Label>
+            <Input id="edit-name" ref="editName" v-model="editForm.name" required />
+          </div>
+          <div class="grid gap-2">
+            <Label for="edit-phone"><span aria-hidden="true">📱</span> Téléphone <span class="text-destructive" aria-hidden="true">*</span></Label>
+            <Input id="edit-phone" v-model="editForm.phone" type="tel" inputmode="tel" required />
+          </div>
+          <div class="grid gap-2">
+            <Label for="edit-email"><span aria-hidden="true">✉️</span> Email</Label>
+            <Input id="edit-email" v-model="editForm.email" type="email" inputmode="email" autocapitalize="none" />
+          </div>
+          <div v-if="editForm.attending === 'yes'" class="grid gap-2">
+            <Label for="edit-guests">Nombre d'invités</Label>
+            <Input id="edit-guests" v-model.number="editForm.guests" type="number" min="0" max="10" inputmode="numeric" />
+          </div>
+          <div class="grid gap-2">
+            <Label for="edit-diet"><span aria-hidden="true">🥜</span> Allergies / régime</Label>
+            <Textarea id="edit-diet" v-model="editForm.dietary_restrictions" />
+          </div>
+          <div class="grid gap-2">
+            <Label for="edit-message"><span aria-hidden="true">💌</span> Message</Label>
+            <Textarea id="edit-message" v-model="editForm.message" />
           </div>
         </form>
-      </div>
-    </div>
 
-    <!-- ===================== RSVP DELETE MODAL ===================== -->
-    <div v-if="showDeleteModal" class="modal-overlay">
-      <div class="modal delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-title">
-        <div class="modal-header">
-          <h3 id="delete-title">Supprimer la réponse</h3>
-          <button class="close-btn" ref="deleteClose" @click="closeDeleteModal" aria-label="Fermer">×</button>
-        </div>
-        <div class="modal-content">
-          <p>Supprimer la réponse de <strong>{{ rsvpToDelete?.name }}</strong> ?</p>
-          <p class="warning">Cette action est irréversible.</p>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-secondary" @click="closeDeleteModal">Annuler</button>
-          <button type="button" class="btn btn-danger" @click="deleteRsvp" :disabled="deleteLoading">{{ deleteLoading ? 'Suppression...' : 'Supprimer' }}</button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" @click="showEditModal = false">Annuler</Button>
+          <Button type="submit" form="rsvp-form" :disabled="editLoading">
+            <Loader2Icon v-if="editLoading" class="animate-spin" />
+            {{ editLoading ? 'Sauvegarde...' : (editMode === 'create' ? 'Ajouter' : 'Sauvegarder') }}
+          </Button>
+        </DialogFooter>
+      </DialogScrollContent>
+    </Dialog>
 
-    <!-- ===================== EVENT CREATE/EDIT MODAL ===================== -->
-    <div v-if="showEventModal" class="modal-overlay">
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="event-title">
-        <div class="modal-header">
-          <h3 id="event-title">{{ eventMode === 'create' ? 'Nouvel événement' : 'Modifier l\'événement' }}</h3>
-          <button class="close-btn" ref="eventClose" @click="closeEventModal" aria-label="Fermer">×</button>
-        </div>
-        <form class="edit-form" @submit.prevent="saveEvent">
-          <div class="form-group">
-            <label for="event-person">Nom de l'enfant <span aria-hidden="true">*</span></label>
-            <input id="event-person" ref="eventPerson" class="form-input" v-model="eventForm.person" required aria-required="true" />
+    <!-- ===================== EVENT CREATE/EDIT ===================== -->
+    <Dialog v-model:open="showEventModal">
+      <DialogScrollContent class="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{{ eventMode === 'create' ? 'Nouvel événement' : "Modifier l'événement" }}</DialogTitle>
+          <DialogDescription>Seul le nom est obligatoire — le reste peut être complété plus tard.</DialogDescription>
+        </DialogHeader>
+
+        <form id="event-form" class="grid gap-4" @submit.prevent="saveEvent">
+          <div class="grid gap-2">
+            <Label for="event-person">Nom de l'enfant <span class="text-destructive" aria-hidden="true">*</span></Label>
+            <Input id="event-person" ref="eventPerson" v-model="eventForm.person" required />
           </div>
-          <div class="form-row">
-            <div class="form-group"><label for="event-age">Âge</label><input id="event-age" class="form-input" v-model="eventForm.age" placeholder="5" /></div>
-            <div class="form-group"><label for="event-date">Date</label><input id="event-date" class="form-input" type="date" v-model="eventForm.date" /></div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="grid gap-2">
+              <Label for="event-age">Âge</Label>
+              <Input id="event-age" v-model="eventForm.age" placeholder="5" />
+            </div>
+            <div class="grid gap-2">
+              <Label for="event-date">Date</Label>
+              <Input id="event-date" v-model="eventForm.date" type="date" />
+            </div>
           </div>
-          <div class="form-row">
-            <div class="form-group"><label for="event-time">Horaire</label><input id="event-time" class="form-input" v-model="eventForm.time" placeholder="15h00 - 17h00" /></div>
-            <div class="form-group"><label for="event-town">Ville</label><input id="event-town" class="form-input" v-model="eventForm.town" /></div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="grid gap-2">
+              <Label for="event-time">Horaire</Label>
+              <Input id="event-time" v-model="eventForm.time" placeholder="15h00 - 17h00" />
+            </div>
+            <div class="grid gap-2">
+              <Label for="event-town">Ville</Label>
+              <Input id="event-town" v-model="eventForm.town" />
+            </div>
           </div>
-          <div class="form-group"><label for="event-location">Lieu</label><textarea id="event-location" class="form-input" v-model="eventForm.location"></textarea></div>
-          <div class="form-group"><label for="event-dress">Dress code</label><input id="event-dress" class="form-input" v-model="eventForm.dress_code" /></div>
-          <div class="form-group"><label for="event-deadline">Date limite de réponse</label><input id="event-deadline" class="form-input" type="date" v-model="eventForm.rsvp_deadline" /></div>
-          <div class="form-group">
-            <label for="event-theme">Thème</label>
-            <select id="event-theme" class="form-input" v-model="eventForm.theme">
-              <option v-for="t in themes" :key="t.id" :value="t.id">{{ t.icon }} {{ t.label }}</option>
-            </select>
+          <div class="grid gap-2">
+            <Label for="event-location">Lieu</Label>
+            <Textarea id="event-location" v-model="eventForm.location" />
           </div>
-          <div class="form-group" v-if="!eventIsDefault">
-            <label for="event-slug">Lien (slug)</label>
-            <input id="event-slug" class="form-input" v-model="eventForm.slug" placeholder="laisser vide pour générer automatiquement" />
-            <p class="field-hint">Laisser vide pour générer automatiquement.</p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="grid gap-2">
+              <Label for="event-dress">Dress code</Label>
+              <Input id="event-dress" v-model="eventForm.dress_code" />
+            </div>
+            <div class="grid gap-2">
+              <Label for="event-deadline">Date limite de réponse</Label>
+              <Input id="event-deadline" v-model="eventForm.rsvp_deadline" type="date" />
+            </div>
           </div>
-          <div v-if="eventError" class="auth-error" role="alert">{{ eventError }}</div>
-          <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" @click="closeEventModal">Annuler</button>
-            <button type="submit" class="btn btn-primary" :disabled="eventSaving">{{ eventSaving ? 'Sauvegarde...' : (eventMode === 'create' ? 'Créer' : 'Sauvegarder') }}</button>
+          <div class="grid gap-2">
+            <Label for="event-theme">Thème</Label>
+            <Select v-model="eventForm.theme">
+              <SelectTrigger id="event-theme" class="w-full min-w-0 *:data-[slot=select-value]:min-w-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="t in themes" :key="t.id" :value="t.id">{{ t.icon }} {{ t.label }}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+          <div v-if="!eventIsDefault" class="grid gap-2">
+            <Label for="event-slug">Lien (slug)</Label>
+            <Input id="event-slug" v-model="eventForm.slug" placeholder="laisser vide pour générer automatiquement" />
+            <p class="text-sm text-muted-foreground">Laisser vide pour générer automatiquement.</p>
+          </div>
+          <Alert v-if="eventError" variant="destructive" role="alert">
+            <CircleAlertIcon />
+            <AlertDescription>{{ eventError }}</AlertDescription>
+          </Alert>
         </form>
-      </div>
-    </div>
 
-    <!-- ===================== USER DELETE MODAL ===================== -->
-    <div v-if="userToDelete" class="modal-overlay">
-      <div class="modal delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-user-title">
-        <div class="modal-header">
-          <h3 id="delete-user-title">Supprimer le compte</h3>
-          <button class="close-btn" @click="userToDelete = null" aria-label="Fermer">×</button>
-        </div>
-        <div class="modal-content">
-          <p>Supprimer le compte de <strong>{{ userToDelete.email }}</strong> ?</p>
-          <p class="warning">La personne perdra immédiatement son accès. Cette action est irréversible.</p>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-secondary" @click="userToDelete = null">Annuler</button>
-          <button type="button" class="btn btn-danger" :disabled="userBusyId" @click="deleteUser">
+        <DialogFooter>
+          <Button type="button" variant="outline" @click="showEventModal = false">Annuler</Button>
+          <Button type="submit" form="event-form" :disabled="eventSaving">
+            <Loader2Icon v-if="eventSaving" class="animate-spin" />
+            {{ eventSaving ? 'Sauvegarde...' : (eventMode === 'create' ? 'Créer' : 'Sauvegarder') }}
+          </Button>
+        </DialogFooter>
+      </DialogScrollContent>
+    </Dialog>
+
+    <!-- ===================== DESTRUCTIVE CONFIRMATIONS ===================== -->
+    <AlertDialog v-model:open="showDeleteModal">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Supprimer la réponse</AlertDialogTitle>
+          <AlertDialogDescription>
+            La réponse de <strong class="font-medium text-foreground">{{ rsvpToDelete?.name }}</strong> sera
+            définitivement supprimée. Cette action est irréversible.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction
+            :class="buttonVariants({ variant: 'destructive' })"
+            :disabled="deleteLoading"
+            @click.prevent="deleteRsvp"
+          >
+            <Loader2Icon v-if="deleteLoading" class="animate-spin" />
+            {{ deleteLoading ? 'Suppression...' : 'Supprimer' }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <AlertDialog v-model:open="showDeleteEventModal">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Supprimer l'événement</AlertDialogTitle>
+          <AlertDialogDescription>
+            L'événement de <strong class="font-medium text-foreground">{{ eventToDelete?.person }}</strong> et
+            toutes ses réponses seront perdus. Cette action est irréversible.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction
+            :class="buttonVariants({ variant: 'destructive' })"
+            :disabled="deleteEventLoading"
+            @click.prevent="deleteEvent"
+          >
+            <Loader2Icon v-if="deleteEventLoading" class="animate-spin" />
+            {{ deleteEventLoading ? 'Suppression...' : 'Supprimer' }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <AlertDialog :open="!!userToDelete" @update:open="(v) => { if (!v) userToDelete = null; }">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Supprimer le compte</AlertDialogTitle>
+          <AlertDialogDescription>
+            <strong class="font-medium text-foreground">{{ userToDelete?.email }}</strong> perdra immédiatement
+            son accès. Cette action est irréversible.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction
+            :class="buttonVariants({ variant: 'destructive' })"
+            :disabled="!!userBusyId"
+            @click.prevent="deleteUser"
+          >
+            <Loader2Icon v-if="userBusyId" class="animate-spin" />
             {{ userBusyId ? 'Suppression...' : 'Supprimer' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===================== EVENT DELETE MODAL ===================== -->
-    <div v-if="showDeleteEventModal" class="modal-overlay">
-      <div class="modal delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-event-title">
-        <div class="modal-header">
-          <h3 id="delete-event-title">Supprimer l'événement</h3>
-          <button class="close-btn" ref="deleteEventClose" @click="closeDeleteEventModal" aria-label="Fermer">×</button>
-        </div>
-        <div class="modal-content">
-          <p>Supprimer l'événement de <strong>{{ eventToDelete?.person }}</strong> ?</p>
-          <p class="warning">Toutes les réponses associées seront perdues. Cette action est irréversible.</p>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-secondary" @click="closeDeleteEventModal">Annuler</button>
-          <button type="button" class="btn btn-danger" @click="deleteEvent" :disabled="deleteEventLoading">{{ deleteEventLoading ? 'Suppression...' : 'Supprimer' }}</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Non-blocking feedback. Replaces alert(), which froze the tab and lost
-         the surrounding context on every failed save. -->
-    <div class="toast-stack" aria-live="polite" aria-atomic="false">
-      <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type" role="status">
-        <span aria-hidden="true">{{ t.type === 'error' ? '⚠️' : '✓' }}</span>
-        <span>{{ t.message }}</span>
-      </div>
-    </div>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>
-
 <script>
 import QRCode from 'qrcode';
+import { RouterLink } from 'vue-router';
+import { toast } from 'vue-sonner';
+import {
+  ArrowUpDownIcon, CheckIcon, CircleAlertIcon, CircleUserIcon, CopyIcon, DownloadIcon,
+  EllipsisVerticalIcon, ExternalLinkIcon, LinkIcon, Loader2Icon, LogOutIcon, PencilIcon,
+  PlusIcon, RefreshCwIcon, SearchIcon, SendIcon, Trash2Icon, XIcon
+} from '@lucide/vue';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+} from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog, DialogDescription, DialogFooter, DialogHeader, DialogScrollContent, DialogTitle
+} from '@/components/ui/dialog';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { apiBaseUrl } from '../env.js';
 import { session, refresh, signOut } from '../session.js';
 import { themeList, applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
@@ -457,8 +888,30 @@ import { applySeo } from '../seo.js';
 
 export default {
   name: 'Admin',
+  components: {
+    RouterLink,
+    Alert, AlertDescription, AlertTitle,
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    Badge, Button,
+    Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle,
+    Dialog, DialogDescription, DialogFooter, DialogHeader, DialogScrollContent, DialogTitle,
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+    DropdownMenuSeparator, DropdownMenuTrigger,
+    Input, Label, Progress,
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    Skeleton,
+    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    Tabs, TabsContent, TabsList, TabsTrigger,
+    Textarea,
+    ArrowUpDownIcon, CheckIcon, CircleAlertIcon, CircleUserIcon, CopyIcon, DownloadIcon,
+    EllipsisVerticalIcon, ExternalLinkIcon, LinkIcon, Loader2Icon, LogOutIcon, PencilIcon,
+    PlusIcon, RefreshCwIcon, SearchIcon, SendIcon, Trash2Icon, XIcon
+  },
   data() {
     return {
+      session,
+      buttonVariants,
       themes: themeList,
       currentTheme: DEFAULT_THEME,
       themeSaving: false,
@@ -484,8 +937,6 @@ export default {
       ],
 
       refreshing: false,
-      toasts: [],
-      toastSeq: 0,
       refreshInterval: null,
 
       // Accounts / access management
@@ -507,18 +958,18 @@ export default {
       stats: { total_responses: 0, confirmations: 0, declined: 0, total_guests: 0 },
       rsvps: [],
 
-      // RSVP edit/create modal
+      // RSVP edit/create dialog
       showEditModal: false,
       editMode: 'edit',
       editForm: { id: null, attending: 'yes', name: '', email: '', phone: '', guests: 1, dietary_restrictions: '', message: '' },
       editLoading: false,
 
-      // RSVP delete modal
+      // RSVP delete confirmation
       showDeleteModal: false,
       rsvpToDelete: null,
       deleteLoading: false,
 
-      // Event create/edit modal
+      // Event create/edit dialog
       showEventModal: false,
       eventMode: 'create',
       eventIsDefault: false,
@@ -526,14 +977,13 @@ export default {
       eventSaving: false,
       eventError: null,
 
-      // Event delete modal
+      // Event delete confirmation
       showDeleteEventModal: false,
       eventToDelete: null,
       deleteEventLoading: false,
 
       qrDataUrl: '',
-      linkCopied: false,
-      lastFocused: null
+      linkCopied: false
     };
   },
   computed: {
@@ -543,9 +993,11 @@ export default {
       return session.user?.id ?? null;
     },
 
-    // Whether the active tab operates on a selected event.
-    tabNeedsEvent() {
-      return this.tabs.find((t) => t.id === this.activeTab)?.needsEvent ?? false;
+    // Any open dialog pauses the 30s poll: replacing the list under an admin
+    // who is mid-edit was how a half-typed response got wiped.
+    anyDialogOpen() {
+      return this.showEditModal || this.showEventModal || this.showDeleteModal
+        || this.showDeleteEventModal || !!this.userToDelete;
     },
 
     // Share of answers that are a yes. 0 when nobody has replied, rather than
@@ -555,7 +1007,7 @@ export default {
       return total ? Math.round((this.stats.confirmations / total) * 100) : 0;
     },
 
-    // Counts behind the filter chips, so each one shows its own size.
+    // Counts behind the filter buttons, so each one shows its own size.
     statusCounts() {
       return {
         all: this.rsvps.length,
@@ -585,11 +1037,20 @@ export default {
       return this.events.find((e) => e.id === this.selectedEventId) || null;
     },
     invitationUrl() {
-      const ev = this.selectedEvent;
-      if (!ev) return window.location.origin + '/';
-      return ev.is_default
-        ? window.location.origin + '/'
-        : window.location.origin + '/e/' + ev.slug;
+      return this.eventUrl(this.selectedEvent);
+    },
+    whatsAppShareUrl() {
+      const person = this.selectedEvent?.person || '';
+      const text = person
+        ? `Tu es invité(e) à l'anniversaire de ${person} ! 🎉 ${this.invitationUrl}`
+        : `Tu es invité(e) ! 🎉 ${this.invitationUrl}`;
+      return `https://wa.me/?text=${encodeURIComponent(text)}`;
+    },
+    qrFileName() {
+      const person = (this.selectedEvent?.person || 'invitation')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      return `qr-${person || 'invitation'}.png`;
     },
     csvUrl() {
       if (!this.selectedEventId) return '#';
@@ -603,8 +1064,13 @@ export default {
       description: 'Console d\'administration des invitations et des réponses.',
       robots: 'noindex, nofollow'
     });
+    // Restore the tab from the URL before the events land, so a reload does not
+    // flash the default tab first.
+    const tab = this.$route.query.tab;
+    if (this.tabs.some((t) => t.id === tab)) this.activeTab = tab;
+
     window.addEventListener('keydown', this.handleKeydown);
-    this.loadEvents();
+    this.loadEvents().then(this.restoreSelectionFromRoute);
     this.loadUsers();
     this.refreshInterval = setInterval(this.autoRefresh, 30000);
   },
@@ -615,16 +1081,24 @@ export default {
   watch: {
     selectedEventId() {
       const ev = this.selectedEvent;
-      if (ev) {
-        // A newly picked event starts unfiltered on its responses, rather than
-        // inheriting the search and tab left over from the previous one.
-        if (!this.tabNeedsEvent) this.activeTab = 'responses';
-        this.resetFilters();
-        this.currentTheme = ev.theme || DEFAULT_THEME;
-        applyTheme(this.currentTheme);
-        this.generateQr();
-        this.loadEventData();
-      }
+      this.syncRoute();
+      if (!ev) return;
+      // A newly picked event starts unfiltered on its responses, rather than
+      // inheriting the search left over from the previous one.
+      if (!this.tabs.find((t) => t.id === this.activeTab)?.needsEvent) this.activeTab = 'responses';
+      this.resetFilters();
+      this.currentTheme = ev.theme || DEFAULT_THEME;
+      applyTheme(this.currentTheme);
+      this.generateQr();
+      this.loadEventData();
+    },
+    activeTab() {
+      this.syncRoute();
+    },
+    // Closing the event dialog by any route (button, overlay, Escape) has to
+    // clear the error it may be showing.
+    showEventModal(open) {
+      if (!open) this.eventError = null;
     }
   },
   methods: {
@@ -636,41 +1110,83 @@ export default {
       return getTheme(id).label;
     },
 
+    eventUrl(ev) {
+      if (!ev) return `${window.location.origin}/`;
+      return ev.is_default ? `${window.location.origin}/` : `${window.location.origin}/e/${ev.slug}`;
+    },
+
+    // Keep the selected event and tab in the URL so a reload, a share, or the
+    // back button return to the same place instead of the empty dashboard.
+    syncRoute() {
+      const query = { ...this.$route.query };
+      if (this.selectedEventId) query.event = String(this.selectedEventId);
+      else delete query.event;
+      query.tab = this.activeTab;
+      if (query.event === this.$route.query.event && query.tab === this.$route.query.tab) return;
+      this.$router.replace({ query }).catch(() => {});
+    },
+
+    restoreSelectionFromRoute() {
+      const wanted = this.$route.query.event;
+      const match = wanted && this.events.find((e) => String(e.id) === String(wanted));
+      if (match) {
+        this.selectedEventId = match.id;
+        return;
+      }
+      // Nothing asked for: open the default event straight away. Landing on a
+      // dashboard that shows nothing until you press "Gérer" was a wasted step,
+      // and most deployments only ever run one party at a time.
+      if (this.selectedEventId === null && this.events.length) {
+        const preferred = this.events.find((e) => e.is_default) || this.events[0];
+        this.selectedEventId = preferred.id;
+      }
+    },
+
     async generateQr() {
       try {
-        this.qrDataUrl = await QRCode.toDataURL(this.invitationUrl);
+        this.qrDataUrl = await QRCode.toDataURL(this.invitationUrl, { width: 512, margin: 1 });
       } catch {
         this.qrDataUrl = '';
       }
     },
     async copyLink() {
+      const ok = await this.copyText(this.invitationUrl);
+      if (!ok) return;
+      this.linkCopied = true;
+      setTimeout(() => { this.linkCopied = false; }, 2000);
+    },
+    async copyEventLink(ev) {
+      if (await this.copyText(this.eventUrl(ev))) toast.success('Lien copié');
+    },
+    async copyText(value) {
       try {
-        await navigator.clipboard.writeText(this.invitationUrl);
-        this.linkCopied = true;
-        setTimeout(() => { this.linkCopied = false; }, 2000);
+        await navigator.clipboard.writeText(value);
+        return true;
       } catch {
-        // Clipboard may be unavailable; the link stays visible to copy manually.
+        // Clipboard is unavailable outside a secure context; the link stays on
+        // screen to copy by hand, so say so rather than failing silently.
+        toast.error('Copie impossible, sélectionne le lien à la main.');
+        return false;
       }
     },
     handleKeydown(e) {
-      if (e.key !== 'Escape') return;
-      // The login modal is intentionally not dismissible.
-      if (this.showEditModal) this.closeEditModal();
-      else if (this.showDeleteModal) this.closeDeleteModal();
-      else if (this.showEventModal) this.closeEventModal();
-      else if (this.showDeleteEventModal) this.closeDeleteEventModal();
+      // "/" jumps to the response search, the way every list view on the web
+      // does. Ignored while typing, and Escape is the dialogs' own business.
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+      if (this.anyDialogOpen || this.activeTab !== 'responses' || !this.rsvps.length) return;
+      e.preventDefault();
+      this.focusFirst('search');
     },
     focusFirst(refName) {
       this.$nextTick(() => {
-        const el = this.$refs[refName];
+        const ref = this.$refs[refName];
+        // Refs on a shadcn component resolve to the component instance, so
+        // unwrap to its root element before focusing.
+        const el = ref?.$el ?? ref;
         if (el && typeof el.focus === 'function') el.focus();
       });
-    },
-    restoreFocus() {
-      if (this.lastFocused && typeof this.lastFocused.focus === 'function') {
-        this.lastFocused.focus();
-      }
-      this.lastFocused = null;
     },
     formatDate(value) {
       const d = new Date(value);
@@ -686,23 +1202,12 @@ export default {
       return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
     },
 
-    // ---- Feedback / chrome ----
-    // Queue a toast and drop it after a few seconds. Errors linger longer,
-    // since they usually carry something the admin has to read.
-    toast(message, type = 'success') {
-      const id = ++this.toastSeq;
-      this.toasts.push({ id, message, type });
-      setTimeout(() => {
-        this.toasts = this.toasts.filter((t) => t.id !== id);
-      }, type === 'error' ? 6000 : 3500);
-    },
-
     resetFilters() {
       this.searchQuery = '';
       this.statusFilter = 'all';
     },
 
-    // Topbar refresh: reload whatever the current tab is showing.
+    // Topbar refresh: reload everything the console is showing.
     async refreshAll() {
       this.refreshing = true;
       try {
@@ -715,7 +1220,6 @@ export default {
         this.refreshing = false;
       }
     },
-
     // ---- Session / access ----
     //
     // The router guard has already established that this visitor is an admin
@@ -752,6 +1256,7 @@ export default {
     // account list changes rarely and has its own refresh button, and every
     // extra polled call eats into the admin rate limit.
     autoRefresh() {
+      if (this.anyDialogOpen) return;
       this.loadEvents();
       if (this.selectedEventId) this.loadEventData();
     },
@@ -786,8 +1291,12 @@ export default {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error || 'Modification impossible');
         await this.loadUsers();
+        toast.success(role === 'admin'
+          ? `${user.email} a maintenant accès à l'administration.`
+          : `L'accès de ${user.email} a été retiré.`);
       } catch (err) {
         this.usersError = err.message || 'Modification impossible';
+        toast.error(this.usersError);
       } finally {
         this.userBusyId = null;
       }
@@ -812,8 +1321,10 @@ export default {
         if (!res.ok) throw new Error(body.error || 'Suppression impossible');
         this.userToDelete = null;
         await this.loadUsers();
+        toast.success('Compte supprimé.');
       } catch (err) {
         this.usersError = err.message || 'Suppression impossible';
+        toast.error(this.usersError);
       } finally {
         this.userBusyId = null;
       }
@@ -865,6 +1376,9 @@ export default {
         }
         const count = await countRes.json();
         const list = await listRes.json();
+        // A slow response for an event the admin has since navigated away from
+        // must not overwrite the one now on screen.
+        if (this.selectedEventId !== id) return;
         this.stats = {
           total_responses: count.total_responses || 0,
           confirmations: count.confirmations || 0,
@@ -905,10 +1419,11 @@ export default {
         // Reflect the new theme in the local list.
         const ev = this.events.find((e) => e.id === this.selectedEventId);
         if (ev) ev.theme = data.theme;
+        toast.success(`Thème « ${getTheme(data.theme).label} » appliqué.`);
       } catch (err) {
         this.currentTheme = previous;
         applyTheme(previous);
-        this.toast(err.message, 'error');
+        toast.error(err.message);
       } finally {
         this.themeSaving = false;
       }
@@ -916,7 +1431,6 @@ export default {
 
     // ---- RSVP edit/create ----
     openEditModal(rsvp) {
-      this.lastFocused = document.activeElement;
       this.editMode = 'edit';
       this.editForm = {
         id: rsvp.id,
@@ -932,7 +1446,6 @@ export default {
       this.focusFirst('editName');
     },
     openCreateModal() {
-      this.lastFocused = document.activeElement;
       this.editMode = 'create';
       this.editForm = {
         id: null,
@@ -946,10 +1459,6 @@ export default {
       };
       this.showEditModal = true;
       this.focusFirst('editName');
-    },
-    closeEditModal() {
-      this.showEditModal = false;
-      this.restoreFocus();
     },
     async saveEdit() {
       if (!this.selectedEventId) return;
@@ -983,28 +1492,23 @@ export default {
           const err = await res.json();
           throw new Error(err.error || (this.editMode === 'create' ? 'Erreur lors de l\'ajout' : 'Erreur lors de la modification'));
         }
+        const wasCreate = this.editMode === 'create';
         await this.loadEventData();
         await this.loadEvents();
-        this.closeEditModal();
+        this.showEditModal = false;
+        toast.success(wasCreate ? 'Réponse ajoutée.' : 'Réponse mise à jour.');
       } catch (err) {
-        this.toast(err.message, 'error');
+        toast.error(err.message);
       } finally {
         this.editLoading = false;
       }
     },
     openDeleteModal(rsvp) {
-      this.lastFocused = document.activeElement;
       this.rsvpToDelete = rsvp;
       this.showDeleteModal = true;
-      this.focusFirst('deleteClose');
-    },
-    closeDeleteModal() {
-      this.showDeleteModal = false;
-      this.rsvpToDelete = null;
-      this.restoreFocus();
     },
     async deleteRsvp() {
-      if (!this.selectedEventId) return;
+      if (!this.selectedEventId || !this.rsvpToDelete) return;
       const id = this.selectedEventId;
       this.deleteLoading = true;
       try {
@@ -1019,9 +1523,11 @@ export default {
         }
         await this.loadEventData();
         await this.loadEvents();
-        this.closeDeleteModal();
+        this.showDeleteModal = false;
+        this.rsvpToDelete = null;
+        toast.success('Réponse supprimée.');
       } catch (err) {
-        this.toast(err.message, 'error');
+        toast.error(err.message);
       } finally {
         this.deleteLoading = false;
       }
@@ -1029,7 +1535,6 @@ export default {
 
     // ---- Event create/edit ----
     openCreateEventModal() {
-      this.lastFocused = document.activeElement;
       this.eventMode = 'create';
       this.eventIsDefault = false;
       this.eventError = null;
@@ -1041,7 +1546,6 @@ export default {
       this.focusFirst('eventPerson');
     },
     openEditEventModal(ev) {
-      this.lastFocused = document.activeElement;
       this.eventMode = 'edit';
       this.eventIsDefault = !!ev.is_default;
       this.eventError = null;
@@ -1060,11 +1564,6 @@ export default {
       };
       this.showEventModal = true;
       this.focusFirst('eventPerson');
-    },
-    closeEventModal() {
-      this.showEventModal = false;
-      this.eventError = null;
-      this.restoreFocus();
     },
     async saveEvent() {
       this.eventError = null;
@@ -1089,7 +1588,8 @@ export default {
         if (!this.eventIsDefault && this.eventForm.slug && this.eventForm.slug.trim()) {
           payload.slug = this.eventForm.slug.trim();
         }
-        const res = this.eventMode === 'create'
+        const wasCreate = this.eventMode === 'create';
+        const res = wasCreate
           ? await fetch(`${apiBaseUrl}/events`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1105,17 +1605,20 @@ export default {
         if (!res.ok) {
           if (await this.handleAuthFailure(res)) return;
           const err = await res.json();
-          throw new Error(err.error || (this.eventMode === 'create' ? 'Erreur lors de la création' : 'Erreur lors de la modification'));
+          throw new Error(err.error || (wasCreate ? 'Erreur lors de la création' : 'Erreur lors de la modification'));
         }
         const saved = await res.json();
         await this.loadEvents();
         // Keep the selected event's theme preview in sync when editing it.
-        if (this.eventMode === 'edit' && saved && saved.id === this.selectedEventId) {
+        if (!wasCreate && saved && saved.id === this.selectedEventId) {
           this.currentTheme = saved.theme || this.currentTheme;
           applyTheme(this.currentTheme);
           this.generateQr();
         }
-        this.closeEventModal();
+        this.showEventModal = false;
+        toast.success(wasCreate ? `Événement « ${saved.person} » créé.` : 'Événement mis à jour.');
+        // A brand new event is almost always the one you want to work on next.
+        if (wasCreate && saved?.id) this.selectedEventId = saved.id;
       } catch (err) {
         this.eventError = err.message;
       } finally {
@@ -1123,15 +1626,8 @@ export default {
       }
     },
     openDeleteEventModal(ev) {
-      this.lastFocused = document.activeElement;
       this.eventToDelete = ev;
       this.showDeleteEventModal = true;
-      this.focusFirst('deleteEventClose');
-    },
-    closeDeleteEventModal() {
-      this.showDeleteEventModal = false;
-      this.eventToDelete = null;
-      this.restoreFocus();
     },
     async deleteEvent() {
       if (!this.eventToDelete) return;
@@ -1149,9 +1645,11 @@ export default {
         }
         if (this.selectedEventId === id) this.selectedEventId = null;
         await this.loadEvents();
-        this.closeDeleteEventModal();
+        this.showDeleteEventModal = false;
+        this.eventToDelete = null;
+        toast.success('Événement supprimé.');
       } catch (err) {
-        this.toast(err.message, 'error');
+        toast.error(err.message);
       } finally {
         this.deleteEventLoading = false;
       }
@@ -1159,361 +1657,3 @@ export default {
   }
 };
 </script>
-
-<style scoped>
-/*
- * Admin design system — deliberately generic and theme-independent.
- *
- * The public invitation re-skins itself from the selected palette (the
- * --theme-* custom properties), but the admin dashboard stays neutral so it
- * reads as a tool regardless of which festive theme is live. All admin chrome
- * is driven by the local design tokens below; the only place we surface the
- * invitation palette is the theme picker (swatches + active state), where it
- * acts as a genuine preview.
- */
-.admin-container{
-  /* Color tokens */
-  --c-bg:#f1f5f9;
-  --c-surface:#ffffff;
-  --c-surface-subtle:#f8fafc;
-  --c-border:#e2e8f0;
-  --c-border-strong:#cbd5e1;
-  --c-text:#0f172a;
-  --c-text-muted:#64748b;
-  --c-text-subtle:#94a3b8;
-  --c-accent:#4f46e5;
-  --c-accent-hover:#4338ca;
-  --c-accent-soft:#eef2ff;
-  --c-success:#059669;
-  --c-success-soft:#ecfdf5;
-  --c-danger:#dc2626;
-  --c-danger-hover:#b91c1c;
-  --c-danger-soft:#fef2f2;
-  --c-focus-ring:rgba(79,70,229,.25);
-  /* Radii */
-  --r-sm:8px;
-  --r-md:12px;
-  --r-lg:16px;
-  --r-full:9999px;
-  /* Shadows */
-  --shadow-xs:0 1px 2px rgba(15,23,42,.06);
-  --shadow-sm:0 1px 3px rgba(15,23,42,.08),0 1px 2px rgba(15,23,42,.04);
-  --shadow-md:0 4px 12px rgba(15,23,42,.08);
-  /* Spacing rhythm for the page */
-  --content-max:1100px;
-
-  min-height:100vh;
-  background:var(--c-bg);
-  color:var(--c-text);
-  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-  padding:24px 20px 48px;
-  -webkit-font-smoothing:antialiased;
-}
-.admin-container > *{max-width:var(--content-max);margin-left:auto;margin-right:auto}
-
-/* ---- Buttons -------------------------------------------------------- */
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  font:inherit;font-size:.9rem;font-weight:600;line-height:1;
-  padding:10px 18px;border:1px solid transparent;border-radius:var(--r-sm);
-  cursor:pointer;text-decoration:none;white-space:nowrap;
-  transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,transform .05s ease;
-}
-.btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring)}
-.btn:active{transform:translateY(1px)}
-.btn:disabled{opacity:.55;cursor:not-allowed}
-.btn-block{width:100%}
-.btn-sm{padding:7px 12px;font-size:.82rem}
-.btn-primary{background:var(--c-accent);color:#fff}
-.btn-primary:hover:not(:disabled){background:var(--c-accent-hover)}
-.btn-secondary{background:var(--c-surface);color:var(--c-text);border-color:var(--c-border)}
-.btn-secondary:hover:not(:disabled){background:var(--c-surface-subtle);border-color:var(--c-border-strong)}
-.btn-ghost{background:transparent;color:var(--c-text-muted);border-color:transparent}
-.btn-ghost:hover:not(:disabled){background:var(--c-surface);color:var(--c-text);box-shadow:var(--shadow-xs)}
-.btn-danger{background:var(--c-danger);color:#fff}
-.btn-danger:hover:not(:disabled){background:var(--c-danger-hover)}
-.btn-danger-soft{background:var(--c-danger-soft);color:var(--c-danger);border-color:transparent}
-.btn-danger-soft:hover:not(:disabled){background:#fee2e2}
-
-/* ---- Header --------------------------------------------------------- */
-.admin-header{
-  display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;
-  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
-  padding:24px 28px;margin-bottom:24px;box-shadow:var(--shadow-sm);
-}
-.admin-header h1{font-size:1.5rem;font-weight:700;letter-spacing:-.02em;margin:0;color:var(--c-text)}
-.admin-header-subtitle{margin:4px 0 0;color:var(--c-text-muted);font-size:.9rem}
-.header-actions{display:flex;gap:10px;align-items:center}
-
-/* ---- Events overview ------------------------------------------------ */
-.events-panel{
-  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
-  padding:24px 28px;margin-bottom:24px;box-shadow:var(--shadow-sm);
-}
-.events-panel-head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;margin-bottom:18px}
-.events-panel-head h2{font-size:1.1rem;font-weight:700;color:var(--c-text);margin:0}
-.events-panel-actions{display:flex;gap:10px;flex-wrap:wrap}
-.events-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
-.event-card{
-  display:flex;flex-direction:column;gap:8px;
-  background:var(--c-surface-subtle);border:1px solid var(--c-border);border-radius:var(--r-md);
-  padding:18px 20px;box-shadow:var(--shadow-xs);transition:border-color .15s ease,box-shadow .15s ease;
-}
-.event-card.selected{border-color:var(--c-accent);box-shadow:0 0 0 1px var(--c-accent)}
-.event-card-top{display:flex;justify-content:space-between;align-items:center}
-.event-theme-icon{font-size:1.8rem;line-height:1}
-.event-badge{background:var(--c-success-soft);color:var(--c-success);font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:var(--r-full);text-transform:uppercase;letter-spacing:.04em}
-.event-card-title{margin:0;font-size:1.1rem;font-weight:700;color:var(--c-text)}
-.event-card-meta{margin:0;color:var(--c-text-muted);font-size:.85rem}
-.event-card-meta-empty{font-style:italic;color:var(--c-text-subtle)}
-.event-card-theme{margin:0;color:var(--c-text-subtle);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
-.event-card-stats{display:flex;gap:14px;margin:4px 0 8px;color:var(--c-text-muted);font-size:.85rem}
-.event-card-stats strong{color:var(--c-text);font-weight:700}
-.event-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
-
-/* ---- Selected event head ------------------------------------------- */
-.selected-head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;margin-bottom:18px}
-.selected-head h2{font-size:1.2rem;font-weight:700;color:var(--c-text);margin:0}
-.selected-name{color:var(--c-accent)}
-
-/* ---- Stats ---------------------------------------------------------- */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
-.stat-card{
-  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);
-  padding:20px 22px;box-shadow:var(--shadow-xs);
-}
-.stat-number{font-size:2rem;font-weight:700;line-height:1;letter-spacing:-.02em;color:var(--c-text);margin-bottom:8px}
-.stat-card.positive .stat-number{color:var(--c-success)}
-.stat-card.negative .stat-number{color:var(--c-danger)}
-.stat-label{color:var(--c-text-muted);font-size:.8rem;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
-
-/* ---- Panels (theme + share) ---------------------------------------- */
-.theme-panel,.share-panel{
-  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
-  padding:24px 28px;margin-bottom:24px;box-shadow:var(--shadow-sm);
-}
-.theme-panel h2,.share-panel h2,.rsvp-list h2{font-size:1.1rem;font-weight:700;color:var(--c-text);margin:0 0 4px}
-.theme-hint{color:var(--c-text-muted);font-size:.875rem;margin:0 0 18px}
-.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-.theme-card{
-  display:flex;flex-direction:column;align-items:center;gap:8px;
-  padding:16px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);
-  background:var(--c-surface-subtle);cursor:pointer;font:inherit;
-  transition:border-color .15s ease,box-shadow .15s ease,transform .1s ease,background-color .15s ease;
-}
-.theme-card:hover:not(:disabled){transform:translateY(-2px);border-color:var(--c-border-strong);box-shadow:var(--shadow-sm);background:var(--c-surface)}
-.theme-card:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring)}
-.theme-card:disabled{opacity:.6;cursor:not-allowed}
-.theme-card.active{border-color:var(--c-accent);background:var(--c-accent-soft);box-shadow:0 0 0 1px var(--c-accent)}
-.theme-icon{font-size:1.9rem;line-height:1}
-.theme-label{font-weight:600;color:var(--c-text);font-size:.9rem;text-align:center}
-.theme-swatches{display:flex;gap:5px}
-.swatch{width:16px;height:16px;border-radius:var(--r-full);border:2px solid var(--c-surface);box-shadow:0 0 0 1px var(--c-border-strong)}
-.theme-check{font-size:.75rem;font-weight:700;color:var(--c-accent)}
-
-/* ---- Share panel ---------------------------------------------------- */
-.share-row{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin-bottom:16px}
-.share-url{flex:1;min-width:220px}
-.qr-img{display:block;width:160px;height:160px;border:1px solid var(--c-border);border-radius:var(--r-md);padding:8px;background:var(--c-surface)}
-
-/* ---- List actions --------------------------------------------------- */
-.list-actions{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:24px}
-
-/* ---- RSVP list ------------------------------------------------------ */
-.rsvp-list{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);padding:24px 28px;box-shadow:var(--shadow-sm)}
-.rsvp-list h2{margin-bottom:18px}
-.rsvp-item{
-  background:var(--c-surface);border:1px solid var(--c-border);border-left:3px solid var(--c-success);
-  padding:18px 20px;margin-bottom:12px;border-radius:var(--r-md);
-}
-.rsvp-item:last-child{margin-bottom:0}
-.rsvp-item.declined{border-left-color:var(--c-danger);background:var(--c-danger-soft)}
-.rsvp-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
-.rsvp-header h3,.rsvp-item h3{display:flex;align-items:center;gap:8px;color:var(--c-text);font-size:1rem;font-weight:700;margin:0}
-.rsvp-actions{display:flex;gap:6px}
-.edit-btn,.delete-btn{
-  background:transparent;border:1px solid transparent;font-size:1rem;cursor:pointer;
-  padding:6px 8px;border-radius:var(--r-sm);line-height:1;transition:background-color .15s ease,border-color .15s ease;
-}
-.edit-btn:hover{background:var(--c-accent-soft);border-color:var(--c-border)}
-.delete-btn:hover{background:var(--c-danger-soft);border-color:var(--c-border)}
-.rsvp-details{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 16px;margin-bottom:12px}
-.detail{color:var(--c-text-muted);font-size:.9rem}
-.detail strong{color:var(--c-text);font-weight:600}
-.message{background:var(--c-surface-subtle);border:1px solid var(--c-border);padding:12px 14px;border-radius:var(--r-sm);margin-top:12px;font-style:italic;color:var(--c-text-muted);font-size:.9rem}
-/* ---- Topbar / tabs / toolbar ---------------------------------------- */
-.topbar{
-  position:sticky;top:0;z-index:20;
-  max-width:none;margin:-24px -20px 20px;
-  background:var(--c-surface);border-bottom:1px solid var(--c-border);box-shadow:var(--shadow-xs);
-}
-.topbar-inner{
-  max-width:var(--content-max);margin:0 auto;padding:12px 20px;
-  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
-}
-.topbar-brand{display:flex;align-items:center;gap:10px;min-width:0}
-.topbar-mark{font-size:1.4rem}
-.topbar-title{display:block;font-weight:700;font-size:1.05rem;line-height:1.2}
-.topbar-subtitle{display:block;color:var(--c-text-muted);font-size:.8rem}
-.topbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.icon-btn{
-  width:36px;height:36px;flex:none;display:inline-flex;align-items:center;justify-content:center;
-  border:1px solid var(--c-border-strong);border-radius:var(--r-sm);background:var(--c-surface);
-  color:var(--c-text);font-size:1rem;cursor:pointer;transition:background-color .15s ease;
-}
-.icon-btn:hover:not(:disabled){background:var(--c-surface-subtle)}
-.icon-btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring)}
-.icon-btn:disabled{cursor:not-allowed;opacity:.7}
-.icon-btn.spinning{animation:admin-spin .8s linear infinite}
-@keyframes admin-spin{to{transform:rotate(360deg)}}
-
-.tabs{display:flex;gap:4px;margin:0 auto 20px;overflow-x:auto;border-bottom:1px solid var(--c-border)}
-.tab{
-  display:inline-flex;align-items:center;gap:7px;padding:10px 16px;white-space:nowrap;
-  background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;
-  font-family:inherit;font-size:.9rem;font-weight:600;color:var(--c-text-muted);cursor:pointer;
-  transition:color .15s ease,border-color .15s ease;
-}
-.tab:hover{color:var(--c-text)}
-.tab:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring);border-radius:var(--r-sm) var(--r-sm) 0 0}
-.tab.active{color:var(--c-accent);border-bottom-color:var(--c-accent)}
-/* Still clickable — it shows the "pick an event" hint rather than dead-ending. */
-.tab.disabled{opacity:.55}
-.tab-count{
-  background:var(--c-surface-subtle);color:var(--c-text-muted);border-radius:var(--r-full);
-  padding:1px 7px;font-size:.72rem;font-weight:700;
-}
-.tab.active .tab-count{background:var(--c-accent-soft);color:var(--c-accent)}
-
-.toolbar-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
-.search-input{flex:1 1 240px;min-width:0}
-.sort-select{flex:0 0 auto;width:auto}
-.filter-chips{display:flex;gap:6px;flex-wrap:wrap}
-.chip{
-  display:inline-flex;align-items:center;gap:6px;padding:7px 12px;
-  border:1px solid var(--c-border-strong);border-radius:var(--r-full);background:var(--c-surface);
-  font-family:inherit;font-size:.82rem;font-weight:600;color:var(--c-text-muted);cursor:pointer;
-  transition:background-color .15s ease,color .15s ease,border-color .15s ease;
-}
-.chip:hover{background:var(--c-surface-subtle);color:var(--c-text)}
-.chip:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring)}
-.chip.active{background:var(--c-accent);border-color:var(--c-accent);color:#fff}
-.chip-count{font-size:.72rem;opacity:.75}
-.result-count{color:var(--c-text-muted);font-size:.82rem;margin:0 0 12px}
-
-.stat-icon{font-size:1.1rem;margin-bottom:2px}
-.rate-bar{height:6px;border-radius:var(--r-full);background:var(--c-surface-subtle);overflow:hidden;margin:6px 0 2px}
-.rate-fill{display:block;height:100%;background:var(--c-success);border-radius:var(--r-full);transition:width .3s ease}
-.no-data-icon{display:block;font-size:1.8rem;margin-bottom:8px}
-
-/* ---- Toasts ---------------------------------------------------------- */
-.toast-stack{position:fixed;right:20px;bottom:20px;z-index:1100;display:flex;flex-direction:column;gap:8px}
-.toast{
-  display:flex;align-items:flex-start;gap:9px;max-width:340px;padding:12px 16px;
-  border-radius:var(--r-md);background:var(--c-surface);border:1px solid var(--c-border);
-  box-shadow:var(--shadow-md);font-size:.875rem;line-height:1.45;
-  animation:toast-in .2s ease;
-}
-@keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.toast.success{border-left:3px solid var(--c-success)}
-.toast.error{border-left:3px solid var(--c-danger)}
-
-@media (max-width:640px){
-  .topbar{margin:-24px -20px 16px;max-width:none}
-  .topbar-inner{padding:10px 16px;flex-wrap:nowrap;gap:8px}
-  .topbar-actions{flex-wrap:nowrap;gap:6px}
-  .topbar-brand{flex:none}
-  .topbar-title,.topbar-subtitle,.hide-sm{display:none}
-  .toolbar-controls{flex-direction:column;align-items:stretch}
-  .sort-select{width:100%}
-  .toast-stack{left:16px;right:16px;bottom:16px}
-  .toast{max-width:none}
-}
-
-/* ---- Accounts / access ---------------------------------------------- */
-.users-panel{
-  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
-  padding:20px 24px 24px;margin-top:24px;box-shadow:var(--shadow-sm);
-}
-.users-panel h2{font-size:1.1rem;font-weight:700;color:var(--c-text);margin:0}
-.users-panel .theme-hint{margin:4px 0 16px}
-.users-table{width:100%;border-collapse:collapse;font-size:.9rem}
-.users-table th{
-  text-align:left;padding:8px 12px;font-size:.75rem;font-weight:600;
-  text-transform:uppercase;letter-spacing:.04em;color:var(--c-text-subtle);
-  border-bottom:1px solid var(--c-border);
-}
-.users-table td{padding:12px;border-bottom:1px solid var(--c-border);vertical-align:middle}
-.users-table tr:last-child td{border-bottom:none}
-.users-actions-col,.users-table th.users-actions-col{text-align:right;white-space:nowrap}
-.users-actions-col .btn + .btn{margin-left:8px}
-.user-name{font-weight:600;color:var(--c-text);display:flex;align-items:center;gap:8px}
-.user-email{color:var(--c-text-muted);font-size:.82rem;margin-top:2px}
-.user-you{
-  font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
-  background:var(--c-accent-soft);color:var(--c-accent);padding:2px 6px;border-radius:var(--r-full);
-}
-.user-unverified{color:var(--c-danger);font-size:.75rem;margin-left:6px}
-.role-badge{
-  display:inline-block;padding:4px 10px;border-radius:var(--r-full);
-  font-size:.78rem;font-weight:600;background:var(--c-surface-subtle);color:var(--c-text-muted);
-}
-.role-badge.admin{background:var(--c-accent-soft);color:var(--c-accent)}
-
-/* On narrow screens the actions wrap under the account rather than forcing a
-   horizontal scroll on the whole table. */
-@media (max-width:640px){
-  .users-table,.users-table tbody,.users-table tr,.users-table td{display:block;width:100%}
-  .users-table thead{display:none}
-  .users-table tr{padding:12px 0;border-bottom:1px solid var(--c-border)}
-  .users-table td{border-bottom:none;padding:4px 0}
-  .users-actions-col,.users-table th.users-actions-col{text-align:left;white-space:normal;margin-top:8px}
-  .users-actions-col .btn + .btn{margin-left:8px}
-}
-
-.loading,.no-data{text-align:center;padding:48px 20px;color:var(--c-text-muted)}
-.error{background:var(--c-danger-soft);color:var(--c-danger);border:1px solid #fecaca;padding:16px;margin:16px 0;border-radius:var(--r-md);text-align:center;font-weight:500}
-.status-indicator{font-size:1.05rem}
-.status-accepted{color:var(--c-success);font-weight:600}
-.status-declined{color:var(--c-danger);font-weight:600}
-
-/* ---- Forms ---------------------------------------------------------- */
-.form-group{margin-bottom:18px}
-.form-group label{display:block;margin-bottom:6px;font-weight:600;color:var(--c-text);font-size:.875rem}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.field-hint{margin:6px 0 0;color:var(--c-text-subtle);font-size:.8rem}
-.form-input{
-  width:100%;padding:10px 12px;border:1px solid var(--c-border-strong);border-radius:var(--r-sm);
-  font:inherit;font-size:.95rem;color:var(--c-text);background:var(--c-surface);box-sizing:border-box;
-  transition:border-color .15s ease,box-shadow .15s ease;
-}
-.form-input::placeholder{color:var(--c-text-subtle)}
-.form-input:focus{outline:none;border-color:var(--c-accent);box-shadow:0 0 0 3px var(--c-focus-ring)}
-.form-input:disabled{background:var(--c-surface-subtle);color:var(--c-text-muted);cursor:not-allowed}
-textarea.form-input{min-height:80px;resize:vertical}
-
-/* ---- Modals --------------------------------------------------------- */
-.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(2px);display:flex;justify-content:center;align-items:center;z-index:1000;padding:20px}
-.modal{background:var(--c-surface);border-radius:var(--r-lg);max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 50px rgba(15,23,42,.25);border:1px solid var(--c-border)}
-.modal-header{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid var(--c-border)}
-.modal-header h3{margin:0;color:var(--c-text);font-size:1.1rem;font-weight:700}
-.close-btn{background:transparent;border:none;font-size:1.4rem;cursor:pointer;color:var(--c-text-subtle);width:32px;height:32px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;transition:background-color .15s ease,color .15s ease}
-.close-btn:hover{background:var(--c-surface-subtle);color:var(--c-text)}
-.modal-content,.edit-form{padding:20px 24px}
-.modal-actions{display:flex;justify-content:flex-end;gap:10px;padding:18px 24px;border-top:1px solid var(--c-border)}
-/* When the footer lives inside a padded form, break it out so its separator
-   and background span the full modal width and sit flush at the bottom,
-   matching the delete modals where .modal-actions is a direct child. */
-.edit-form .modal-actions{margin:20px -24px -20px}
-.delete-modal .modal-content{text-align:center}
-.delete-modal .modal-content p{color:var(--c-text-muted);margin:0 0 8px}
-.warning{color:var(--c-danger);font-weight:600;margin-top:8px!important}
-.auth-error{color:var(--c-danger);background:var(--c-danger-soft);border:1px solid #fecaca;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;text-align:center;font-size:.875rem}
-
-@media (max-width:600px){
-  .admin-header{flex-direction:column;align-items:flex-start}
-  .header-actions{width:100%}
-  .header-actions .btn{flex:1}
-  .form-row{grid-template-columns:1fr}
-}
-</style>
