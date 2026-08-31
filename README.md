@@ -71,6 +71,8 @@ to `.env` and fill them in.
 | `BETTER_AUTH_SECRET` | Session signing secret (**required in production**; `openssl rand -base64 32`) |
 | `BETTER_AUTH_URL` | External origin for session cookies (set behind a proxy) |
 | `CORS_ORIGIN`     | Optional cross-origin allow-list (off by default) |
+| `PUBLIC_BASE_URL` | Public origin used for canonical / `og:url` / sitemap links (falls back to `BETTER_AUTH_URL`, then the request host) |
+| `SEO_ALLOW_INDEXING` | `false` to serve `noindex` + a blanket `Disallow: /` (default: indexable) |
 | `DOMAIN`          | Base domain for the Traefik router         |
 | `BACKUP_KEEP` / `BACKUP_INTERVAL` | Snapshots to keep / seconds between DB backups |
 
@@ -92,6 +94,37 @@ The SQLite database is the only copy of every RSVP. `compose.yml` includes a
 `birthday_backups` volume on an interval (`BACKUP_INTERVAL`, default daily),
 keeping the latest `BACKUP_KEEP` (default 14). To restore, stop the app and copy
 a `rsvp-*.db` snapshot over `/app/data/rsvp.db`.
+
+## SEO & link previews
+
+Guests mostly arrive by pasting the invitation link into a chat. Those scrapers
+(WhatsApp, Messenger, iMessage, Slack, X) and search-engine crawlers never run
+the SPA's JavaScript, so the server renders each event's metadata **into the
+HTML shell** before sending it ([`server/src/seo.ts`](server/src/seo.ts)):
+
+- `<title>` and `<meta name="description">` built from the event — who, how old,
+  when and where, plus whether RSVPs are still open.
+- Open Graph and Twitter card tags, so a pasted link previews as
+  *"Anniversaire de Léo — 5 ans"* instead of a bare URL.
+- `<link rel="canonical">` per invitation (`/` for the default event,
+  `/e/<slug>` for the others).
+- schema.org `Event` JSON-LD, so the date and place can surface as a rich result.
+- `/robots.txt` (keeping crawlers out of `/admin` and `/api/`) and a
+  `/sitemap.xml` generated from the events table.
+- `noindex, nofollow` on `/admin` and on any slug that matches no event.
+
+Absolute URLs come from `PUBLIC_BASE_URL`, falling back to `BETTER_AUTH_URL` and
+then to the (validated) request host. Event text is escaped on the way into the
+shell, so an event name can never inject markup.
+
+An invitation is a semi-private page. It stays indexable by default — which is
+what the app already did, having had no robots directives at all — but set
+`SEO_ALLOW_INDEXING=false` to keep the whole site out of search engines; link
+previews keep working either way.
+
+The frontend mirrors the same copy at runtime
+([`frontend/src/seo.js`](frontend/src/seo.js)) so the tab title and canonical
+stay correct across client-side navigation.
 
 ## API
 

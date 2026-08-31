@@ -185,6 +185,7 @@
 <script>
 import { eventConfig, apiBaseUrl } from '../env.js';
 import { applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
+import { applySeo, eventSeo } from '../seo.js';
 
 export default {
   name: 'Invitation',
@@ -299,6 +300,9 @@ export default {
     // Paint the (fallback) theme immediately, then upgrade to the event's theme
     // once the public event endpoint responds.
     applyTheme(this.theme);
+    // No updateSeo() here: the server already injected this event's tags into
+    // the shell. Overwriting them with the seed values before the fetch lands
+    // would only downgrade them (and lose them entirely if the fetch fails).
     this.loadEvent();
   },
   watch: {
@@ -316,6 +320,7 @@ export default {
         const res = await fetch(`${apiBaseUrl}/events/${encodeURIComponent(this.effectiveSlug)}`);
         if (res.status === 404) {
           this.notFound = true;
+          this.updateSeo();
           return;
         }
         if (!res.ok) return;
@@ -333,9 +338,32 @@ export default {
           this.theme = data.theme;
           applyTheme(data.theme);
         }
+        this.updateSeo();
       } catch {
         // Keep whatever we have (fallback paint) when the event can't be fetched.
       }
+    },
+    // Keep the tab title, the share sheet and the canonical URL in step with the
+    // event actually on screen. The first paint's tags come from the server.
+    updateSeo() {
+      if (this.notFound) {
+        applySeo({
+          title: 'Événement introuvable',
+          description: 'Cette invitation n\'existe pas ou n\'est plus disponible.',
+          robots: 'noindex, follow'
+        });
+        return;
+      }
+      const { title, description } = eventSeo({
+        person: this.birthdayPerson,
+        age: this.age,
+        formattedDate: this.formattedDate,
+        time: this.eventTime,
+        town: this.eventTown,
+        location: this.eventLocation,
+        rsvpClosed: this.rsvpClosed
+      });
+      applySeo({ title, description });
     },
     formatDate(date) {
       const d = date instanceof Date ? date : (date ? new Date(date) : null);
