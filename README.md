@@ -16,7 +16,7 @@ Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
 > ℹ️ **Provenance:** this repository was originally reconstructed from the
 > published Docker image (the original Vite source had been lost). The frontend
 > has since been **rebuilt from source** under [`frontend/`](frontend/) — a
-> Vue 3 + Vite SPA — so `dist/` is now a build artifact (git-ignored) produced
+> React 19 + Vite SPA — so `dist/` is now a build artifact (git-ignored) produced
 > by `npm run build`, not committed assets.
 
 ## Architecture
@@ -29,7 +29,8 @@ Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
                  └───────────────────────────────────────────────┘
 ```
 
-- **Frontend** — Vue 3 + Vite SPA under [`frontend/`](frontend/): a per-event
+- **Frontend** — React 19 + Vite SPA under [`frontend/`](frontend/), styled with
+  Tailwind v4 and [shadcn/ui](https://ui.shadcn.com) components on Radix: a per-event
   invitation view (`/` for the default event, `/e/:slug` for any other) with the
   RSVP and lookup forms, and a multi-event admin dashboard (`/admin`) that lists
   every event and lets the host create, edit, theme, share (link + QR) and manage
@@ -279,12 +280,12 @@ npm run build    # builds the SPA into ../dist (served by the backend)
 
 | File                     | Responsibility                                   |
 | ------------------------ | ------------------------------------------------ |
-| `src/App.vue`            | Root + global styles, `<router-view>`            |
-| `src/views/Invitation.vue` | Per-event invitation, RSVP + lookup (`/`, `/e/:slug`) |
-| `src/views/Admin.vue`    | Multi-event admin: events list, create/edit/theme/share, per-event RSVPs, account access (`/admin`) |
-| `src/views/Auth.vue`     | Sign-in, sign-up, Google, password reset, pending-access |
-| `src/session.js`         | Reactive session + role, read from `/api/me`     |
-| `src/router.js`          | Routes and the admin route guard                 |
+| `src/App.jsx`            | Routes, the admin route guard and the toaster    |
+| `src/views/Invitation.jsx` | Per-event invitation, RSVP + lookup (`/`, `/e/:slug`) |
+| `src/views/Admin.jsx`    | Multi-event admin: events list, create/edit/theme/share, per-event RSVPs, account access (`/admin`) |
+| `src/views/Auth.jsx`     | Sign-in, sign-up, Google, password reset, pending-access |
+| `src/session.js`         | Session + role store (`useSession`), read from `/api/me` |
+| `src/components/ui/`     | shadcn/ui components (Radix primitives)          |
 | `src/env.js`             | Reads runtime config from `window.ENV`           |
 | `src/themes.js`          | Theme catalog + `applyTheme` (CSS custom properties) |
 

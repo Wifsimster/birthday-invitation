@@ -384,8 +384,8 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   app.use(compression());
   app.use(helmet({
     // Restrictive CSP that still allows the font/icon CDNs the SPA loads and the
-    // inline styles Vue injects. 'unsafe-inline' for styles is required by Vue's
-    // scoped-style injection.
+    // inline styles the SPA sets. 'unsafe-inline' for styles is required by the
+    // per-theme `style` attributes the invitation renders.
     //
     // umami.battistella.ovh est notre propre instance de mesure d'audience, pas
     // un tiers. Elle a besoin de DEUX directives : scriptSrc pour charger

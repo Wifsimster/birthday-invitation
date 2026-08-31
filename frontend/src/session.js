@@ -1,23 +1,48 @@
-// Shared reactive session state.
+// Shared session state.
 //
 // The Better Auth client owns sign-in/sign-up; this module owns "who am I and
 // what may I do", which the server answers on GET /api/me. Role is deliberately
 // read from the server rather than the cookie: it can change (an admin grants
 // or revokes access) while a session stays valid.
-import { reactive, readonly } from 'vue';
+//
+// State lives outside React — the route guard has to resolve it before any
+// component mounts, and the imperative helpers below are called from event
+// handlers. Components subscribe with `useSession()`.
+import { useSyncExternalStore } from 'react';
 import { apiBaseUrl } from './env.js';
 import { authClient } from './auth-client.js';
 
-const state = reactive({
+const state = {
   // null until refresh() has run at least once, then null (signed out) or the
   // user object { id, name, email, image, emailVerified, role }.
   user: null,
   // False until the first refresh resolves, so guards can await it instead of
   // flashing the sign-in page at an already-signed-in visitor.
   ready: false
-});
+};
 
-export const session = readonly(state);
+// useSyncExternalStore compares snapshots by identity, so hand out a frozen
+// copy that is only replaced when something actually changed.
+let snapshot = { ...state };
+const listeners = new Set();
+
+function commit() {
+  snapshot = { ...state };
+  listeners.forEach((notify) => notify());
+}
+
+function subscribe(notify) {
+  listeners.add(notify);
+  return () => listeners.delete(notify);
+}
+
+/** Read the session outside React (guards, event handlers). */
+export const getSession = () => snapshot;
+
+/** Subscribe a component to the session. Re-renders on sign-in/out and role changes. */
+export function useSession() {
+  return useSyncExternalStore(subscribe, getSession, getSession);
+}
 
 export const isSignedIn = () => state.user !== null;
 export const isAdmin = () => state.user?.role === 'admin';
@@ -33,6 +58,7 @@ export async function refresh() {
     state.user = null;
   } finally {
     state.ready = true;
+    commit();
   }
   return state.user;
 }
@@ -51,6 +77,7 @@ export async function signOut() {
   }
   state.user = null;
   state.ready = true;
+  commit();
 }
 
 /** Which sign-in methods the deployment offers (cached for the page's life). */

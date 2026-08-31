@@ -4,7 +4,7 @@
 // API root (e.g. "/api" for the same-origin SPA, or an absolute URL when the
 // frontend talks to a separate backend). We resolve it to an origin and let the
 // client's default basePath ("/api/auth") rebuild the full path.
-import { createAuthClient } from 'better-auth/vue';
+import { createAuthClient } from 'better-auth/react';
 import { apiBaseUrl } from './env.js';
 
 function authBaseUrl() {
