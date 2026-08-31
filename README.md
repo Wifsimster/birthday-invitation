@@ -75,6 +75,8 @@ to `.env` and fill them in.
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` | SMTP overrides; default to Resend (`smtp.resend.com:465`, user `resend`) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in; leave blank to hide the button |
 | `CORS_ORIGIN`     | Optional cross-origin allow-list (off by default) |
+| `PUBLIC_BASE_URL` | Public origin used for canonical / `og:url` / sitemap links (falls back to `BETTER_AUTH_URL`, then the request host) |
+| `SEO_ALLOW_INDEXING` | `false` to serve `noindex` + a blanket `Disallow: /` (default: indexable) |
 | `DOMAIN`          | Base domain for the Traefik router         |
 | `BACKUP_KEEP` / `BACKUP_INTERVAL` | Snapshots to keep / seconds between DB backups |
 
@@ -97,6 +99,63 @@ The SQLite database is the only copy of every RSVP. `compose.yml` includes a
 keeping the latest `BACKUP_KEEP` (default 14). To restore, stop the app and copy
 a `rsvp-*.db` snapshot over `/app/data/rsvp.db`.
 
+## SEO & link previews
+
+Guests mostly arrive by pasting the invitation link into a chat. Those scrapers
+(WhatsApp, Messenger, iMessage, Slack, X) and search-engine crawlers never run
+the SPA's JavaScript, so the server renders each event's metadata **into the
+HTML shell** before sending it ([`server/src/seo.ts`](server/src/seo.ts)):
+
+- `<title>` and `<meta name="description">` built from the event — who, how old,
+  when and where, plus whether RSVPs are still open.
+- Open Graph and Twitter card tags, so a pasted link previews as
+  *"Anniversaire de Léo — 5 ans"* instead of a bare URL, with a generated share
+  card as `og:image` (see below).
+- `<link rel="canonical">` per invitation (`/` for the default event,
+  `/e/<slug>` for the others).
+- schema.org `Event` JSON-LD, so the date and place can surface as a rich result.
+- `/robots.txt` (keeping crawlers out of `/admin` and `/api/`) and a
+  `/sitemap.xml` generated from the events table.
+- `noindex, nofollow` on `/admin` and on any slug that matches no event.
+
+Absolute URLs come from `PUBLIC_BASE_URL`, falling back to `BETTER_AUTH_URL` and
+then to the (validated) request host. Event text is escaped on the way into the
+shell, so an event name can never inject markup.
+
+An invitation is a semi-private page. It stays indexable by default — which is
+what the app already did, having had no robots directives at all — but set
+`SEO_ALLOW_INDEXING=false` to keep the whole site out of search engines; link
+previews keep working either way.
+
+The frontend mirrors the same copy at runtime
+([`frontend/src/seo.js`](frontend/src/seo.js)) so the tab title and canonical
+stay correct across client-side navigation.
+
+### The share card
+
+A chat preview is mostly picture — the image gets far more room than the title —
+so each event has its own card at `/api/og.png` (default event) or
+`/api/events/<slug>/og.png`, 1200×630 PNG, themed like the invitation and
+carrying the name, age, date and place.
+
+[`server/src/og-image.ts`](server/src/og-image.ts) draws it as SVG and rasterises
+it with [resvg](https://github.com/yisibl/resvg-js) (prebuilt binaries, including
+musl, so the Alpine image needs no extra build tooling). resvg has no browser
+behind it, which shapes three details:
+
+- **Fonts are bundled**, not loaded from Google Fonts like the SPA's — two
+  subsetted static instances of Baloo 2, ~43 KB each. See
+  [`server/assets/fonts/README.md`](server/assets/fonts/README.md) for how they
+  were derived and why a variable font would not do.
+- **Emoji are stripped** from event text before drawing: there is no colour-emoji
+  font, so `🏠 Chez Léo` would otherwise print a tofu box.
+- **Text is measured by estimate**, so a long name shrinks to fit and, past that,
+  truncates rather than running off the card.
+
+Rendering costs ~50 ms, so cards are cached in memory keyed by the event's
+`updated_at` — an admin's edit invalidates the entry on its own — and served with
+an `ETag` plus a one-hour `Cache-Control`.
+
 ## API
 
 Each event is addressed by its `slug`; the public routes below resolve the event
@@ -111,6 +170,7 @@ operate on the **default event**.
 | `POST`   | `/api/events/:slug/rsvp`                | —     | Submit/update an RSVP for the event       |
 | `GET`    | `/api/events/:slug/rsvp/lookup/:phone`  | —     | Look up an RSVP within the event          |
 | `GET`    | `/api/events/:slug/event.ics`           | —     | Calendar invite (.ics) for the event      |
+| `GET`    | `/api/events/:slug/og.png`              | —     | Share card (1200×630 PNG) for the event   |
 
 **Event management (admin)**
 
@@ -135,6 +195,7 @@ operate on the **default event**.
 | `POST`   | `/api/rsvp`               | —     | Submit/update an RSVP (default event)    |
 | `GET`    | `/api/rsvp/lookup/:phone` | —     | Look up an RSVP (default event)          |
 | `GET`    | `/api/event.ics`          | —     | Calendar invite (.ics), default event    |
+| `GET`    | `/api/og.png`             | —     | Share card (PNG), default event          |
 | `GET`    | `/api/settings`           | —     | Current UI settings (default theme)      |
 | `GET`    | `/api/auth-providers`     | —     | Which sign-in methods are configured     |
 | `ALL`    | `/api/auth/*`             | —     | Better Auth (sign-in, sign-up, session)  |

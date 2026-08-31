@@ -6,6 +6,7 @@ import compression from 'compression';
 import { pinoHttp } from 'pino-http';
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node';
 import path from 'node:path';
+import fs from 'node:fs';
 import { z } from 'zod';
 import {
   eventConfig,
@@ -19,6 +20,16 @@ import {
   type EventConfig
 } from './event.ts';
 import { THEME_IDS, DEFAULT_THEME } from './themes.ts';
+import { renderOgPng } from './og-image.ts';
+import {
+  buildEventMeta,
+  buildRobotsTxt,
+  buildSitemapXml,
+  indexingAllowed,
+  renderIndexHtml,
+  resolveOrigin,
+  FALLBACK_META
+} from './seo.ts';
 import { logger as defaultLogger, type Logger } from './logger.ts';
 import { createAuth, isRole, ROLES, DEFAULT_ROLE, type Auth, type Role } from './auth.ts';
 import type { Db, RsvpRow, EventRow } from './db.ts';
@@ -1087,6 +1098,50 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     res.json(rsvp);
   }));
 
+  // --- Open Graph share card -------------------------------------------------
+  // Rasterising costs ~50 ms, and a link pasted into a group chat is fetched by
+  // every scraper at once, so keep the rendered bytes around. The key carries
+  // updated_at, so an admin's edit invalidates the entry by itself.
+  const ogCache = new Map<string, Buffer>();
+  const OG_CACHE_MAX = 32;
+
+  const sendOgPng = (row: EventRow, req: Request, res: Response): void => {
+    const key = `${row.id}:${row.updated_at}:${row.theme}`;
+    let png = ogCache.get(key);
+    if (!png) {
+      png = renderOgPng(row);
+      // Bound the cache: drop the oldest entry once it is full (Map keeps
+      // insertion order), so a deployment with many events can't grow it freely.
+      if (ogCache.size >= OG_CACHE_MAX) {
+        const oldest = ogCache.keys().next().value;
+        if (oldest !== undefined) ogCache.delete(oldest);
+      }
+      ogCache.set(key, png);
+    }
+    const etag = `W/"og-${key}"`;
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.set('ETag', etag);
+    if (req.headers['if-none-match'] === etag) {
+      res.status(304).end();
+      return;
+    }
+    res.send(png);
+  };
+
+  app.get('/api/events/:slug/og.png', asyncHandler((req, res) => {
+    const row = getEventBySlug(db, String(req.params.slug));
+    if (!row) {
+      return res.status(404).json({ error: 'Événement introuvable' });
+    }
+    sendOgPng(row, req, res);
+  }));
+
+  // Legacy un-slugged route: the share card of the default event.
+  app.get('/api/og.png', asyncHandler((req, res) => {
+    sendOgPng(getDefaultEvent(db), req, res);
+  }));
+
   // Calendar invite for a specific event.
   app.get('/api/events/:slug/event.ics', asyncHandler((req, res) => {
     const row = getEventBySlug(db, String(req.params.slug));
@@ -1109,6 +1164,40 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
 
   // --- Static SPA -----------------------------------------------------------
   if (staticDir) {
+    const indexPath = path.join(staticDir, 'index.html');
+    // The built shell never changes for the life of the process, so read it once
+    // and only re-render the <head> per request.
+    let indexTemplate: string | null = null;
+    const readIndexTemplate = (): string => {
+      if (indexTemplate === null) indexTemplate = fs.readFileSync(indexPath, 'utf8');
+      return indexTemplate;
+    };
+
+    // Which event (if any) a given SPA path shows: "/" is the default event,
+    // "/e/<slug>" a named one. Anything else (e.g. /admin) has no event.
+    const eventForPath = (pathname: string): EventRow | undefined => {
+      if (pathname === '/' || pathname === '/index.html') return getDefaultEvent(db);
+      const match = /^\/e\/([^/]+)\/?$/.exec(pathname);
+      return match ? getEventBySlug(db, decodeURIComponent(match[1])) : undefined;
+    };
+
+    // Crawler directives. Registered before express.static so these win over any
+    // file of the same name shipped in the build (the dev server keeps one).
+    app.get('/robots.txt', (req, res) => {
+      res.type('text/plain').send(buildRobotsTxt(resolveOrigin(req), indexingAllowed()));
+    });
+
+    app.get('/sitemap.xml', (req, res) => {
+      const origin = resolveOrigin(req);
+      if (!origin || !indexingAllowed()) return res.status(404).type('text/plain').send('Not found');
+      const rows = db.all<EventRow>('SELECT * FROM event ORDER BY is_default DESC, id');
+      res.type('application/xml').send(buildSitemapXml(rows, origin));
+    });
+
+    // express.static would serve /index.html raw — no metadata, and a duplicate
+    // of "/". Send it to the canonical URL instead.
+    app.get('/index.html', (_req, res) => res.redirect(301, '/'));
+
     app.use(express.static(staticDir, {
       index: false,
       setHeaders(res, filePath) {
@@ -1119,9 +1208,25 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
         }
       }
     }));
+
+    // SPA fallback. Link scrapers and crawlers never run our JavaScript, so the
+    // shell they get must already describe the event they asked for.
     app.use((req, res, next) => {
-      if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
-      res.sendFile(path.join(staticDir, 'index.html'));
+      if ((req.method !== 'GET' && req.method !== 'HEAD') || req.path.startsWith('/api/')) {
+        return next();
+      }
+      let html: string;
+      try {
+        html = readIndexTemplate();
+      } catch {
+        return next();
+      }
+      const row = eventForPath(req.path);
+      const meta = row
+        ? buildEventMeta(row, resolveOrigin(req), indexingAllowed())
+        : FALLBACK_META;
+      res.setHeader('Cache-Control', 'no-cache');
+      res.type('html').send(renderIndexHtml(html, meta));
     });
   }
 
