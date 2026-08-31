@@ -38,6 +38,10 @@ services:
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://leo-birthday.${DOMAIN}}
       # Restrict cross-origin API access (comma-separated). Empty = same-origin only.
       - CORS_ORIGIN=${CORS_ORIGIN:-}
+      # Public origin used for canonical / og:url / sitemap links, and the
+      # opt-out that keeps the invitation out of search engines.
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-https://leo-birthday.${DOMAIN}}
+      - SEO_ALLOW_INDEXING=${SEO_ALLOW_INDEXING:-true}
       # Proxy hops in front of the backend (Traefik -> Node) so that per-IP
       # rate limiting sees the real client address.
       - TRUST_PROXY=${TRUST_PROXY:-1}

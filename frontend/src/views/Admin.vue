@@ -295,6 +295,7 @@ import QRCode from 'qrcode';
 import { apiBaseUrl } from '../env.js';
 import { authClient } from '../auth-client.js';
 import { themeList, applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
+import { applySeo } from '../seo.js';
 
 export default {
   name: 'Admin',
@@ -367,6 +368,12 @@ export default {
     }
   },
   mounted() {
+    // The console is behind a login and has nothing to offer a search engine.
+    applySeo({
+      title: 'Administration | Invitation d\'anniversaire',
+      description: 'Console d\'administration des invitations et des réponses.',
+      robots: 'noindex, nofollow'
+    });
     window.addEventListener('keydown', this.handleKeydown);
     this.restoreSession();
   },
