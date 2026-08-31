@@ -20,6 +20,7 @@ import {
   type EventConfig
 } from './event.ts';
 import { THEME_IDS, DEFAULT_THEME } from './themes.ts';
+import { renderOgPng } from './og-image.ts';
 import {
   buildEventMeta,
   buildRobotsTxt,
@@ -907,6 +908,50 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(404).json({ error: 'Aucune réponse trouvée pour ce numéro de téléphone' });
     }
     res.json(rsvp);
+  }));
+
+  // --- Open Graph share card -------------------------------------------------
+  // Rasterising costs ~50 ms, and a link pasted into a group chat is fetched by
+  // every scraper at once, so keep the rendered bytes around. The key carries
+  // updated_at, so an admin's edit invalidates the entry by itself.
+  const ogCache = new Map<string, Buffer>();
+  const OG_CACHE_MAX = 32;
+
+  const sendOgPng = (row: EventRow, req: Request, res: Response): void => {
+    const key = `${row.id}:${row.updated_at}:${row.theme}`;
+    let png = ogCache.get(key);
+    if (!png) {
+      png = renderOgPng(row);
+      // Bound the cache: drop the oldest entry once it is full (Map keeps
+      // insertion order), so a deployment with many events can't grow it freely.
+      if (ogCache.size >= OG_CACHE_MAX) {
+        const oldest = ogCache.keys().next().value;
+        if (oldest !== undefined) ogCache.delete(oldest);
+      }
+      ogCache.set(key, png);
+    }
+    const etag = `W/"og-${key}"`;
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.set('ETag', etag);
+    if (req.headers['if-none-match'] === etag) {
+      res.status(304).end();
+      return;
+    }
+    res.send(png);
+  };
+
+  app.get('/api/events/:slug/og.png', asyncHandler((req, res) => {
+    const row = getEventBySlug(db, String(req.params.slug));
+    if (!row) {
+      return res.status(404).json({ error: 'Événement introuvable' });
+    }
+    sendOgPng(row, req, res);
+  }));
+
+  // Legacy un-slugged route: the share card of the default event.
+  app.get('/api/og.png', asyncHandler((req, res) => {
+    sendOgPng(getDefaultEvent(db), req, res);
   }));
 
   // Calendar invite for a specific event.

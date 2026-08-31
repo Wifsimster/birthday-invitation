@@ -185,7 +185,7 @@
 <script>
 import { eventConfig, apiBaseUrl } from '../env.js';
 import { applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
-import { applySeo, eventSeo } from '../seo.js';
+import { applySeo, eventSeo, ogImageUrl } from '../seo.js';
 
 export default {
   name: 'Invitation',
@@ -363,7 +363,7 @@ export default {
         location: this.eventLocation,
         rsvpClosed: this.rsvpClosed
       });
-      applySeo({ title, description });
+      applySeo({ title, description, image: ogImageUrl(apiBaseUrl, this.slug) });
     },
     formatDate(date) {
       const d = date instanceof Date ? date : (date ? new Date(date) : null);

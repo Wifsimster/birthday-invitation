@@ -10,12 +10,17 @@
 
 import type { EventRow } from './db.ts';
 import { isRsvpClosed, eventConfigFromRow } from './event.ts';
+import { OG_WIDTH, OG_HEIGHT, ogImageAlt } from './og-image.ts';
 
 export interface SeoMeta {
   title: string;
   description: string;
   canonical: string;
   robots: string;
+  // Absolute URL of the share card, and its alt text. Absent when no origin is
+  // known (a relative og:image is ignored by every scraper) or for a page with
+  // no event behind it.
+  ogImage?: { url: string; alt: string };
   // JSON-LD payload (schema.org Event), omitted when the event has no date.
   jsonLd?: Record<string, unknown>;
 }
@@ -122,6 +127,13 @@ export function buildEventMeta(row: EventRow, origin: string, allowIndex = true)
     robots: allowIndex ? 'index, follow' : 'noindex, follow'
   };
 
+  if (origin) {
+    const slugPath = row.is_default
+      ? '/api/og.png'
+      : `/api/events/${encodeURIComponent(row.slug)}/og.png`;
+    meta.ogImage = { url: `${origin}${slugPath}`, alt: ogImageAlt(row) };
+  }
+
   if (/^\d{4}-\d{2}-\d{2}$/.test(row.date)) {
     meta.jsonLd = {
       '@context': 'https://schema.org',
@@ -132,6 +144,7 @@ export function buildEventMeta(row: EventRow, origin: string, allowIndex = true)
       eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
       eventStatus: 'https://schema.org/EventScheduled',
       ...(canonical ? { url: canonical } : {}),
+      ...(meta.ogImage ? { image: meta.ogImage.url } : {}),
       ...(where
         ? {
             location: {
@@ -174,9 +187,18 @@ function renderHead(meta: SeoMeta): string {
     `<meta property="og:title" content="${escapeHtml(meta.title)}" />`,
     `<meta property="og:description" content="${escapeHtml(meta.description)}" />`,
     meta.canonical && `<meta property="og:url" content="${escapeHtml(meta.canonical)}" />`,
-    `<meta name="twitter:card" content="summary" />`,
+    meta.ogImage && `<meta property="og:image" content="${escapeHtml(meta.ogImage.url)}" />`,
+    meta.ogImage && `<meta property="og:image:type" content="image/png" />`,
+    meta.ogImage && `<meta property="og:image:width" content="${OG_WIDTH}" />`,
+    meta.ogImage && `<meta property="og:image:height" content="${OG_HEIGHT}" />`,
+    meta.ogImage && `<meta property="og:image:alt" content="${escapeHtml(meta.ogImage.alt)}" />`,
+    // A card carrying an image earns the large layout; without one, the small
+    // layout avoids reserving a blank thumbnail slot.
+    `<meta name="twitter:card" content="${meta.ogImage ? 'summary_large_image' : 'summary'}" />`,
     `<meta name="twitter:title" content="${escapeHtml(meta.title)}" />`,
-    `<meta name="twitter:description" content="${escapeHtml(meta.description)}" />`
+    `<meta name="twitter:description" content="${escapeHtml(meta.description)}" />`,
+    meta.ogImage && `<meta name="twitter:image" content="${escapeHtml(meta.ogImage.url)}" />`,
+    meta.ogImage && `<meta name="twitter:image:alt" content="${escapeHtml(meta.ogImage.alt)}" />`
   ].filter(Boolean);
 
   if (meta.jsonLd) {
