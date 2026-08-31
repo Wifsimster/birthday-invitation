@@ -1,6 +1,6 @@
 {
     "name": "@birthday-invitation/backend",
-    "version": "1.5.1",
+    "version": "1.6.0",
     "description": "Birthday invitation backend - Express.js API server",
     "type": "module",
     "private": true,
