@@ -291,9 +291,11 @@ npm run build    # builds the SPA into ../dist (served by the backend)
 ### Themes
 
 The invitation has a selectable visual theme (Fiesta, Spider-Man, Iron Man,
-Pat' Patrouille, Mickey, Princesse, Dino, Espace, Licorne). The admin picks one
-from the **🎨 Thème** panel in `/admin`; it is persisted server-side in the
-`settings` table and applied to every visitor. Each theme is pure CSS
+Pat' Patrouille, Mickey, Princesse, Dino, Espace, Licorne). The theme belongs
+to the event, not the deployment: the admin picks one per event — from the
+**🎨 Thème** panel of the event being managed in `/admin`, or from the event's
+own create/edit form — and it is stored on that event's row, so every visitor to
+that invitation (and its share card) sees it. Each theme is pure CSS
 (palette + emoji + fonts, no image assets) defined in `frontend/src/themes.js`,
 applied by writing `--theme-*` CSS custom properties on `<html>`. The
 server-side allow-list in `server/src/themes.ts` must stay in sync with the

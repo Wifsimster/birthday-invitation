@@ -102,6 +102,9 @@
         </div>
 
         <p v-if="error" class="auth-error" role="alert">{{ error }}</p>
+        <p v-if="passwordWasReset" class="auth-success" role="status">
+          Mot de passe modifié. Connectez-vous avec le nouveau.
+        </p>
 
         <button type="submit" class="btn btn-primary btn-block" :disabled="loading">
           {{ loading ? copy.busy : copy.submit }}
@@ -139,7 +142,7 @@
 
 <script>
 import { authClient } from '../auth-client.js';
-import { session, refresh, signOut, authProviders } from '../session.js';
+import { session, refresh, ensureSession, signOut, authProviders } from '../session.js';
 import { applySeo } from '../seo.js';
 
 // Route name -> form mode. `check-email` and `reset-sent` are transient states
@@ -219,6 +222,11 @@ export default {
     copy() {
       return COPY[this.mode] ?? COPY.signin;
     },
+    // Set by handleReset once a new password is stored, so the sign-in form the
+    // visitor lands on says why they are being asked to sign in again.
+    passwordWasReset() {
+      return this.mode === 'signin' && this.$route.query.reset === '1';
+    },
     // Better Auth puts the reset token in the query string of the page its
     // emailed link redirects to.
     resetToken() {
@@ -241,8 +249,11 @@ export default {
     this.applyHeadForMode();
     this.providers = await authProviders();
     // A visitor arriving on /login who already has a session belongs elsewhere.
-    if (this.mode === 'signin' && session.user) {
-      this.$router.replace(session.user.role === 'admin' ? '/admin' : '/pending');
+    // No route guard runs here, so resolve the session rather than reading a
+    // `session.user` that a cold load has never filled in.
+    if (this.mode === 'signin') {
+      const user = await ensureSession();
+      if (user) this.$router.replace(user.role === 'admin' ? '/admin' : '/pending');
     }
   },
   methods: {
@@ -292,7 +303,11 @@ export default {
         const { error } = await authClient.signUp.email({
           name: this.form.name,
           email: this.form.email,
-          password: this.form.password
+          password: this.form.password,
+          // Where the confirmation link lands. /admin, like the resend below, so
+          // both routes end on the same screen — the guard forwards an account
+          // that has no access yet to /pending rather than the invitation page.
+          callbackURL: '/admin'
         });
         if (error) {
           throw new Error(
@@ -329,7 +344,7 @@ export default {
         });
         if (error) throw new Error('Lien de réinitialisation invalide ou expiré.');
         this.form.password = '';
-        this.$router.replace('/login');
+        this.$router.replace({ name: 'login', query: { reset: '1' } });
       });
     },
 

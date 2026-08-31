@@ -135,9 +135,7 @@
               <div class="form-group" v-if="formData.attending === 'yes'">
                 <label for="rsvp-guests">👨‍👩‍👧‍👦 Nombre de personnes</label>
                 <select id="rsvp-guests" v-model.number="formData.guests">
-                  <option :value="1">1 personne (juste l'enfant)</option>
-                  <option :value="2">2 personnes (enfant + 1 accompagnateur)</option>
-                  <option :value="3">3 personnes (enfant + 2 accompagnateurs)</option>
+                  <option v-for="opt in guestOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
               </div>
 
@@ -202,7 +200,7 @@ export default {
       notFound: false,
       rsvpClosed: false,
       birthdayPerson: isDefault ? eventConfig.birthdayPerson : '',
-      age: isDefault ? eventConfig.age : 0,
+      age: isDefault ? eventConfig.age : '',
       eventDate: isDefault ? eventConfig.eventDate : null,
       eventTime: isDefault ? eventConfig.eventTime : '',
       eventTown: isDefault ? eventConfig.eventTown : '',
@@ -229,6 +227,21 @@ export default {
     },
     themeDef() {
       return getTheme(this.theme);
+    },
+    // The three usual answers, plus the recorded value when a response the host
+    // entered by hand carries more people than the form normally offers — the
+    // select would otherwise render blank and silently drop the guest's count.
+    guestOptions() {
+      const options = [
+        { value: 1, label: "1 personne (juste l'enfant)" },
+        { value: 2, label: '2 personnes (enfant + 1 accompagnateur)' },
+        { value: 3, label: '3 personnes (enfant + 2 accompagnateurs)' }
+      ];
+      const current = Number(this.formData.guests);
+      if (Number.isInteger(current) && current > 3) {
+        options.push({ value: current, label: `${current} personnes` });
+      }
+      return options;
     },
     messagePlaceholder() {
       return this.formData.attending === 'yes'
@@ -326,7 +339,9 @@ export default {
         if (!res.ok) return;
         const data = await res.json();
         this.birthdayPerson = data.person || '';
-        this.age = Number(data.age) || 0;
+        // Free-form on the server ("5", "18 mois"): keep the string so the badge
+        // and the title match the share card instead of blanking on a non-number.
+        this.age = String(data.age ?? '').trim();
         this.eventDate = data.date ? new Date(data.date) : null;
         this.eventTime = data.time || '';
         this.eventTown = data.town || '';
