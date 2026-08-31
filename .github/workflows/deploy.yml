@@ -51,7 +51,7 @@ jobs:
             echo "::error::Host env file $ENV_FILE not found or unreadable."
             exit 1
           fi
-          required="DOMAIN BIRTHDAY_PERSON ADMIN_EMAIL ADMIN_PASSWORD BETTER_AUTH_SECRET"
+          required="DOMAIN BIRTHDAY_PERSON ADMIN_EMAIL ADMIN_PASSWORD BETTER_AUTH_SECRET MAIL_FROM RESEND_API_KEY"
           missing=""
           for k in $required; do
             grep -qE "^${k}=.+" "$ENV_FILE" || missing="$missing $k"
