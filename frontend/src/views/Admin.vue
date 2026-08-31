@@ -1,13 +1,28 @@
 <template>
   <div class="admin-container">
-    <header class="admin-header">
-      <div class="admin-header-title">
-        <h1>Administration</h1>
-        <p class="admin-header-subtitle">Gestion des événements et des confirmations</p>
-      </div>
-      <div class="header-actions">
-        <router-link to="/" class="btn btn-ghost">← Voir l'invitation</router-link>
-        <button class="btn btn-danger-soft" @click="logout">Déconnexion</button>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="topbar-brand">
+          <span class="topbar-mark" aria-hidden="true">🎉</span>
+          <span>
+            <span class="topbar-title">Administration</span>
+            <span class="topbar-subtitle">Événements et confirmations</span>
+          </span>
+        </div>
+        <div class="topbar-actions">
+          <button
+            class="icon-btn"
+            :class="{ spinning: refreshing }"
+            :disabled="refreshing"
+            title="Tout actualiser"
+            aria-label="Tout actualiser"
+            @click="refreshAll"
+          >↻</button>
+          <router-link to="/" class="btn btn-ghost">
+            ← <span class="hide-sm">Voir l'</span>invitation
+          </router-link>
+          <button class="btn btn-danger-soft" @click="logout">Déconnexion</button>
+        </div>
       </div>
     </header>
 
@@ -57,33 +72,71 @@
       </div>
     </section>
 
+    <!-- ===================== SECTION TABS =====================
+      The screen used to be one long scroll: picking an event pushed its
+      responses below the theme and share panels. The per-event work is split
+      across tabs instead; "Accès" is account-level so it stays reachable even
+      with no event selected. -->
+    <nav class="tabs" aria-label="Sections d'administration">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        type="button"
+        class="tab"
+        :class="{ active: activeTab === tab.id, disabled: tab.needsEvent && !selectedEvent }"
+        :aria-current="activeTab === tab.id ? 'page' : undefined"
+        @click="activeTab = tab.id"
+      >
+        <span aria-hidden="true">{{ tab.icon }}</span> {{ tab.label }}
+        <span v-if="tab.id === 'responses' && selectedEvent" class="tab-count">{{ stats.total_responses }}</span>
+        <span v-if="tab.id === 'access'" class="tab-count">{{ users.length }}</span>
+      </button>
+    </nav>
+
     <!-- ===================== SELECTED EVENT MANAGEMENT ===================== -->
-    <template v-if="selectedEvent">
+    <p v-if="tabNeedsEvent && !selectedEvent" class="no-data">
+      <span class="no-data-icon" aria-hidden="true">👆</span>
+      Choisis un événement ci-dessus pour voir cette section.
+    </p>
+
+    <template v-if="selectedEvent && tabNeedsEvent">
       <div class="selected-head">
         <h2>Gestion : <span class="selected-name">{{ selectedEvent.person || 'Sans nom' }}</span></h2>
         <button class="btn btn-ghost" @click="clearSelection">Fermer</button>
       </div>
 
-      <div class="stats">
+      <div v-show="activeTab === 'responses'" class="stats">
         <div class="stat-card">
+          <div class="stat-icon" aria-hidden="true">📨</div>
           <div class="stat-number">{{ stats.total_responses }}</div>
           <div class="stat-label">Total réponses</div>
         </div>
         <div class="stat-card positive">
+          <div class="stat-icon" aria-hidden="true">✅</div>
           <div class="stat-number">{{ stats.confirmations }}</div>
           <div class="stat-label">Confirmations</div>
         </div>
         <div class="stat-card negative">
+          <div class="stat-icon" aria-hidden="true">❌</div>
           <div class="stat-number">{{ stats.declined }}</div>
           <div class="stat-label">Déclins</div>
         </div>
         <div class="stat-card">
+          <div class="stat-icon" aria-hidden="true">👥</div>
           <div class="stat-number">{{ stats.total_guests }}</div>
           <div class="stat-label">Total invités</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-icon" aria-hidden="true">📊</div>
+          <div class="stat-number">{{ acceptanceRate }}%</div>
+          <div class="rate-bar" role="img" :aria-label="`Taux d'acceptation ${acceptanceRate} %`">
+            <span class="rate-fill" :style="{ width: acceptanceRate + '%' }"></span>
+          </div>
+          <div class="stat-label">Taux d'acceptation</div>
+        </div>
       </div>
 
-      <div class="theme-panel">
+      <div v-show="activeTab === 'theme'" class="theme-panel">
         <h2>🎨 Thème de l'invitation</h2>
         <p class="theme-hint">Choisis l'ambiance affichée aux invités. Le changement est immédiat.</p>
         <div class="theme-grid">
@@ -108,7 +161,7 @@
         </div>
       </div>
 
-      <div class="share-panel">
+      <div v-show="activeTab === 'share'" class="share-panel">
         <h2><span aria-hidden="true">🔗</span> Partager l'invitation</h2>
         <p class="theme-hint">Diffuse ce lien ou ce QR code pour inviter tes convives.</p>
         <div class="share-row">
@@ -118,19 +171,60 @@
         <img v-if="qrDataUrl" :src="qrDataUrl" alt="QR code de l'invitation" class="qr-img" />
       </div>
 
-      <div class="list-actions">
+      <div v-show="activeTab === 'responses'" class="list-actions">
         <button class="btn btn-secondary" @click="loadEventData">↻ Actualiser</button>
         <a class="btn btn-secondary" :href="csvUrl">⬇ Exporter CSV</a>
         <button class="btn btn-primary" @click="openCreateModal">+ Ajouter une réponse</button>
       </div>
 
-      <div class="rsvp-list">
+      <div v-show="activeTab === 'responses'" class="rsvp-list">
         <h2>Réponses</h2>
+
+        <!-- Search, status chips and sort. All client-side over the already
+             loaded list, so filtering never costs a request. -->
+        <div v-if="rsvps.length" class="toolbar-controls">
+          <input
+            v-model.trim="searchQuery"
+            class="form-input search-input"
+            type="search"
+            placeholder="Rechercher un nom, un email, un téléphone..."
+            aria-label="Rechercher une réponse"
+          />
+          <div class="filter-chips" role="group" aria-label="Filtrer par statut">
+            <button
+              v-for="f in statusFilters"
+              :key="f.id"
+              type="button"
+              class="chip"
+              :class="{ active: statusFilter === f.id }"
+              :aria-pressed="statusFilter === f.id"
+              @click="statusFilter = f.id"
+            >{{ f.label }} <span class="chip-count">{{ statusCounts[f.id] }}</span></button>
+          </div>
+          <select v-model="sortBy" class="form-input sort-select" aria-label="Trier les réponses">
+            <option value="recent">Plus récentes</option>
+            <option value="name">Nom (A→Z)</option>
+            <option value="guests">Nombre d'invités</option>
+          </select>
+        </div>
+
         <div v-if="loading" class="loading" aria-live="polite">Chargement...</div>
         <div v-else-if="error" class="error" role="alert">{{ error }}</div>
-        <div v-else-if="rsvps.length === 0" class="no-data">Aucune réponse pour le moment.</div>
+        <div v-else-if="rsvps.length === 0" class="no-data">
+          <span class="no-data-icon" aria-hidden="true">📭</span>
+          Aucune réponse pour le moment.
+        </div>
+        <div v-else-if="filteredRsvps.length === 0" class="no-data">
+          <span class="no-data-icon" aria-hidden="true">🔍</span>
+          Aucune réponse ne correspond à cette recherche.
+          <button type="button" class="btn btn-ghost btn-sm" @click="resetFilters">Réinitialiser</button>
+        </div>
         <template v-else>
-          <div v-for="rsvp in rsvps" :key="rsvp.id" class="rsvp-item" :class="{ declined: rsvp.attending === 'no' }" aria-live="polite">
+          <p class="result-count" aria-live="polite">
+            {{ filteredRsvps.length }} réponse{{ filteredRsvps.length > 1 ? 's' : '' }} affichée{{ filteredRsvps.length > 1 ? 's' : '' }}
+            <template v-if="filteredRsvps.length !== rsvps.length">sur {{ rsvps.length }}</template>
+          </p>
+          <div v-for="rsvp in filteredRsvps" :key="rsvp.id" class="rsvp-item" :class="{ declined: rsvp.attending === 'no' }" aria-live="polite">
             <div class="rsvp-header">
               <h3>
                 <span class="status-indicator" :class="rsvp.attending === 'yes' ? 'accepted' : 'declined'" aria-hidden="true">{{ rsvp.attending === 'yes' ? '✅' : '❌' }}</span>
@@ -159,7 +253,7 @@
     </template>
 
     <!-- ===================== ACCESS / USERS ===================== -->
-    <section class="users-panel">
+    <section v-show="activeTab === 'access'" class="users-panel">
       <div class="events-panel-head">
         <h2>👥 Accès</h2>
         <button class="btn btn-secondary" @click="loadUsers">↻ Actualiser</button>
@@ -342,6 +436,15 @@
         </div>
       </div>
     </div>
+
+    <!-- Non-blocking feedback. Replaces alert(), which froze the tab and lost
+         the surrounding context on every failed save. -->
+    <div class="toast-stack" aria-live="polite" aria-atomic="false">
+      <div v-for="t in toasts" :key="t.id" class="toast" :class="t.type" role="status">
+        <span aria-hidden="true">{{ t.type === 'error' ? '⚠️' : '✓' }}</span>
+        <span>{{ t.message }}</span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -359,6 +462,30 @@ export default {
       themes: themeList,
       currentTheme: DEFAULT_THEME,
       themeSaving: false,
+
+      // Section tabs. `needsEvent` marks the ones that operate on the selected
+      // event; "Accès" is account-level and works without one.
+      activeTab: 'responses',
+      tabs: [
+        { id: 'responses', label: 'Réponses', icon: '📋', needsEvent: true },
+        { id: 'theme', label: 'Thème', icon: '🎨', needsEvent: true },
+        { id: 'share', label: 'Partage', icon: '🔗', needsEvent: true },
+        { id: 'access', label: 'Accès', icon: '👥', needsEvent: false }
+      ],
+
+      // Response list controls (client-side over the loaded list).
+      searchQuery: '',
+      statusFilter: 'all',
+      sortBy: 'recent',
+      statusFilters: [
+        { id: 'all', label: 'Toutes' },
+        { id: 'yes', label: 'Confirmées' },
+        { id: 'no', label: 'Déclinées' }
+      ],
+
+      refreshing: false,
+      toasts: [],
+      toastSeq: 0,
       refreshInterval: null,
 
       // Accounts / access management
@@ -415,6 +542,45 @@ export default {
     currentUserId() {
       return session.user?.id ?? null;
     },
+
+    // Whether the active tab operates on a selected event.
+    tabNeedsEvent() {
+      return this.tabs.find((t) => t.id === this.activeTab)?.needsEvent ?? false;
+    },
+
+    // Share of answers that are a yes. 0 when nobody has replied, rather than
+    // NaN from dividing by zero.
+    acceptanceRate() {
+      const total = this.stats.total_responses;
+      return total ? Math.round((this.stats.confirmations / total) * 100) : 0;
+    },
+
+    // Counts behind the filter chips, so each one shows its own size.
+    statusCounts() {
+      return {
+        all: this.rsvps.length,
+        yes: this.rsvps.filter((r) => r.attending === 'yes').length,
+        no: this.rsvps.filter((r) => r.attending === 'no').length
+      };
+    },
+
+    filteredRsvps() {
+      const q = this.searchQuery.toLowerCase();
+      const rows = this.rsvps.filter((r) => {
+        if (this.statusFilter !== 'all' && r.attending !== this.statusFilter) return false;
+        if (!q) return true;
+        return [r.name, r.email, r.phone].some((v) => (v || '').toLowerCase().includes(q));
+      });
+      // Sort a copy: this.rsvps is the fetched order and the auto-refresh
+      // replaces it wholesale.
+      if (this.sortBy === 'name') {
+        return [...rows].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr'));
+      }
+      if (this.sortBy === 'guests') {
+        return [...rows].sort((a, b) => (b.guests || 0) - (a.guests || 0));
+      }
+      return rows;
+    },
     selectedEvent() {
       return this.events.find((e) => e.id === this.selectedEventId) || null;
     },
@@ -450,6 +616,10 @@ export default {
     selectedEventId() {
       const ev = this.selectedEvent;
       if (ev) {
+        // A newly picked event starts unfiltered on its responses, rather than
+        // inheriting the search and tab left over from the previous one.
+        if (!this.tabNeedsEvent) this.activeTab = 'responses';
+        this.resetFilters();
         this.currentTheme = ev.theme || DEFAULT_THEME;
         applyTheme(this.currentTheme);
         this.generateQr();
@@ -514,6 +684,36 @@ export default {
       const d = new Date(value);
       if (Number.isNaN(d.getTime())) return value;
       return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    },
+
+    // ---- Feedback / chrome ----
+    // Queue a toast and drop it after a few seconds. Errors linger longer,
+    // since they usually carry something the admin has to read.
+    toast(message, type = 'success') {
+      const id = ++this.toastSeq;
+      this.toasts.push({ id, message, type });
+      setTimeout(() => {
+        this.toasts = this.toasts.filter((t) => t.id !== id);
+      }, type === 'error' ? 6000 : 3500);
+    },
+
+    resetFilters() {
+      this.searchQuery = '';
+      this.statusFilter = 'all';
+    },
+
+    // Topbar refresh: reload whatever the current tab is showing.
+    async refreshAll() {
+      this.refreshing = true;
+      try {
+        await Promise.all([
+          this.loadEvents(),
+          this.loadUsers(),
+          this.selectedEventId ? this.loadEventData() : Promise.resolve()
+        ]);
+      } finally {
+        this.refreshing = false;
+      }
     },
 
     // ---- Session / access ----
@@ -708,7 +908,7 @@ export default {
       } catch (err) {
         this.currentTheme = previous;
         applyTheme(previous);
-        alert(err.message);
+        this.toast(err.message, 'error');
       } finally {
         this.themeSaving = false;
       }
@@ -787,7 +987,7 @@ export default {
         await this.loadEvents();
         this.closeEditModal();
       } catch (err) {
-        alert(err.message);
+        this.toast(err.message, 'error');
       } finally {
         this.editLoading = false;
       }
@@ -821,7 +1021,7 @@ export default {
         await this.loadEvents();
         this.closeDeleteModal();
       } catch (err) {
-        alert(err.message);
+        this.toast(err.message, 'error');
       } finally {
         this.deleteLoading = false;
       }
@@ -951,7 +1151,7 @@ export default {
         await this.loadEvents();
         this.closeDeleteEventModal();
       } catch (err) {
-        alert(err.message);
+        this.toast(err.message, 'error');
       } finally {
         this.deleteEventLoading = false;
       }
@@ -1141,6 +1341,95 @@ export default {
 .detail{color:var(--c-text-muted);font-size:.9rem}
 .detail strong{color:var(--c-text);font-weight:600}
 .message{background:var(--c-surface-subtle);border:1px solid var(--c-border);padding:12px 14px;border-radius:var(--r-sm);margin-top:12px;font-style:italic;color:var(--c-text-muted);font-size:.9rem}
+/* ---- Topbar / tabs / toolbar ---------------------------------------- */
+.topbar{
+  position:sticky;top:0;z-index:20;
+  max-width:none;margin:-24px -20px 20px;
+  background:var(--c-surface);border-bottom:1px solid var(--c-border);box-shadow:var(--shadow-xs);
+}
+.topbar-inner{
+  max-width:var(--content-max);margin:0 auto;padding:12px 20px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+}
+.topbar-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.topbar-mark{font-size:1.4rem}
+.topbar-title{display:block;font-weight:700;font-size:1.05rem;line-height:1.2}
+.topbar-subtitle{display:block;color:var(--c-text-muted);font-size:.8rem}
+.topbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.icon-btn{
+  width:36px;height:36px;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--c-border-strong);border-radius:var(--r-sm);background:var(--c-surface);
+  color:var(--c-text);font-size:1rem;cursor:pointer;transition:background-color .15s ease;
+}
+.icon-btn:hover:not(:disabled){background:var(--c-surface-subtle)}
+.icon-btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring)}
+.icon-btn:disabled{cursor:not-allowed;opacity:.7}
+.icon-btn.spinning{animation:admin-spin .8s linear infinite}
+@keyframes admin-spin{to{transform:rotate(360deg)}}
+
+.tabs{display:flex;gap:4px;margin:0 auto 20px;overflow-x:auto;border-bottom:1px solid var(--c-border)}
+.tab{
+  display:inline-flex;align-items:center;gap:7px;padding:10px 16px;white-space:nowrap;
+  background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;
+  font-family:inherit;font-size:.9rem;font-weight:600;color:var(--c-text-muted);cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;
+}
+.tab:hover{color:var(--c-text)}
+.tab:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring);border-radius:var(--r-sm) var(--r-sm) 0 0}
+.tab.active{color:var(--c-accent);border-bottom-color:var(--c-accent)}
+/* Still clickable — it shows the "pick an event" hint rather than dead-ending. */
+.tab.disabled{opacity:.55}
+.tab-count{
+  background:var(--c-surface-subtle);color:var(--c-text-muted);border-radius:var(--r-full);
+  padding:1px 7px;font-size:.72rem;font-weight:700;
+}
+.tab.active .tab-count{background:var(--c-accent-soft);color:var(--c-accent)}
+
+.toolbar-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.search-input{flex:1 1 240px;min-width:0}
+.sort-select{flex:0 0 auto;width:auto}
+.filter-chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 12px;
+  border:1px solid var(--c-border-strong);border-radius:var(--r-full);background:var(--c-surface);
+  font-family:inherit;font-size:.82rem;font-weight:600;color:var(--c-text-muted);cursor:pointer;
+  transition:background-color .15s ease,color .15s ease,border-color .15s ease;
+}
+.chip:hover{background:var(--c-surface-subtle);color:var(--c-text)}
+.chip:focus-visible{outline:none;box-shadow:0 0 0 3px var(--c-focus-ring)}
+.chip.active{background:var(--c-accent);border-color:var(--c-accent);color:#fff}
+.chip-count{font-size:.72rem;opacity:.75}
+.result-count{color:var(--c-text-muted);font-size:.82rem;margin:0 0 12px}
+
+.stat-icon{font-size:1.1rem;margin-bottom:2px}
+.rate-bar{height:6px;border-radius:var(--r-full);background:var(--c-surface-subtle);overflow:hidden;margin:6px 0 2px}
+.rate-fill{display:block;height:100%;background:var(--c-success);border-radius:var(--r-full);transition:width .3s ease}
+.no-data-icon{display:block;font-size:1.8rem;margin-bottom:8px}
+
+/* ---- Toasts ---------------------------------------------------------- */
+.toast-stack{position:fixed;right:20px;bottom:20px;z-index:1100;display:flex;flex-direction:column;gap:8px}
+.toast{
+  display:flex;align-items:flex-start;gap:9px;max-width:340px;padding:12px 16px;
+  border-radius:var(--r-md);background:var(--c-surface);border:1px solid var(--c-border);
+  box-shadow:var(--shadow-md);font-size:.875rem;line-height:1.45;
+  animation:toast-in .2s ease;
+}
+@keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.toast.success{border-left:3px solid var(--c-success)}
+.toast.error{border-left:3px solid var(--c-danger)}
+
+@media (max-width:640px){
+  .topbar{margin:-24px -20px 16px;max-width:none}
+  .topbar-inner{padding:10px 16px;flex-wrap:nowrap;gap:8px}
+  .topbar-actions{flex-wrap:nowrap;gap:6px}
+  .topbar-brand{flex:none}
+  .topbar-title,.topbar-subtitle,.hide-sm{display:none}
+  .toolbar-controls{flex-direction:column;align-items:stretch}
+  .sort-select{width:100%}
+  .toast-stack{left:16px;right:16px;bottom:16px}
+  .toast{max-width:none}
+}
+
 /* ---- Accounts / access ---------------------------------------------- */
 .users-panel{
   background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
