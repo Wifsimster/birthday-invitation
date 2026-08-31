@@ -314,6 +314,22 @@ describe('RSVP API', () => {
             const res = await request(closed).post('/api/rsvp').send(validRsvp()).expect(403);
             expect(res.body.error).toMatch(/closes/);
         });
+
+        // The legacy route and /api/events/default/rsvp are the same event, so a
+        // deadline the host set from the admin UI has to close both — the env
+        // config it was seeded from is stale the moment that edit lands.
+        it('honours a deadline stored on the default event over the env config', async () => {
+            db.run(
+                "UPDATE event SET person = 'Léo', rsvp_deadline = '2000-01-01' WHERE is_default = 1"
+            );
+            const res = await request(app).post('/api/rsvp').send(validRsvp()).expect(403);
+            expect(res.body.error).toMatch(/closes/);
+        });
+
+        it('reopens submissions when the stored deadline is cleared', async () => {
+            db.run("UPDATE event SET person = 'Léo', rsvp_deadline = '' WHERE is_default = 1");
+            await request(app).post('/api/rsvp').send(validRsvp()).expect(201);
+        });
     });
 
     describe('POST /api/rsvps (admin manual add)', () => {
@@ -332,6 +348,30 @@ describe('RSVP API', () => {
                 .set('Cookie', authCookie)
                 .send(validRsvp({ phone: '+33133000002' }))
                 .expect(409);
+        });
+    });
+
+    describe('PUT /api/rsvp/:id (admin edit)', () => {
+        it('drops the guest count to zero when switching a response to declined', async () => {
+            const created = await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ phone: '+33155000001', guests: 3 }))
+                .expect(201);
+
+            await request(app)
+                .put(`/api/rsvp/${created.body.id}`)
+                .set('Cookie', authCookie)
+                .send(validRsvp({ attending: 'no', phone: '+33155000001', guests: 3 }))
+                .expect(200);
+
+            const counts = await request(app)
+                .get('/api/rsvps/count')
+                .set('Cookie', authCookie)
+                .expect(200);
+            expect(counts.body).toMatchObject({ declined: 1, total_guests: 0 });
+
+            const list = await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(200);
+            expect(list.body.rsvps[0]).toMatchObject({ attending: 'no', guests: 0 });
         });
     });
 
@@ -363,6 +403,24 @@ describe('RSVP API', () => {
         it('returns 404 when no event date is configured', async () => {
             const noEvent = createApp(db, { event: { person: 'X', age: '', date: '', time: '', town: '', location: '' } });
             await request(noEvent).get('/api/event.ics').expect(404);
+        });
+
+        // Same event as /api/events/default/event.ics: once the host has edited
+        // the default event, the invite has to carry those details, not the
+        // values the row was seeded from at first boot.
+        it('builds the invite from the stored default event once it has details', async () => {
+            const withEnv = createApp(db, {
+                event: { person: 'Ancien', age: '4', date: '2025-01-01', time: '10h00', town: '', location: '' }
+            });
+            db.run(
+                `UPDATE event SET person = 'Léo', age = '5', date = '2025-09-06',
+                 time = '15h00 - 17h00', location = 'Chez Léo' WHERE is_default = 1`
+            );
+
+            const res = await request(withEnv).get('/api/event.ics').expect(200);
+            expect(res.text).toContain('SUMMARY:Anniversaire de Léo (5 ans)');
+            expect(res.text).toContain('DTSTART:20250906T150000');
+            expect(res.text).toContain('LOCATION:Chez Léo');
         });
     });
 

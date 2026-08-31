@@ -301,6 +301,27 @@ describe('Events API', () => {
                 .set('Cookie', authCookie)
                 .expect(200);
         });
+
+        it('zeroes the guest count when an edit switches a response to declined', async () => {
+            const ev = await createEvent({ person: 'Zoé' });
+            const created = await request(app)
+                .post(`/api/events/${ev.id}/rsvps`)
+                .set('Cookie', authCookie)
+                .send(validRsvp({ phone: '+1330002', guests: 3 }))
+                .expect(201);
+
+            await request(app)
+                .put(`/api/events/${ev.id}/rsvp/${created.body.id}`)
+                .set('Cookie', authCookie)
+                .send(validRsvp({ attending: 'no', phone: '+1330002', guests: 3 }))
+                .expect(200);
+
+            const list = await request(app)
+                .get(`/api/events/${ev.id}/rsvps`)
+                .set('Cookie', authCookie)
+                .expect(200);
+            expect(list.body.rsvps[0]).toMatchObject({ attending: 'no', guests: 0 });
+        });
     });
 
     describe('Public event route', () => {

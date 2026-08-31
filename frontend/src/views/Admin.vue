@@ -348,7 +348,7 @@
 <script>
 import QRCode from 'qrcode';
 import { apiBaseUrl } from '../env.js';
-import { session, signOut } from '../session.js';
+import { session, refresh, signOut } from '../session.js';
 import { themeList, applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
 import { applySeo } from '../seo.js';
 
@@ -529,13 +529,22 @@ export default {
 
     // Called by every admin fetch. Returns true when the response means "you
     // are no longer allowed here", after sending the visitor somewhere useful.
-    handleAuthFailure(res) {
+    //
+    // Both failure modes end up here: 401 is a session that ended, 403 the
+    // `not_admin` guard on an account demoted while the tab was open. Either
+    // way the 30s poll has to stop — otherwise the dashboard sits on an error
+    // and keeps spending the admin rate limit — and the cached session has to
+    // be re-read, or the router guard would wave the stale user straight back
+    // into /admin. Where to send them follows that re-read rather than the
+    // status: a session that survived means "no access yet", not "signed out".
+    async handleAuthFailure(res) {
       if (res.status !== 401 && res.status !== 403) return false;
       if (this.refreshInterval) {
         clearInterval(this.refreshInterval);
         this.refreshInterval = null;
       }
-      this.$router.replace(res.status === 401 ? '/login' : '/pending');
+      const user = await refresh();
+      this.$router.replace(user ? '/pending' : '/login');
       return true;
     },
 
@@ -553,7 +562,7 @@ export default {
         this.usersLoading = true;
         this.usersError = null;
         const res = await fetch(`${apiBaseUrl}/users`, { credentials: 'include' });
-        if (this.handleAuthFailure(res)) return;
+        if (await this.handleAuthFailure(res)) return;
         if (!res.ok) throw new Error('Chargement des comptes impossible');
         this.users = (await res.json()).users;
       } catch (err) {
@@ -573,7 +582,7 @@ export default {
           credentials: 'include',
           body: JSON.stringify({ role })
         });
-        if (this.handleAuthFailure(res)) return;
+        if (await this.handleAuthFailure(res)) return;
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error || 'Modification impossible');
         await this.loadUsers();
@@ -598,7 +607,7 @@ export default {
           method: 'DELETE',
           credentials: 'include'
         });
-        if (this.handleAuthFailure(res)) return;
+        if (await this.handleAuthFailure(res)) return;
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error || 'Suppression impossible');
         this.userToDelete = null;
@@ -617,7 +626,7 @@ export default {
         this.eventsError = null;
         const res = await fetch(`${apiBaseUrl}/events`, { credentials: 'include' });
         if (!res.ok) {
-          if (res.status === 401) { this.logout(); return; }
+          if (await this.handleAuthFailure(res)) return;
           throw new Error('Erreur lors de la récupération des événements');
         }
         const data = await res.json();
@@ -651,7 +660,7 @@ export default {
           fetch(`${apiBaseUrl}/events/${id}/rsvps`, { credentials: 'include' })
         ]);
         if (!countRes.ok || !listRes.ok) {
-          if (countRes.status === 401 || listRes.status === 401) { this.logout(); return; }
+          if (await this.handleAuthFailure(countRes) || await this.handleAuthFailure(listRes)) return;
           throw new Error('Erreur lors de la récupération des données');
         }
         const count = await countRes.json();
@@ -686,7 +695,7 @@ export default {
           body: JSON.stringify({ theme: id })
         });
         if (!res.ok) {
-          if (res.status === 401) { this.logout(); return; }
+          if (await this.handleAuthFailure(res)) return;
           const err = await res.json();
           throw new Error(err.error || 'Erreur lors du changement de thème');
         }
@@ -770,7 +779,7 @@ export default {
             body
           });
         if (!res.ok) {
-          if (res.status === 401) { this.logout(); return; }
+          if (await this.handleAuthFailure(res)) return;
           const err = await res.json();
           throw new Error(err.error || (this.editMode === 'create' ? 'Erreur lors de l\'ajout' : 'Erreur lors de la modification'));
         }
@@ -804,7 +813,7 @@ export default {
           credentials: 'include'
         });
         if (!res.ok) {
-          if (res.status === 401) { this.logout(); return; }
+          if (await this.handleAuthFailure(res)) return;
           const err = await res.json();
           throw new Error(err.error || 'Erreur lors de la suppression');
         }
@@ -894,7 +903,7 @@ export default {
             body: JSON.stringify(payload)
           });
         if (!res.ok) {
-          if (res.status === 401) { this.logout(); return; }
+          if (await this.handleAuthFailure(res)) return;
           const err = await res.json();
           throw new Error(err.error || (this.eventMode === 'create' ? 'Erreur lors de la création' : 'Erreur lors de la modification'));
         }
@@ -934,7 +943,7 @@ export default {
           credentials: 'include'
         });
         if (!res.ok) {
-          if (res.status === 401) { this.logout(); return; }
+          if (await this.handleAuthFailure(res)) return;
           const err = await res.json();
           throw new Error(err.error || 'Erreur lors de la suppression');
         }

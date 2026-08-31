@@ -319,6 +319,14 @@ function normalizePhone(raw: string): string {
   return plus + trimmed.replace(/\D/g, '');
 }
 
+// The stored guest count for a response. A decline never carries guests — the
+// invitation hides the field and the counters ignore it — so every write path
+// (guest submit, admin add, admin edit) normalises it the same way instead of
+// leaving a stale "1 invité" on a row switched to "Décliné".
+function guestCount(attending: 'yes' | 'no', guests?: number | null): number {
+  return attending === 'yes' ? (guests || 1) : 0;
+}
+
 const CSV_COLUMNS = [
   'id', 'name', 'attending', 'email', 'phone', 'guests', 'dietary_restrictions',
   'message', 'created_at', 'updated_at'
@@ -471,6 +479,17 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   // The default event backs the legacy single-event routes. Resolved lazily
   // per-request so it always reflects the current default row.
   const defaultEventId = () => getDefaultEvent(db).id;
+
+  // The default event as the legacy routes read it (deadline, calendar invite).
+  // The stored row wins: it is seeded from the env config at boot and is what
+  // the admin UI edits afterwards, so an edited date or RSVP deadline has to
+  // reach these routes too — otherwise /api/rsvp and /api/events/default/rsvp
+  // disagree about whether the same event is still open. The injected config is
+  // only the fallback for a default row that was never seeded.
+  const defaultEventConfig = (): EventConfig => {
+    const row = getDefaultEvent(db);
+    return row.person ? eventConfigFromRow(row) : event;
+  };
 
   // --- Routes ---------------------------------------------------------------
 
@@ -636,7 +655,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
 
   // Calendar invite (guest) generated from the event configuration.
   app.get('/api/event.ics', (_req, res) => {
-    const ics = buildIcs(event);
+    const ics = buildIcs(defaultEventConfig());
     if (!ics) {
       return res.status(404).json({ error: 'Aucune date d\'événement configurée' });
     }
@@ -666,7 +685,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
 
   // Submit (or update) an RSVP. Phone is the guest identity: one per phone.
   app.post('/api/rsvp', rsvpLimiter, asyncHandler((req, res) => {
-    if (isRsvpClosed(event)) {
+    if (isRsvpClosed(defaultEventConfig())) {
       return res.status(403).json({ error: 'Les réponses sont closes pour cet événement.' });
     }
     const parsed = rsvpSchema({ requireAttending: true, minGuests: 1 }).safeParse(req.body ?? {});
@@ -681,7 +700,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(400).json({ error: 'Le numéro de téléphone est requis' });
     }
     const attending = body.attending as 'yes' | 'no';
-    const guests = attending === 'yes' ? (body.guests || 1) : 0;
+    const guests = guestCount(attending, body.guests);
     const email = body.email ? body.email : null;
     const message = body.message ? body.message : null;
     const dietary = body.dietary_restrictions ? body.dietary_restrictions : null;
@@ -727,7 +746,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(409).json({ error: 'Une réponse existe déjà pour ce numéro' });
     }
     const attending = body.attending as 'yes' | 'no';
-    const guests = attending === 'yes' ? (body.guests || 1) : 0;
+    const guests = guestCount(attending, body.guests);
     const result = db.run(`
       INSERT INTO rsvp (event_id, attending, name, email, phone, guests, dietary_restrictions, message)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -751,6 +770,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(400).json({ error: firstError(parsed.error) });
     }
     const body = parsed.data;
+    const attending = body.attending ?? 'yes';
 
     const result = db.run(`
       UPDATE rsvp
@@ -758,11 +778,11 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
           dietary_restrictions = ?, message = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [
-      body.attending ?? 'yes',
+      attending,
       body.name,
       body.email ? body.email : null,
       normalizePhone(body.phone),
-      body.guests ?? 1,
+      guestCount(attending, body.guests),
       body.dietary_restrictions ? body.dietary_restrictions : null,
       body.message ? body.message : null,
       req.params.id
@@ -962,7 +982,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(409).json({ error: 'Une réponse existe déjà pour ce numéro' });
     }
     const attending = body.attending as 'yes' | 'no';
-    const guests = attending === 'yes' ? (body.guests || 1) : 0;
+    const guests = guestCount(attending, body.guests);
     const result = db.run(`
       INSERT INTO rsvp (event_id, attending, name, email, phone, guests, dietary_restrictions, message)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -987,17 +1007,18 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(400).json({ error: firstError(parsed.error) });
     }
     const body = parsed.data;
+    const attending = body.attending ?? 'yes';
     const result = db.run(`
       UPDATE rsvp
       SET attending = ?, name = ?, email = ?, phone = ?, guests = ?,
           dietary_restrictions = ?, message = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND event_id = ?
     `, [
-      body.attending ?? 'yes',
+      attending,
       body.name,
       body.email ? body.email : null,
       normalizePhone(body.phone),
-      body.guests ?? 1,
+      guestCount(attending, body.guests),
       body.dietary_restrictions ? body.dietary_restrictions : null,
       body.message ? body.message : null,
       req.params.rsvpId,
@@ -1051,7 +1072,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(400).json({ error: 'Le numéro de téléphone est requis' });
     }
     const attending = body.attending as 'yes' | 'no';
-    const guests = attending === 'yes' ? (body.guests || 1) : 0;
+    const guests = guestCount(attending, body.guests);
     const email = body.email ? body.email : null;
     const message = body.message ? body.message : null;
     const dietary = body.dietary_restrictions ? body.dietary_restrictions : null;
