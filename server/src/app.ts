@@ -31,7 +31,7 @@ import {
   FALLBACK_META
 } from './seo.ts';
 import { logger as defaultLogger, type Logger } from './logger.ts';
-import { createAuth, type Auth } from './auth.ts';
+import { createAuth, isRole, ROLES, DEFAULT_ROLE, type Auth, type Role } from './auth.ts';
 import type { Db, RsvpRow, EventRow } from './db.ts';
 
 export interface CreateAppOptions {
@@ -49,6 +49,8 @@ export interface CreateAppOptions {
     adminWindowMs?: number;
     adminMax?: number;
     loginMax?: number;
+    signupWindowMs?: number;
+    signupMax?: number;
   };
   event?: EventConfig;
   corsOrigin?: string;
@@ -61,14 +63,46 @@ type Handler = (req: Request, res: Response, next: NextFunction) => unknown;
 const asyncHandler = (fn: Handler) => (req: Request, res: Response, next: NextFunction) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
-// Build the admin guard: a valid Better Auth session (email/password) is
-// required. Fails closed with 401 when no session is present.
-function makeRequireAuth(auth: Auth) {
+// The signed-in account as the routes need it. Better Auth returns the user row
+// including our `role` additional field, which it does not type on the session.
+export interface SessionUser {
+  id: string;
+  email: string;
+  name?: string | null;
+  image?: string | null;
+  emailVerified?: boolean;
+  role: Role;
+}
+
+// Read the session and normalise the user, or null when unauthenticated. An
+// unrecognised role degrades to the least-privileged one rather than throwing.
+async function currentUser(auth: Auth, req: Request): Promise<SessionUser | null> {
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+  if (!session) return null;
+  const user = session.user as unknown as Omit<SessionUser, 'role'> & { role?: unknown };
+  return { ...user, role: isRole(user.role) ? user.role : DEFAULT_ROLE };
+}
+
+// Build the admin guard. Fails closed, and distinguishes the two failure modes
+// so the SPA can tell them apart: 401 means "no session, show the sign-in
+// form", 403 + code `not_admin` means "signed in, but this account has not been
+// granted access" — the pending-approval screen. Registration is open, so the
+// 403 case is the normal state of a brand-new account.
+function makeRequireAdmin(auth: Auth) {
   return asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-    if (!session) {
+    const user = await currentUser(auth, req);
+    if (!user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
+    if (user.role !== 'admin') {
+      return res.status(403).json({
+        error: "Votre compte n'a pas encore accès à l'administration.",
+        code: 'not_admin'
+      });
+    }
+    // Downstream routes need the actor's identity to refuse self-demotion and
+    // self-deletion; res.locals is already a per-request bag.
+    res.locals.user = user;
     next();
   });
 }
@@ -110,6 +144,11 @@ function rsvpSchema(opts: { requireAttending: boolean; minGuests: number }) {
     message: optionalText(2000)
   });
 }
+
+// Role assignment for the user-management routes.
+const userRoleSchema = z.object({
+  role: z.enum(ROLES, { error: 'Rôle inconnu' })
+});
 
 // Admin-selectable UI theme. Validated against the shared allow-list so the
 // stored value always maps to a known frontend theme.
@@ -190,6 +229,32 @@ function publicEvent(row: EventRow): Record<string, unknown> {
     theme: row.theme,
     rsvp_deadline: row.rsvp_deadline,
     rsvp_closed: isRsvpClosed(eventConfigFromRow(row))
+  };
+}
+
+// A row of Better Auth's `user` table, restricted to the columns the admin UI
+// shows. SQLite stores emailVerified as 0/1 and the timestamps as text.
+interface UserRow {
+  id: string;
+  name: string | null;
+  email: string;
+  emailVerified: number | null;
+  image: string | null;
+  role: string | null;
+  createdAt: string;
+}
+
+// Shape a user row for the admin UI. An unknown/NULL role reads as the default,
+// matching how the session guard interprets it.
+function publicUser(row: UserRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    name: row.name ?? '',
+    email: row.email,
+    image: row.image,
+    emailVerified: Boolean(row.emailVerified),
+    role: isRole(row.role) ? row.role : DEFAULT_ROLE,
+    created_at: row.createdAt
   };
 }
 
@@ -338,25 +403,36 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     app.use(cors({ origin: corsOrigin.split(',').map((o) => o.trim()), credentials: true }));
   }
 
-  // --- Better Auth (email/password) -----------------------------------------
+  // --- Better Auth (email/password + Google) ---------------------------------
   // The auth handler reads the raw request body, so it must be mounted *before*
-  // express.json(). Public self-service registration is disabled: only the
-  // env-seeded admin account exists, so the sign-up endpoint is blocked here
-  // (the seed runs in-process and never touches this HTTP route).
+  // express.json().
+  //
+  // Registration is open: anyone may sign up with an email/password (confirmed
+  // by a verification email) or with Google. Signing up grants nothing — new
+  // accounts get the `user` role and are refused by requireAdmin until an
+  // existing admin promotes them (see PUT /api/users/:id/role).
   const loginLimiter = rateLimit({
     windowMs: rateLimits.adminWindowMs ?? 15 * 60 * 1000,
     max: rateLimits.loginMax ?? 20,
     message: { error: 'Trop de tentatives, veuillez réessayer plus tard.' }
   });
-  app.all('/api/auth/sign-up/*splat', (_req, res) => {
-    res.status(403).json({ error: 'Inscription désactivée' });
+  // Every endpoint below sends an email to an address chosen by the caller, so
+  // each one is a spam amplifier if left open. Throttled harder than sign-in,
+  // and per-IP like the rest.
+  const emailLimiter = rateLimit({
+    windowMs: rateLimits.signupWindowMs ?? 60 * 60 * 1000,
+    max: rateLimits.signupMax ?? 10,
+    message: { error: 'Trop de tentatives, veuillez réessayer plus tard.' }
   });
   app.use('/api/auth/sign-in', loginLimiter);
+  app.use('/api/auth/sign-up', emailLimiter);
+  app.use('/api/auth/request-password-reset', emailLimiter);
+  app.use('/api/auth/send-verification-email', emailLimiter);
   app.all('/api/auth/*splat', toNodeHandler(auth));
 
   app.use(express.json({ limit: '64kb' }));
 
-  const requireAuth = makeRequireAuth(auth);
+  const requireAdmin = makeRequireAdmin(auth);
 
   app.use(rateLimit({
     windowMs: rateLimits.globalWindowMs ?? 15 * 60 * 1000,
@@ -376,15 +452,21 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     message: { error: 'Trop de recherches, veuillez réessayer plus tard.' }
   });
 
-  // Strict limiter on admin endpoints to blunt automated abuse. Sign-in itself
-  // is throttled separately by loginLimiter (above).
+  // Limiter on admin endpoints to blunt automated abuse. Sign-in itself is
+  // throttled separately by loginLimiter (above).
+  //
+  // The dashboard polls every 30s (events + the selected event's counts and
+  // RSVPs), which is ~90 requests per 15 minutes on its own — a ceiling of 100
+  // meant a second open tab started getting 429s. These routes are already
+  // behind an authenticated admin session, so the limiter is a backstop against
+  // a runaway client rather than the primary control.
   const adminLimiter = rateLimit({
     windowMs: rateLimits.adminWindowMs ?? 15 * 60 * 1000,
-    max: rateLimits.adminMax ?? 100,
+    max: rateLimits.adminMax ?? 300,
     message: { error: 'Trop de tentatives, veuillez réessayer plus tard.' }
   });
   // Every admin route is rate-limited then requires a valid admin session.
-  const admin = [adminLimiter, requireAuth];
+  const admin = [adminLimiter, requireAdmin];
 
   // The default event backs the legacy single-event routes. Resolved lazily
   // per-request so it always reflects the current default row.
@@ -401,6 +483,112 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(503).json({ status: 'unavailable', timestamp: new Date().toISOString() });
     }
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  }));
+
+  // --- Accounts -------------------------------------------------------------
+
+  // Public: which sign-in methods this deployment actually offers, so the SPA
+  // only renders the Google button when the provider is configured.
+  app.get('/api/auth-providers', (_req, res) => {
+    res.json({
+      emailPassword: true,
+      google: Boolean(auth.options.socialProviders?.google)
+    });
+  });
+
+  // The signed-in account, including its granted role. 401 when there is no
+  // session. The SPA reads `role` to choose between the admin dashboard and the
+  // pending-approval screen — it is deliberately not behind requireAdmin, since
+  // a non-admin needs to be able to learn that it is a non-admin.
+  app.get('/api/me', asyncHandler(async (req, res) => {
+    const user = await currentUser(auth, req);
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name ?? '',
+        email: user.email,
+        image: user.image ?? null,
+        emailVerified: Boolean(user.emailVerified),
+        role: user.role
+      }
+    });
+  }));
+
+  // --- User administration --------------------------------------------------
+
+  // How many admins remain. Guards below refuse any change that would take this
+  // to zero, which would lock everyone out of the dashboard.
+  const adminCount = (): number =>
+    db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM "user" WHERE role = 'admin'`)?.n ?? 0;
+
+  const getUser = (id: string) =>
+    db.get<UserRow>(
+      `SELECT id, name, email, emailVerified, image, role, "createdAt" FROM "user" WHERE id = ?`,
+      [id]
+    );
+
+  // Admin: every registered account, so an admin can see who has signed up and
+  // grant or revoke access. Password hashes live in the `account` table and are
+  // never selected here.
+  app.get('/api/users', ...admin, asyncHandler((_req, res) => {
+    const users = db.all<UserRow>(
+      `SELECT id, name, email, emailVerified, image, role, "createdAt"
+       FROM "user" ORDER BY "createdAt" DESC, id DESC`
+    );
+    res.json({ users: users.map(publicUser) });
+  }));
+
+  // Admin: grant or revoke the admin role.
+  app.put('/api/users/:id/role', ...admin, asyncHandler(async (req, res) => {
+    const parsed = userRoleSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: firstError(parsed.error) });
+    }
+    const target = getUser(String(req.params.id));
+    if (!target) {
+      return res.status(404).json({ error: 'Compte introuvable' });
+    }
+    const actor = res.locals.user as SessionUser;
+    const { role } = parsed.data;
+    if (target.id === actor.id && role !== 'admin') {
+      return res.status(400).json({ error: 'Vous ne pouvez pas retirer votre propre accès administrateur.' });
+    }
+    if (target.role === 'admin' && role !== 'admin' && adminCount() <= 1) {
+      return res.status(400).json({ error: 'Il doit rester au moins un administrateur.' });
+    }
+
+    const ctx = await auth.$context;
+    await ctx.internalAdapter.updateUser(target.id, { role });
+    // A demoted account still holds a valid session cookie. Drop its sessions so
+    // the loss of access is immediate rather than deferred to the next sign-in.
+    if (role !== 'admin') {
+      db.run(`DELETE FROM "session" WHERE "userId" = ?`, [target.id]);
+    }
+    logger.info({ actor: actor.id, target: target.id, role }, 'user role changed');
+    res.json({ user: publicUser({ ...target, role }) });
+  }));
+
+  // Admin: delete an account entirely (cascades its sessions and credentials).
+  app.delete('/api/users/:id', ...admin, asyncHandler(async (req, res) => {
+    const target = getUser(String(req.params.id));
+    if (!target) {
+      return res.status(404).json({ error: 'Compte introuvable' });
+    }
+    const actor = res.locals.user as SessionUser;
+    if (target.id === actor.id) {
+      return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte.' });
+    }
+    if (target.role === 'admin' && adminCount() <= 1) {
+      return res.status(400).json({ error: 'Il doit rester au moins un administrateur.' });
+    }
+
+    const ctx = await auth.$context;
+    await ctx.internalAdapter.deleteUser(target.id);
+    logger.info({ actor: actor.id, target: target.id }, 'user deleted');
+    res.json({ message: 'Compte supprimé' });
   }));
 
   // Public: the current UI settings (currently just the selected theme).

@@ -1,184 +1,219 @@
 <template>
   <div class="admin-container">
-    <div v-if="!isAuthenticated" class="modal-overlay">
-      <div class="modal login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
-        <div class="modal-header"><h3 id="login-title"><span aria-hidden="true">🔐</span> Admin</h3></div>
-        <form class="auth-form" @submit.prevent="authenticate">
-          <div class="form-group">
-            <label for="login-email"><span aria-hidden="true">✉️</span> Email</label>
-            <input id="login-email" class="form-input" type="email" autocomplete="username" v-model="credentials.email" required />
-          </div>
-          <div class="form-group">
-            <label for="login-password"><span aria-hidden="true">🔐</span> Mot de passe</label>
-            <input id="login-password" class="form-input" type="password" autocomplete="current-password" v-model="credentials.password" required />
-          </div>
-          <div v-if="authError" class="auth-error" role="alert">{{ authError }}</div>
-          <div class="modal-actions">
-            <button type="submit" class="btn btn-primary btn-block" :disabled="authLoading">{{ authLoading ? 'Connexion...' : 'Se connecter' }}</button>
-          </div>
-        </form>
+    <header class="admin-header">
+      <div class="admin-header-title">
+        <h1>Administration</h1>
+        <p class="admin-header-subtitle">Gestion des événements et des confirmations</p>
       </div>
-    </div>
+      <div class="header-actions">
+        <router-link to="/" class="btn btn-ghost">← Voir l'invitation</router-link>
+        <button class="btn btn-danger-soft" @click="logout">Déconnexion</button>
+      </div>
+    </header>
 
-    <template v-else>
-      <header class="admin-header">
-        <div class="admin-header-title">
-          <h1>Administration</h1>
-          <p class="admin-header-subtitle">Gestion des événements et des confirmations</p>
+    <!-- ===================== EVENTS OVERVIEW ===================== -->
+    <section class="events-panel">
+      <div class="events-panel-head">
+        <h2>🎈 Événements</h2>
+        <div class="events-panel-actions">
+          <button class="btn btn-secondary" @click="loadEvents">↻ Actualiser</button>
+          <button class="btn btn-primary" @click="openCreateEventModal">+ Nouvel événement</button>
         </div>
-        <div class="header-actions">
-          <router-link to="/" class="btn btn-ghost">← Voir l'invitation</router-link>
-          <button class="btn btn-danger-soft" @click="logout">Déconnexion</button>
-        </div>
-      </header>
+      </div>
 
-      <!-- ===================== EVENTS OVERVIEW ===================== -->
-      <section class="events-panel">
-        <div class="events-panel-head">
-          <h2>🎈 Événements</h2>
-          <div class="events-panel-actions">
-            <button class="btn btn-secondary" @click="loadEvents">↻ Actualiser</button>
-            <button class="btn btn-primary" @click="openCreateEventModal">+ Nouvel événement</button>
+      <div v-if="eventsLoading && !events.length" class="loading" aria-live="polite">Chargement...</div>
+      <div v-else-if="eventsError" class="error" role="alert">{{ eventsError }}</div>
+      <div v-else-if="!events.length" class="no-data">Aucun événement pour le moment.</div>
+      <div v-else class="events-grid">
+        <div
+          v-for="ev in events"
+          :key="ev.id"
+          class="event-card"
+          :class="{ selected: ev.id === selectedEventId }"
+        >
+          <div class="event-card-top">
+            <span class="event-theme-icon" aria-hidden="true">{{ themeIcon(ev.theme) }}</span>
+            <span v-if="ev.is_default" class="event-badge">Actif</span>
+          </div>
+          <h3 class="event-card-title">{{ ev.person || 'Sans nom' }}</h3>
+          <p class="event-card-meta">
+            <span v-if="ev.date">{{ formatEventDate(ev.date) }}</span>
+            <span v-if="ev.date && ev.town"> · </span>
+            <span v-if="ev.town">{{ ev.town }}</span>
+            <span v-if="!ev.date && !ev.town" class="event-card-meta-empty">Détails à compléter</span>
+          </p>
+          <p class="event-card-theme">{{ themeLabel(ev.theme) }}</p>
+          <div class="event-card-stats">
+            <span><strong>{{ ev.responses || 0 }}</strong> rép.</span>
+            <span><strong>{{ ev.confirmations || 0 }}</strong> conf.</span>
+            <span><strong>{{ ev.total_guests || 0 }}</strong> inv.</span>
+          </div>
+          <div class="event-card-actions">
+            <button class="btn btn-primary btn-sm" @click="selectEvent(ev)">Gérer</button>
+            <button class="btn btn-secondary btn-sm" @click="openEditEventModal(ev)">Modifier</button>
+            <button v-if="!ev.is_default" class="btn btn-danger-soft btn-sm" @click="openDeleteEventModal(ev)">Supprimer</button>
           </div>
         </div>
+      </div>
+    </section>
 
-        <div v-if="eventsLoading && !events.length" class="loading" aria-live="polite">Chargement...</div>
-        <div v-else-if="eventsError" class="error" role="alert">{{ eventsError }}</div>
-        <div v-else-if="!events.length" class="no-data">Aucun événement pour le moment.</div>
-        <div v-else class="events-grid">
-          <div
-            v-for="ev in events"
-            :key="ev.id"
-            class="event-card"
-            :class="{ selected: ev.id === selectedEventId }"
+    <!-- ===================== SELECTED EVENT MANAGEMENT ===================== -->
+    <template v-if="selectedEvent">
+      <div class="selected-head">
+        <h2>Gestion : <span class="selected-name">{{ selectedEvent.person || 'Sans nom' }}</span></h2>
+        <button class="btn btn-ghost" @click="clearSelection">Fermer</button>
+      </div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-number">{{ stats.total_responses }}</div>
+          <div class="stat-label">Total réponses</div>
+        </div>
+        <div class="stat-card positive">
+          <div class="stat-number">{{ stats.confirmations }}</div>
+          <div class="stat-label">Confirmations</div>
+        </div>
+        <div class="stat-card negative">
+          <div class="stat-number">{{ stats.declined }}</div>
+          <div class="stat-label">Déclins</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">{{ stats.total_guests }}</div>
+          <div class="stat-label">Total invités</div>
+        </div>
+      </div>
+
+      <div class="theme-panel">
+        <h2>🎨 Thème de l'invitation</h2>
+        <p class="theme-hint">Choisis l'ambiance affichée aux invités. Le changement est immédiat.</p>
+        <div class="theme-grid">
+          <button
+            v-for="t in themes"
+            :key="t.id"
+            type="button"
+            class="theme-card"
+            :class="{ active: t.id === currentTheme }"
+            :disabled="themeSaving"
+            @click="selectTheme(t.id)"
           >
-            <div class="event-card-top">
-              <span class="event-theme-icon" aria-hidden="true">{{ themeIcon(ev.theme) }}</span>
-              <span v-if="ev.is_default" class="event-badge">Actif</span>
-            </div>
-            <h3 class="event-card-title">{{ ev.person || 'Sans nom' }}</h3>
-            <p class="event-card-meta">
-              <span v-if="ev.date">{{ formatEventDate(ev.date) }}</span>
-              <span v-if="ev.date && ev.town"> · </span>
-              <span v-if="ev.town">{{ ev.town }}</span>
-              <span v-if="!ev.date && !ev.town" class="event-card-meta-empty">Détails à compléter</span>
-            </p>
-            <p class="event-card-theme">{{ themeLabel(ev.theme) }}</p>
-            <div class="event-card-stats">
-              <span><strong>{{ ev.responses || 0 }}</strong> rép.</span>
-              <span><strong>{{ ev.confirmations || 0 }}</strong> conf.</span>
-              <span><strong>{{ ev.total_guests || 0 }}</strong> inv.</span>
-            </div>
-            <div class="event-card-actions">
-              <button class="btn btn-primary btn-sm" @click="selectEvent(ev)">Gérer</button>
-              <button class="btn btn-secondary btn-sm" @click="openEditEventModal(ev)">Modifier</button>
-              <button v-if="!ev.is_default" class="btn btn-danger-soft btn-sm" @click="openDeleteEventModal(ev)">Supprimer</button>
-            </div>
-          </div>
+            <span class="theme-icon">{{ t.icon }}</span>
+            <span class="theme-label">{{ t.label }}</span>
+            <span class="theme-swatches">
+              <span class="swatch" :style="{ background: t.palette.primary }"></span>
+              <span class="swatch" :style="{ background: t.palette.secondary }"></span>
+              <span class="swatch" :style="{ background: t.palette.accent }"></span>
+            </span>
+            <span v-if="t.id === currentTheme" class="theme-check">✓ Actif</span>
+          </button>
         </div>
-      </section>
+      </div>
 
-      <!-- ===================== SELECTED EVENT MANAGEMENT ===================== -->
-      <template v-if="selectedEvent">
-        <div class="selected-head">
-          <h2>Gestion : <span class="selected-name">{{ selectedEvent.person || 'Sans nom' }}</span></h2>
-          <button class="btn btn-ghost" @click="clearSelection">Fermer</button>
+      <div class="share-panel">
+        <h2><span aria-hidden="true">🔗</span> Partager l'invitation</h2>
+        <p class="theme-hint">Diffuse ce lien ou ce QR code pour inviter tes convives.</p>
+        <div class="share-row">
+          <input class="form-input share-url" type="text" :value="invitationUrl" readonly aria-label="Lien de l'invitation" />
+          <button type="button" class="btn btn-primary" @click="copyLink">{{ linkCopied ? '✓ Copié' : 'Copier le lien' }}</button>
         </div>
+        <img v-if="qrDataUrl" :src="qrDataUrl" alt="QR code de l'invitation" class="qr-img" />
+      </div>
 
-        <div class="stats">
-          <div class="stat-card">
-            <div class="stat-number">{{ stats.total_responses }}</div>
-            <div class="stat-label">Total réponses</div>
-          </div>
-          <div class="stat-card positive">
-            <div class="stat-number">{{ stats.confirmations }}</div>
-            <div class="stat-label">Confirmations</div>
-          </div>
-          <div class="stat-card negative">
-            <div class="stat-number">{{ stats.declined }}</div>
-            <div class="stat-label">Déclins</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-number">{{ stats.total_guests }}</div>
-            <div class="stat-label">Total invités</div>
-          </div>
-        </div>
+      <div class="list-actions">
+        <button class="btn btn-secondary" @click="loadEventData">↻ Actualiser</button>
+        <a class="btn btn-secondary" :href="csvUrl">⬇ Exporter CSV</a>
+        <button class="btn btn-primary" @click="openCreateModal">+ Ajouter une réponse</button>
+      </div>
 
-        <div class="theme-panel">
-          <h2>🎨 Thème de l'invitation</h2>
-          <p class="theme-hint">Choisis l'ambiance affichée aux invités. Le changement est immédiat.</p>
-          <div class="theme-grid">
-            <button
-              v-for="t in themes"
-              :key="t.id"
-              type="button"
-              class="theme-card"
-              :class="{ active: t.id === currentTheme }"
-              :disabled="themeSaving"
-              @click="selectTheme(t.id)"
-            >
-              <span class="theme-icon">{{ t.icon }}</span>
-              <span class="theme-label">{{ t.label }}</span>
-              <span class="theme-swatches">
-                <span class="swatch" :style="{ background: t.palette.primary }"></span>
-                <span class="swatch" :style="{ background: t.palette.secondary }"></span>
-                <span class="swatch" :style="{ background: t.palette.accent }"></span>
-              </span>
-              <span v-if="t.id === currentTheme" class="theme-check">✓ Actif</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="share-panel">
-          <h2><span aria-hidden="true">🔗</span> Partager l'invitation</h2>
-          <p class="theme-hint">Diffuse ce lien ou ce QR code pour inviter tes convives.</p>
-          <div class="share-row">
-            <input class="form-input share-url" type="text" :value="invitationUrl" readonly aria-label="Lien de l'invitation" />
-            <button type="button" class="btn btn-primary" @click="copyLink">{{ linkCopied ? '✓ Copié' : 'Copier le lien' }}</button>
-          </div>
-          <img v-if="qrDataUrl" :src="qrDataUrl" alt="QR code de l'invitation" class="qr-img" />
-        </div>
-
-        <div class="list-actions">
-          <button class="btn btn-secondary" @click="loadEventData">↻ Actualiser</button>
-          <a class="btn btn-secondary" :href="csvUrl">⬇ Exporter CSV</a>
-          <button class="btn btn-primary" @click="openCreateModal">+ Ajouter une réponse</button>
-        </div>
-
-        <div class="rsvp-list">
-          <h2>Réponses</h2>
-          <div v-if="loading" class="loading" aria-live="polite">Chargement...</div>
-          <div v-else-if="error" class="error" role="alert">{{ error }}</div>
-          <div v-else-if="rsvps.length === 0" class="no-data">Aucune réponse pour le moment.</div>
-          <template v-else>
-            <div v-for="rsvp in rsvps" :key="rsvp.id" class="rsvp-item" :class="{ declined: rsvp.attending === 'no' }" aria-live="polite">
-              <div class="rsvp-header">
-                <h3>
-                  <span class="status-indicator" :class="rsvp.attending === 'yes' ? 'accepted' : 'declined'" aria-hidden="true">{{ rsvp.attending === 'yes' ? '✅' : '❌' }}</span>
-                  {{ rsvp.name }}
-                </h3>
-                <div class="rsvp-actions">
-                  <button class="edit-btn" @click="openEditModal(rsvp)" title="Modifier" :aria-label="`Modifier la réponse de ${rsvp.name}`">✏️</button>
-                  <button class="delete-btn" @click="openDeleteModal(rsvp)" title="Supprimer" :aria-label="`Supprimer la réponse de ${rsvp.name}`">🗑️</button>
-                </div>
+      <div class="rsvp-list">
+        <h2>Réponses</h2>
+        <div v-if="loading" class="loading" aria-live="polite">Chargement...</div>
+        <div v-else-if="error" class="error" role="alert">{{ error }}</div>
+        <div v-else-if="rsvps.length === 0" class="no-data">Aucune réponse pour le moment.</div>
+        <template v-else>
+          <div v-for="rsvp in rsvps" :key="rsvp.id" class="rsvp-item" :class="{ declined: rsvp.attending === 'no' }" aria-live="polite">
+            <div class="rsvp-header">
+              <h3>
+                <span class="status-indicator" :class="rsvp.attending === 'yes' ? 'accepted' : 'declined'" aria-hidden="true">{{ rsvp.attending === 'yes' ? '✅' : '❌' }}</span>
+                {{ rsvp.name }}
+              </h3>
+              <div class="rsvp-actions">
+                <button class="edit-btn" @click="openEditModal(rsvp)" title="Modifier" :aria-label="`Modifier la réponse de ${rsvp.name}`">✏️</button>
+                <button class="delete-btn" @click="openDeleteModal(rsvp)" title="Supprimer" :aria-label="`Supprimer la réponse de ${rsvp.name}`">🗑️</button>
               </div>
-              <div class="rsvp-details">
-                <div class="detail">
-                  <strong>Statut :</strong>
-                  <span :class="rsvp.attending === 'yes' ? 'status-accepted' : 'status-declined'">{{ rsvp.attending === 'yes' ? 'Confirmé' : 'Décliné' }}</span>
-                </div>
-                <div class="detail" v-if="rsvp.email"><strong>✉️ Email :</strong> {{ rsvp.email }}</div>
-                <div class="detail"><strong>📱 Téléphone :</strong> {{ rsvp.phone }}</div>
-                <div class="detail" v-if="rsvp.attending === 'yes'"><strong>👥 Nombre d'invités :</strong> {{ rsvp.guests }}</div>
-                <div class="detail" v-if="rsvp.dietary_restrictions"><strong>🥜 Allergies :</strong> {{ rsvp.dietary_restrictions }}</div>
-                <div class="detail"><strong>🕒 Mis à jour :</strong> {{ formatDate(rsvp.updated_at) }}</div>
-              </div>
-              <div v-if="rsvp.message" class="message">💌 {{ rsvp.message }}</div>
             </div>
-          </template>
-        </div>
-      </template>
+            <div class="rsvp-details">
+              <div class="detail">
+                <strong>Statut :</strong>
+                <span :class="rsvp.attending === 'yes' ? 'status-accepted' : 'status-declined'">{{ rsvp.attending === 'yes' ? 'Confirmé' : 'Décliné' }}</span>
+              </div>
+              <div class="detail" v-if="rsvp.email"><strong>✉️ Email :</strong> {{ rsvp.email }}</div>
+              <div class="detail"><strong>📱 Téléphone :</strong> {{ rsvp.phone }}</div>
+              <div class="detail" v-if="rsvp.attending === 'yes'"><strong>👥 Nombre d'invités :</strong> {{ rsvp.guests }}</div>
+              <div class="detail" v-if="rsvp.dietary_restrictions"><strong>🥜 Allergies :</strong> {{ rsvp.dietary_restrictions }}</div>
+              <div class="detail"><strong>🕒 Mis à jour :</strong> {{ formatDate(rsvp.updated_at) }}</div>
+            </div>
+            <div v-if="rsvp.message" class="message">💌 {{ rsvp.message }}</div>
+          </div>
+        </template>
+      </div>
     </template>
+
+    <!-- ===================== ACCESS / USERS ===================== -->
+    <section class="users-panel">
+      <div class="events-panel-head">
+        <h2>👥 Accès</h2>
+        <button class="btn btn-secondary" @click="loadUsers">↻ Actualiser</button>
+      </div>
+      <p class="theme-hint">
+        Toute personne peut créer un compte, mais seuls les comptes
+        <strong>administrateur</strong> accèdent à cette page.
+      </p>
+
+      <div v-if="usersLoading && !users.length" class="loading" aria-live="polite">Chargement...</div>
+      <div v-else-if="usersError" class="error" role="alert">{{ usersError }}</div>
+      <table v-else class="users-table">
+        <thead>
+          <tr><th>Compte</th><th>Rôle</th><th class="users-actions-col">Actions</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="u in users" :key="u.id">
+            <td>
+              <div class="user-name">
+                {{ u.name || '—' }}
+                <span v-if="u.id === currentUserId" class="user-you">vous</span>
+              </div>
+              <div class="user-email">
+                {{ u.email }}
+                <span v-if="!u.emailVerified" class="user-unverified" title="Email non confirmé">non confirmé</span>
+              </div>
+            </td>
+            <td>
+              <span class="role-badge" :class="u.role">{{ u.role === 'admin' ? 'Administrateur' : 'Utilisateur' }}</span>
+            </td>
+            <td class="users-actions-col">
+              <button
+                v-if="u.role !== 'admin'"
+                class="btn btn-sm btn-primary"
+                :disabled="userBusyId === u.id"
+                @click="setUserRole(u, 'admin')"
+              >Donner l'accès</button>
+              <button
+                v-else
+                class="btn btn-sm btn-secondary"
+                :disabled="userBusyId === u.id || u.id === currentUserId"
+                @click="setUserRole(u, 'user')"
+              >Retirer l'accès</button>
+              <button
+                class="btn btn-sm btn-danger-soft"
+                :disabled="userBusyId === u.id || u.id === currentUserId"
+                @click="askDeleteUser(u)"
+              >Supprimer</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
 
     <!-- ===================== RSVP EDIT/CREATE MODAL ===================== -->
     <div v-if="showEditModal" class="modal-overlay">
@@ -270,6 +305,26 @@
       </div>
     </div>
 
+    <!-- ===================== USER DELETE MODAL ===================== -->
+    <div v-if="userToDelete" class="modal-overlay">
+      <div class="modal delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-user-title">
+        <div class="modal-header">
+          <h3 id="delete-user-title">Supprimer le compte</h3>
+          <button class="close-btn" @click="userToDelete = null" aria-label="Fermer">×</button>
+        </div>
+        <div class="modal-content">
+          <p>Supprimer le compte de <strong>{{ userToDelete.email }}</strong> ?</p>
+          <p class="warning">La personne perdra immédiatement son accès. Cette action est irréversible.</p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" @click="userToDelete = null">Annuler</button>
+          <button type="button" class="btn btn-danger" :disabled="userBusyId" @click="deleteUser">
+            {{ userBusyId ? 'Suppression...' : 'Supprimer' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ===================== EVENT DELETE MODAL ===================== -->
     <div v-if="showDeleteEventModal" class="modal-overlay">
       <div class="modal delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-event-title">
@@ -293,7 +348,7 @@
 <script>
 import QRCode from 'qrcode';
 import { apiBaseUrl } from '../env.js';
-import { authClient } from '../auth-client.js';
+import { session, signOut } from '../session.js';
 import { themeList, applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
 import { applySeo } from '../seo.js';
 
@@ -304,11 +359,14 @@ export default {
       themes: themeList,
       currentTheme: DEFAULT_THEME,
       themeSaving: false,
-      isAuthenticated: false,
-      credentials: { email: '', password: '' },
-      authError: null,
-      authLoading: false,
       refreshInterval: null,
+
+      // Accounts / access management
+      users: [],
+      usersLoading: false,
+      usersError: null,
+      userBusyId: null,
+      userToDelete: null,
 
       // Events overview
       events: [],
@@ -352,6 +410,11 @@ export default {
     };
   },
   computed: {
+    // The signed-in admin, so the users table can mark "vous" and disable the
+    // actions the server would refuse anyway (self-demotion, self-deletion).
+    currentUserId() {
+      return session.user?.id ?? null;
+    },
     selectedEvent() {
       return this.events.find((e) => e.id === this.selectedEventId) || null;
     },
@@ -375,7 +438,9 @@ export default {
       robots: 'noindex, nofollow'
     });
     window.addEventListener('keydown', this.handleKeydown);
-    this.restoreSession();
+    this.loadEvents();
+    this.loadUsers();
+    this.refreshInterval = setInterval(this.autoRefresh, 30000);
   },
   beforeUnmount() {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
@@ -451,62 +516,102 @@ export default {
       return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
     },
 
-    // ---- Auth / session ----
-    async restoreSession() {
-      try {
-        const { data } = await authClient.getSession();
-        if (data?.session) this.startSession();
-      } catch {
-        // No session / network error: stay on the login screen.
-      }
-    },
-    startSession() {
-      this.isAuthenticated = true;
-      this.loadEvents();
-      if (!this.refreshInterval) this.refreshInterval = setInterval(this.autoRefresh, 30000);
-    },
-    async authenticate() {
-      this.authLoading = true;
-      this.authError = null;
-      try {
-        const { error } = await authClient.signIn.email({
-          email: this.credentials.email,
-          password: this.credentials.password
-        });
-        if (error) throw new Error('Identifiants incorrects');
-        this.credentials.password = '';
-        this.startSession();
-      } catch (err) {
-        this.authError = err.message || 'Identifiants incorrects';
-      } finally {
-        this.authLoading = false;
-      }
-    },
+    // ---- Session / access ----
+    //
+    // The router guard has already established that this visitor is an admin
+    // (see router.js), so the view no longer owns a sign-in form. It only has
+    // to react to *losing* that access mid-session — an admin revoked while the
+    // tab is open — which surfaces as a 401/403 on any admin call.
     async logout() {
-      try {
-        await authClient.signOut();
-      } catch {
-        // Best-effort: clear local state even if the network call fails.
-      }
-      this.isAuthenticated = false;
-      this.credentials.email = '';
-      this.credentials.password = '';
-      this.selectedEventId = null;
-      this.events = [];
+      await signOut();
+      this.$router.replace('/login');
+    },
+
+    // Called by every admin fetch. Returns true when the response means "you
+    // are no longer allowed here", after sending the visitor somewhere useful.
+    handleAuthFailure(res) {
+      if (res.status !== 401 && res.status !== 403) return false;
       if (this.refreshInterval) {
         clearInterval(this.refreshInterval);
         this.refreshInterval = null;
       }
+      this.$router.replace(res.status === 401 ? '/login' : '/pending');
+      return true;
     },
+
+    // Poll only the data that actually moves: events and their RSVPs. The
+    // account list changes rarely and has its own refresh button, and every
+    // extra polled call eats into the admin rate limit.
     autoRefresh() {
-      if (!this.isAuthenticated) return;
       this.loadEvents();
       if (this.selectedEventId) this.loadEventData();
     },
 
+    // ---- Accounts / access ----
+    async loadUsers() {
+      try {
+        this.usersLoading = true;
+        this.usersError = null;
+        const res = await fetch(`${apiBaseUrl}/users`, { credentials: 'include' });
+        if (this.handleAuthFailure(res)) return;
+        if (!res.ok) throw new Error('Chargement des comptes impossible');
+        this.users = (await res.json()).users;
+      } catch (err) {
+        this.usersError = err.message || 'Chargement des comptes impossible';
+      } finally {
+        this.usersLoading = false;
+      }
+    },
+
+    async setUserRole(user, role) {
+      this.userBusyId = user.id;
+      this.usersError = null;
+      try {
+        const res = await fetch(`${apiBaseUrl}/users/${user.id}/role`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ role })
+        });
+        if (this.handleAuthFailure(res)) return;
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Modification impossible');
+        await this.loadUsers();
+      } catch (err) {
+        this.usersError = err.message || 'Modification impossible';
+      } finally {
+        this.userBusyId = null;
+      }
+    },
+
+    askDeleteUser(user) {
+      this.userToDelete = user;
+    },
+
+    async deleteUser() {
+      const target = this.userToDelete;
+      if (!target) return;
+      this.userBusyId = target.id;
+      this.usersError = null;
+      try {
+        const res = await fetch(`${apiBaseUrl}/users/${target.id}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        if (this.handleAuthFailure(res)) return;
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Suppression impossible');
+        this.userToDelete = null;
+        await this.loadUsers();
+      } catch (err) {
+        this.usersError = err.message || 'Suppression impossible';
+      } finally {
+        this.userBusyId = null;
+      }
+    },
+
     // ---- Events overview ----
     async loadEvents() {
-      if (!this.isAuthenticated) return;
       try {
         this.eventsLoading = true;
         this.eventsError = null;
@@ -536,7 +641,7 @@ export default {
 
     // ---- Selected-event data ----
     async loadEventData() {
-      if (!this.isAuthenticated || !this.selectedEventId) return;
+      if (!this.selectedEventId) return;
       const id = this.selectedEventId;
       try {
         this.loading = true;
@@ -1027,6 +1132,47 @@ export default {
 .detail{color:var(--c-text-muted);font-size:.9rem}
 .detail strong{color:var(--c-text);font-weight:600}
 .message{background:var(--c-surface-subtle);border:1px solid var(--c-border);padding:12px 14px;border-radius:var(--r-sm);margin-top:12px;font-style:italic;color:var(--c-text-muted);font-size:.9rem}
+/* ---- Accounts / access ---------------------------------------------- */
+.users-panel{
+  background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);
+  padding:20px 24px 24px;margin-top:24px;box-shadow:var(--shadow-sm);
+}
+.users-panel h2{font-size:1.1rem;font-weight:700;color:var(--c-text);margin:0}
+.users-panel .theme-hint{margin:4px 0 16px}
+.users-table{width:100%;border-collapse:collapse;font-size:.9rem}
+.users-table th{
+  text-align:left;padding:8px 12px;font-size:.75rem;font-weight:600;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--c-text-subtle);
+  border-bottom:1px solid var(--c-border);
+}
+.users-table td{padding:12px;border-bottom:1px solid var(--c-border);vertical-align:middle}
+.users-table tr:last-child td{border-bottom:none}
+.users-actions-col,.users-table th.users-actions-col{text-align:right;white-space:nowrap}
+.users-actions-col .btn + .btn{margin-left:8px}
+.user-name{font-weight:600;color:var(--c-text);display:flex;align-items:center;gap:8px}
+.user-email{color:var(--c-text-muted);font-size:.82rem;margin-top:2px}
+.user-you{
+  font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+  background:var(--c-accent-soft);color:var(--c-accent);padding:2px 6px;border-radius:var(--r-full);
+}
+.user-unverified{color:var(--c-danger);font-size:.75rem;margin-left:6px}
+.role-badge{
+  display:inline-block;padding:4px 10px;border-radius:var(--r-full);
+  font-size:.78rem;font-weight:600;background:var(--c-surface-subtle);color:var(--c-text-muted);
+}
+.role-badge.admin{background:var(--c-accent-soft);color:var(--c-accent)}
+
+/* On narrow screens the actions wrap under the account rather than forcing a
+   horizontal scroll on the whole table. */
+@media (max-width:640px){
+  .users-table,.users-table tbody,.users-table tr,.users-table td{display:block;width:100%}
+  .users-table thead{display:none}
+  .users-table tr{padding:12px 0;border-bottom:1px solid var(--c-border)}
+  .users-table td{border-bottom:none;padding:4px 0}
+  .users-actions-col,.users-table th.users-actions-col{text-align:left;white-space:normal;margin-top:8px}
+  .users-actions-col .btn + .btn{margin-left:8px}
+}
+
 .loading,.no-data{text-align:center;padding:48px 20px;color:var(--c-text-muted)}
 .error{background:var(--c-danger-soft);color:var(--c-danger);border:1px solid #fecaca;padding:16px;margin:16px 0;border-radius:var(--r-md);text-align:center;font-weight:500}
 .status-indicator{font-size:1.05rem}
@@ -1061,12 +1207,9 @@ textarea.form-input{min-height:80px;resize:vertical}
    and background span the full modal width and sit flush at the bottom,
    matching the delete modals where .modal-actions is a direct child. */
 .edit-form .modal-actions{margin:20px -24px -20px}
-.auth-form .modal-actions{margin:24px -24px -24px}
 .delete-modal .modal-content{text-align:center}
 .delete-modal .modal-content p{color:var(--c-text-muted);margin:0 0 8px}
 .warning{color:var(--c-danger);font-weight:600;margin-top:8px!important}
-.login-modal{max-width:400px}
-.auth-form{padding:24px}
 .auth-error{color:var(--c-danger);background:var(--c-danger-soft);border:1px solid #fecaca;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;text-align:center;font-size:.875rem}
 
 @media (max-width:600px){

@@ -157,6 +157,8 @@ describe('SEO metadata (unit)', () => {
     it('keeps crawlers away from the admin console and the API', () => {
         const txt = buildRobotsTxt(ORIGIN);
         expect(txt).toContain('Disallow: /admin');
+        expect(txt).toContain('Disallow: /login');
+        expect(txt).toContain('Disallow: /register');
         expect(txt).toContain('Disallow: /api/');
         expect(txt).toContain(`Sitemap: ${ORIGIN}/sitemap.xml`);
         expect(buildRobotsTxt(ORIGIN, false)).toContain('Disallow: /');
@@ -258,6 +260,7 @@ describe('SEO metadata (served pages)', () => {
         const robots = await request(app).get('/robots.txt').expect(200);
         expect(robots.headers['content-type']).toMatch(/text\/plain/);
         expect(robots.text).toContain('Disallow: /admin');
+        expect(robots.text).toContain('Disallow: /login');
         expect(robots.text).toContain(`Sitemap: ${ORIGIN}/sitemap.xml`);
 
         const sitemap = await request(app).get('/sitemap.xml').expect(200);

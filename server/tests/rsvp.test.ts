@@ -462,13 +462,18 @@ describe('RSVP API', () => {
                 .expect(401);
         });
 
-        it('blocks public self-service sign-up', async () => {
-            const res = await request(app)
+        it('allows public self-service sign-up but grants no admin access', async () => {
+            await request(app)
                 .post('/api/auth/sign-up/email')
                 .set('Origin', ORIGIN)
-                .send({ email: 'intruder@example.com', password: 'another-strong-password', name: 'Intruder' })
-                .expect(403);
-            expect(res.body).toMatchObject({ error: 'Inscription désactivée' });
+                .send({ email: 'newcomer@example.com', password: 'another-strong-password', name: 'Newcomer' })
+                .expect(200);
+            // The new account exists on the default role — see tests/auth.test.ts
+            // for the full role/verification matrix.
+            const row = db.get<{ role: string }>('SELECT role FROM "user" WHERE email = ?', [
+                'newcomer@example.com'
+            ]);
+            expect(row?.role).toBe('user');
         });
 
         it('exposes the signed-in admin via the session endpoint', async () => {

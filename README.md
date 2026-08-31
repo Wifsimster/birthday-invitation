@@ -67,9 +67,13 @@ to `.env` and fill them in.
 | `EVENT_LOCATION`  | Full address / location label              |
 | `DRESS_CODE`      | Dress code note                            |
 | `EVENT_RSVP_DEADLINE` | Optional `YYYY-MM-DD`; closes RSVPs (UI + API) once passed |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Seeds the admin login (password ≥ 8 chars) |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Seeds the bootstrap admin (password ≥ 8 chars) |
+| `ADMIN_NAME`      | Display name for the seeded admin (default `Admin`) |
 | `BETTER_AUTH_SECRET` | Session signing secret (**required in production**; `openssl rand -base64 32`) |
 | `BETTER_AUTH_URL` | External origin for session cookies (set behind a proxy) |
+| `MAIL_FROM` / `RESEND_API_KEY` | Sender and Resend API key for verification & reset emails (**required in production**) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` | SMTP overrides; default to Resend (`smtp.resend.com:465`, user `resend`) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in; leave blank to hide the button |
 | `CORS_ORIGIN`     | Optional cross-origin allow-list (off by default) |
 | `PUBLIC_BASE_URL` | Public origin used for canonical / `og:url` / sitemap links (falls back to `BETTER_AUTH_URL`, then the request host) |
 | `SEO_ALLOW_INDEXING` | `false` to serve `noindex` + a blanket `Disallow: /` (default: indexable) |
@@ -193,7 +197,12 @@ operate on the **default event**.
 | `GET`    | `/api/event.ics`          | —     | Calendar invite (.ics), default event    |
 | `GET`    | `/api/og.png`             | —     | Share card (PNG), default event          |
 | `GET`    | `/api/settings`           | —     | Current UI settings (default theme)      |
-| `ALL`    | `/api/auth/*`             | —     | Better Auth (sign-in, sign-out, session) |
+| `GET`    | `/api/auth-providers`     | —     | Which sign-in methods are configured     |
+| `ALL`    | `/api/auth/*`             | —     | Better Auth (sign-in, sign-up, session)  |
+| `GET`    | `/api/me`                 | user  | The signed-in account and its role       |
+| `GET`    | `/api/users`              | admin | Every registered account                 |
+| `PUT`    | `/api/users/:id/role`     | admin | Grant or revoke the admin role           |
+| `DELETE` | `/api/users/:id`          | admin | Delete an account                        |
 | `PUT`    | `/api/settings`           | admin | Set the default event's theme            |
 | `POST`   | `/api/rsvps`              | admin | Manually add an RSVP (409 on duplicate)  |
 | `GET`    | `/api/rsvps`              | admin | All RSVPs (default event)                |
@@ -202,12 +211,32 @@ operate on the **default event**.
 | `PUT`    | `/api/rsvp/:id`           | admin | Edit an RSVP                             |
 | `DELETE` | `/api/rsvp/:id`           | admin | Delete an RSVP                           |
 
-Admin endpoints are protected by [Better Auth](https://better-auth.com)
-email/password sessions (cookie-based). The single admin account is seeded from
-`ADMIN_EMAIL` / `ADMIN_PASSWORD` on first start, `BETTER_AUTH_SECRET` signs the
-session cookies, and public self-service sign-up is disabled. Unauthenticated
-requests get `401`. See [`server/README.md`](server/README.md) for request/response
-details and the database schema.
+### Authentication
+
+Accounts are managed by [Better Auth](https://better-auth.com) with cookie-based
+sessions signed by `BETTER_AUTH_SECRET`. Two sign-in methods are available:
+
+- **Email + password** — open self-service registration at `/register`. Sign-up
+  sends a confirmation link (Resend SMTP); the account cannot sign in until that
+  link is followed. `/forgot-password` sends a reset link over the same transport.
+- **Google** — shown at `/login` and `/register` only when `GOOGLE_CLIENT_ID` and
+  `GOOGLE_CLIENT_SECRET` are set. Authorized redirect URI:
+  `https://<your-host>/api/auth/callback/google`.
+
+**Registering grants nothing.** Every account starts on the `user` role, which
+has no access to events or guest data; the admin API answers `403` with
+`code: "not_admin"` and the SPA shows a "pending access" screen. An admin grants
+access from the **👥 Accès** panel in `/admin`, which is also where accounts are
+demoted or deleted. The role is never accepted from a request body, so a crafted
+sign-up cannot self-promote.
+
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` seed the one bootstrap admin on first start.
+That account is re-granted the admin role (and marked verified) on every boot, so
+a misconfiguration can't leave the deployment with nobody able to sign in. The
+guards refuse to demote or delete the acting admin, or to remove the last one.
+Demoting an account revokes its sessions immediately. Unauthenticated requests
+get `401`. See [`server/README.md`](server/README.md) for request/response details
+and the database schema.
 
 ## Backend development
 
@@ -226,7 +255,9 @@ The TypeScript server is split for testability:
 | ---------------- | ------------------------------------------------ |
 | `server.ts`      | Bootstrap: open DB, build app, listen, shutdown  |
 | `src/app.ts`     | `createApp(db, options)` — routes, zod validation |
-| `src/auth.ts`    | Better Auth (email/password) + admin-seed helpers |
+| `src/auth.ts`    | Better Auth (email/password + Google), roles, admin seed |
+| `src/mailer.ts`  | Resend/SMTP transport (nodemailer), no-op when unconfigured |
+| `src/emails.ts`  | Verification / password-reset email templates    |
 | `src/db.ts`      | Open SQLite (better-sqlite3), schema/migrations  |
 | `src/event.ts`   | Event config + `.ics` calendar invite            |
 | `src/themes.ts`  | Allow-list of valid theme ids (settings validation) |
@@ -250,8 +281,10 @@ npm run build    # builds the SPA into ../dist (served by the backend)
 | ------------------------ | ------------------------------------------------ |
 | `src/App.vue`            | Root + global styles, `<router-view>`            |
 | `src/views/Invitation.vue` | Per-event invitation, RSVP + lookup (`/`, `/e/:slug`) |
-| `src/views/Admin.vue`    | Multi-event admin: events list, create/edit/theme/share, per-event RSVPs (`/admin`) |
-| `src/router.js`          | Routes (`/`, `/e/:slug`, `/admin`)               |
+| `src/views/Admin.vue`    | Multi-event admin: events list, create/edit/theme/share, per-event RSVPs, account access (`/admin`) |
+| `src/views/Auth.vue`     | Sign-in, sign-up, Google, password reset, pending-access |
+| `src/session.js`         | Reactive session + role, read from `/api/me`     |
+| `src/router.js`          | Routes and the admin route guard                 |
 | `src/env.js`             | Reads runtime config from `window.ENV`           |
 | `src/themes.js`          | Theme catalog + `applyTheme` (CSS custom properties) |
 

@@ -230,11 +230,24 @@ export function renderIndexHtml(html: string, meta: SeoMeta): string {
   return out;
 }
 
-/** robots.txt: keep crawlers out of the admin console and the JSON API. */
+/**
+ * robots.txt: keep crawlers out of the admin console, the sign-in/registration
+ * pages and the JSON API. Those pages also carry `noindex, nofollow` via
+ * FALLBACK_META; this keeps crawlers from spending requests on them at all.
+ */
 export function buildRobotsTxt(origin: string, allowIndex = true): string {
   const lines = ['User-agent: *'];
   if (allowIndex) {
-    lines.push('Allow: /', 'Disallow: /admin', 'Disallow: /api/');
+    lines.push(
+      'Allow: /',
+      'Disallow: /admin',
+      'Disallow: /login',
+      'Disallow: /register',
+      'Disallow: /forgot-password',
+      'Disallow: /reset-password',
+      'Disallow: /pending',
+      'Disallow: /api/'
+    );
     if (origin) lines.push('', `Sitemap: ${origin}/sitemap.xml`);
   } else {
     lines.push('Disallow: /');
