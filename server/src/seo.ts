@@ -1,6 +1,6 @@
 // Search-engine and social-preview metadata for the SPA.
 //
-// The invitation is a client-rendered Vue app: crawlers and — more importantly
+// The invitation is a client-rendered React app: crawlers and — more importantly
 // for an invitation — the link scrapers behind WhatsApp, Messenger, iMessage,
 // Slack and X never run our JavaScript. They read the HTML shell and nothing
 // else. So the shell they receive must already carry the right <title>,

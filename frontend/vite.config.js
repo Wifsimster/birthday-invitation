@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
+import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 import { readFileSync } from 'node:fs';
@@ -10,9 +10,9 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 
 // Build the SPA into the repo-root dist/ that the server serves.
 export default defineConfig({
-  plugins: [vue(), tailwindcss()],
+  plugins: [react(), tailwindcss()],
   resolve: {
-    // "@" is the import root shadcn-vue components expect (@/lib/utils,
+    // "@" is the import root shadcn components expect (@/lib/utils,
     // @/components/ui/...), so generated components drop in unmodified.
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) }
   },

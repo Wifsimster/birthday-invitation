@@ -3,10 +3,10 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src/**/*.js", "src/**/*.vue", "vite.config.js"],
+  "include": ["src/**/*.js", "src/**/*.jsx", "vite.config.js"],
   "exclude": ["node_modules", "../dist"]
 }
