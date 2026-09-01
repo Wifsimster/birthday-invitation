@@ -15,7 +15,7 @@ single-event deployments keep working unchanged; that one has no owner and stays
 admin-managed.
 
 Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
-`leo-birthday.${DOMAIN}`.
+`birthday.${DOMAIN}`.
 
 > ℹ️ **Provenance:** this repository was originally reconstructed from the
 > published Docker image (the original Vite source had been lost). The frontend
@@ -274,7 +274,7 @@ The TypeScript server is split for testability:
 | `src/emails.ts`  | Verification / password-reset email templates    |
 | `src/db.ts`      | Open SQLite (better-sqlite3), schema/migrations  |
 | `src/event.ts`   | Event config + `.ics` calendar invite            |
-| `src/themes.ts`  | Allow-list of valid theme ids (settings validation) |
+| `src/themes.ts`  | Allow-list of valid theme ids + share-card palettes (mirrors the frontend catalog) |
 | `src/logger.ts`  | pino structured logger                           |
 | `tests/`         | Vitest hitting `createApp` over an in-memory DB  |
 
@@ -301,19 +301,46 @@ npm run build    # builds the SPA into ../dist (served by the backend)
 | `src/components/ui/`     | shadcn/ui components (Radix primitives)          |
 | `src/env.js`             | Reads runtime config from `window.ENV`           |
 | `src/themes.js`          | Theme catalog + `applyTheme` (CSS custom properties) |
+| `scripts/check-themes.mjs` | WCAG AA contrast audit of the theme catalog (`npm run check:themes`) |
 
 ### Themes
 
-The invitation has a selectable visual theme (Fiesta, Spider-Man, Iron Man,
-Pat' Patrouille, Mickey, Princesse, Dino, Espace, Licorne). The theme belongs
-to the event, not the deployment: the admin picks one per event — from the
-**🎨 Thème** panel of the event being managed in `/admin`, or from the event's
-own create/edit form — and it is stored on that event's row, so every visitor to
-that invitation (and its share card) sees it. Each theme is pure CSS
-(palette + emoji + fonts, no image assets) defined in `frontend/src/themes.js`,
-applied by writing `--theme-*` CSS custom properties on `<html>`. The
-server-side allow-list in `server/src/themes.ts` must stay in sync with the
-ids in that catalog.
+The invitation has a selectable visual theme. The theme belongs to the event,
+not the deployment: the admin picks one per event — from the **🎨 Thème** panel
+of the event being managed in `/admin`, or from the event's own create/edit
+form — and it is stored on that event's row, so every visitor to that
+invitation (and its share card) sees it.
+
+| Theme | | Theme | | Theme | |
+| --- | --- | --- | --- | --- | --- |
+| 🎉 Fiesta | `fiesta` | 🪩 Néon | `neon` | ⚽ Football | `foot` |
+| 🕷️ Spider-Man | `spiderman` | 🎮 Gaming | `gaming` | 🧜‍♀️ Sirène | `mermaid` |
+| 🤖 Iron Man | `ironman` | 💿 Y2K | `y2k` | 🦁 Safari | `jungle` |
+| 🐾 Pat' Patrouille | `pawpatrol` | 🐭 Mickey | `mickey` | 🌸 Manga | `manga` |
+| 👑 Princesse | `princess` | 🦖 Dino | `dino` | 🌾 Bohème | `boho` |
+| 🚀 Espace | `space` | 🦄 Licorne | `unicorn` | 🛹 Skate | `skate` |
+
+Each theme is pure CSS (palette + emoji + fonts, no image assets) defined in
+`frontend/src/themes.js`, applied by writing `--theme-*` CSS custom properties
+on `<html>`. Néon, Gaming and Y2K set a dark `cardBg`; `.theme-surface` derives
+the shadcn surface tokens from the card colours, so the panel, its inputs and
+its outline buttons follow rather than staying white.
+
+Three things keep a growing catalog honest:
+
+- **Contrast.** `npm run check:themes` (in `frontend/`) audits every pair the
+  invitation actually stacks — body copy, headings, and the text laid over the
+  header, badge and button gradients — against WCAG AA. CI runs it, so a
+  palette that reads well as swatches but not as an invitation fails the build.
+  A theme that wants a vivid accent alongside a readable header gives the
+  header its own `headerFrom`/`headerTo` stops.
+- **Sync.** The server-side allow-list and share-card palette in
+  `server/src/themes.ts` mirror the frontend catalog; `server/tests/themes.test.ts`
+  reads `frontend/src/themes.js` directly and fails when the two drift.
+- **Weight.** `index.html` loads only the families needed before a theme is
+  known (Fredoka, Nunito, Poppins). Every other typeface is fetched by
+  `applyTheme` the first time a theme that uses it is applied, so the catalog
+  can grow without every guest paying for it.
 
 The Docker image builds the SPA from this source (multi-stage build), so `dist/`
 is never committed. For a full local run, build the frontend once, then start the

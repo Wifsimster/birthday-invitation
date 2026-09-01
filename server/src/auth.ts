@@ -24,7 +24,7 @@ export interface CreateAuthOptions {
   // Signing secret for sessions/cookies. Required in production — Better Auth
   // falls back to a low-entropy dev default (with a warning) when unset.
   secret?: string;
-  // Canonical public origin (e.g. https://leo-birthday.example.com). When unset
+  // Canonical public origin (e.g. https://birthday.example.com). When unset
   // Better Auth infers it from the (proxy-aware) request headers.
   baseURL?: string;
   // Extra origins allowed to drive auth flows (defaults to same-origin only).

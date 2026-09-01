@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:themes": "node scripts/check-themes.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

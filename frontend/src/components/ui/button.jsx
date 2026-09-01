@@ -17,15 +17,22 @@ export const buttonVariants = cva(
         ghost: 'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
         link: 'text-primary underline-offset-4 hover:underline'
       },
+      /*
+       * Sizes are mobile-first: stock shadcn is tuned for a mouse (36px tall
+       * default), which is below the 44px minimum both Apple's HIG and
+       * Material recommend for a finger. Every size therefore gets a
+       * touch-sized height that shrinks back to the shadcn value from `sm`
+       * up, where a pointer is the likely input.
+       */
       size: {
-        'default': 'h-9 px-4 py-2 has-[>svg]:px-3',
-        'xs': "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-        'sm': 'h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5',
-        'lg': 'h-10 rounded-md px-6 has-[>svg]:px-4',
-        'icon': 'size-9',
-        'icon-xs': "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
-        'icon-sm': 'size-8',
-        'icon-lg': 'size-10'
+        'default': 'h-11 px-4 py-2 has-[>svg]:px-3 sm:h-9',
+        'xs': "h-8 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 sm:h-6 [&_svg:not([class*='size-'])]:size-3",
+        'sm': 'h-10 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5 sm:h-8',
+        'lg': 'h-12 rounded-md px-6 has-[>svg]:px-4 sm:h-10',
+        'icon': 'size-11 sm:size-9',
+        'icon-xs': "size-8 rounded-md sm:size-6 [&_svg:not([class*='size-'])]:size-3",
+        'icon-sm': 'size-10 sm:size-8',
+        'icon-lg': 'size-12 sm:size-10'
       }
     },
     defaultVariants: { variant: 'default', size: 'default' }

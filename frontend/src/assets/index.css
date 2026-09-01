@@ -107,7 +107,7 @@
   --animate-card-in: card-in 0.8s ease-out;
 
   --font-sans: var(--theme-font-body, 'Poppins', ui-sans-serif, system-ui, sans-serif);
-  --font-display: var(--theme-font-display, 'Baloo 2', ui-sans-serif, system-ui, sans-serif);
+  --font-display: var(--theme-font-display, 'Fredoka', ui-sans-serif, system-ui, sans-serif);
 }
 
 /*
@@ -116,22 +116,31 @@
  * rest inherit the event's palette inside the invitation.
  */
 .theme-surface {
+  /* `--background` too, not just `--card`: shadcn's outline button and the
+     popovers paint themselves on it, and left at the neutral app value they
+     came out as white slabs in the dark-surface themes. */
+  --background: var(--theme-card-bg, #ffffff);
   --card: var(--theme-card-bg, #ffffff);
   --card-foreground: var(--theme-card-text, #1f2333);
   --popover: var(--theme-card-bg, #ffffff);
   --popover-foreground: var(--theme-card-text, #1f2333);
   --foreground: var(--theme-card-text, #1f2333);
-  --primary: var(--theme-primary, #ff4d6d);
+  --primary: var(--theme-primary, #e4265a);
   --primary-foreground: var(--theme-button-text, #ffffff);
-  --secondary: color-mix(in srgb, var(--theme-primary, #ff4d6d) 10%, #ffffff);
-  --secondary-foreground: var(--theme-primary-dark, #c9184a);
-  --accent: color-mix(in srgb, var(--theme-primary, #ff4d6d) 12%, #ffffff);
-  --accent-foreground: var(--theme-primary-dark, #c9184a);
-  --muted: color-mix(in srgb, var(--theme-card-text, #1f2333) 5%, #ffffff);
-  --muted-foreground: color-mix(in srgb, var(--theme-card-text, #1f2333) 62%, transparent);
+  /* Tints are mixed into the card's own background rather than into white, so
+     the dark-surface themes (Néon, Gaming, Y2K) lighten their fills instead of
+     bleaching a hole through the panel. */
+  --secondary: color-mix(in srgb, var(--theme-primary, #e4265a) 10%, var(--theme-card-bg, #ffffff));
+  --secondary-foreground: var(--theme-primary-dark, #a80b3d);
+  --accent: color-mix(in srgb, var(--theme-primary, #e4265a) 12%, var(--theme-card-bg, #ffffff));
+  --accent-foreground: var(--theme-primary-dark, #a80b3d);
+  --muted: color-mix(in srgb, var(--theme-card-text, #1f2333) 6%, var(--theme-card-bg, #ffffff));
+  /* 72%, not less: at 62% the secondary copy fell just under AA on the lighter
+     card backgrounds. Kept in step with scripts/check-themes.mjs. */
+  --muted-foreground: color-mix(in srgb, var(--theme-card-text, #1f2333) 72%, transparent);
   --border: color-mix(in srgb, var(--theme-card-text, #1f2333) 14%, transparent);
   --input: color-mix(in srgb, var(--theme-card-text, #1f2333) 20%, transparent);
-  --ring: var(--theme-primary, #ff4d6d);
+  --ring: var(--theme-primary, #e4265a);
 }
 
 @layer base {
@@ -141,6 +150,24 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    /* iOS keeps the previous section under the finger for a beat when a tab or
+       an anchor moves the page; smooth scrolling makes the jump readable. The
+       reduced-motion block at the end of this file turns it back off. */
+    scroll-behavior: smooth;
+  }
+
+  /* The grey flash Android paints over any tapped element fights the components'
+     own :active and focus styles, and it bleeds outside rounded corners. */
+  html,
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Anything the page scrolls to (a tab panel, the RSVP form) has to clear the
+     sticky admin bar, or it lands underneath it. */
+  :target,
+  [data-scroll-margin] {
+    scroll-margin-top: calc(3.5rem + 0.75rem);
   }
 
   /* The app column owns the page height so the build stamp can sit at the end
@@ -150,6 +177,10 @@
     min-height: 100vh;
     min-height: 100dvh;
     flex-direction: column;
+    /* A phone held sideways puts the notch and the rounded corners over the
+       page's left or right edge; the insets are 0 everywhere else. */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   #app > :first-child {

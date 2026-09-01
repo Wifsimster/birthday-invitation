@@ -37,7 +37,7 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_NAME=${ADMIN_NAME:-Admin}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://leo-birthday.${DOMAIN}}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://birthday.${DOMAIN}}
       # Transactional email (Resend SMTP), used for the sign-up verification and
       # password-reset links. Required: sign-up cannot complete without it, and
       # the server refuses to start in production when unset.
@@ -53,7 +53,7 @@ services:
       - CORS_ORIGIN=${CORS_ORIGIN:-}
       # Public origin used for canonical / og:url / sitemap links, and the
       # opt-out that keeps the invitation out of search engines.
-      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-https://leo-birthday.${DOMAIN}}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-https://birthday.${DOMAIN}}
       - SEO_ALLOW_INDEXING=${SEO_ALLOW_INDEXING:-true}
       # Proxy hops in front of the backend (Traefik -> Node) so that per-IP
       # rate limiting sees the real client address.
@@ -67,7 +67,7 @@ services:
       - "traefik.http.routers.birthday-invitation.entrypoints=websecure"
 
       # Router
-      - "traefik.http.routers.birthday-invitation.rule=Host(`leo-birthday.${DOMAIN}`)"
+      - "traefik.http.routers.birthday-invitation.rule=Host(`birthday.${DOMAIN}`)"
 
       # Service
       - "traefik.http.services.birthday-invitation.loadBalancer.server.port=3000"
