@@ -6,7 +6,6 @@ import {
   CalendarDaysIcon,
   CalendarPlusIcon,
   CircleAlertIcon,
-  ClockIcon,
   DownloadIcon,
   Loader2Icon,
   MapPinIcon,
@@ -248,15 +247,15 @@ export default function Invitation() {
   // tile.
   const eventDetails = useMemo(() => {
     const rows = [];
-    if (formattedDate) rows.push({ label: 'Date', value: formattedDate, icon: CalendarDaysIcon });
-    if (event.eventTime) rows.push({ label: 'Heure', value: event.eventTime, icon: ClockIcon });
+    // Date and time are not repeated here: the hero above the call to action
+    // already carries them.
     if (event.eventTown) rows.push({ label: 'Ville', value: event.eventTown, icon: Building2Icon });
     if (event.eventLocation) {
       rows.push({ label: 'Lieu', value: event.eventLocation, icon: MapPinIcon, href: mapUrl || undefined });
     }
     if (event.dresscode) rows.push({ label: 'Tenue', value: event.dresscode, icon: ShirtIcon });
     return rows;
-  }, [formattedDate, event.eventTime, event.eventTown, event.eventLocation, event.dresscode, mapUrl]);
+  }, [event.eventTown, event.eventLocation, event.dresscode, mapUrl]);
 
   // The three usual answers, plus the recorded value when a response the host
   // entered by hand carries more people than the form normally offers — the
@@ -538,6 +537,31 @@ export default function Invitation() {
               )}
             </div>
 
+            {/* The hero answers "who" and "when" before it asks for anything:
+                name, age, then the date on one line. The full grid of practical
+                details moves below the call to action, where it is reference
+                material rather than a hurdle in front of the button. */}
+            {(formattedDate || event.eventTime) && (
+              <p className="mt-4 flex flex-col items-center justify-center gap-x-2 text-center text-base font-semibold opacity-80 sm:flex-row">
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarDaysIcon className="size-4 shrink-0 opacity-70" aria-hidden="true" />
+                  {formattedDate}
+                </span>
+                {event.eventTime && (
+                  <span className="inline-flex items-center gap-2">
+                    {/* The separator only makes sense while the two sit on one
+                        line; stacked on a phone it would dangle. */}
+                    {formattedDate && (
+                      <span className="hidden opacity-40 sm:inline" aria-hidden="true">
+                        •
+                      </span>
+                    )}
+                    {event.eventTime}
+                  </span>
+                )}
+              </p>
+            )}
+
             {countdown && (
               <div
                 className={`my-5 sm:my-6 ${
@@ -572,90 +596,7 @@ export default function Invitation() {
               </div>
             )}
 
-            {/* One grouped list rather than five floating tiles. Five separate
-                cards each with their own padding and shadow ran to roughly
-                450px on a 390px-wide phone and pushed the RSVP button off the
-                bottom of a second screenful; the divided list says the same
-                thing in a little over half the height, and reads as the
-                grouped detail lists both mobile platforms use.
-
-                The fill and the rules are theme tokens, not black at a low
-                alpha: on the dark-surface themes a black wash is invisible,
-                and `--muted` / `--border` are derived from the card's own
-                colours so the list separates itself on either. */}
-            {eventDetails.length > 0 && (
-              <dl className="my-5 overflow-hidden rounded-2xl bg-muted sm:my-6">
-                {eventDetails.map((detail) => {
-                  const Icon = detail.icon;
-                  return (
-                    <div
-                      key={detail.label}
-                      className="flex items-start gap-3 border-t border-border px-3.5 py-2.5 first:border-t-0"
-                    >
-                      <span
-                        className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-[color:var(--theme-button-text,#fff)]"
-                        style={{ background: 'var(--theme-badge-gradient, var(--theme-primary,#ff6b6b))' }}
-                      >
-                        <Icon className="size-3.5" aria-hidden="true" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <dt className="text-[0.68rem] leading-tight tracking-wide uppercase opacity-60">
-                          {detail.label}
-                        </dt>
-                        <dd className="text-pretty text-[0.95rem] leading-snug font-semibold">
-                          {detail.href ? (
-                            <a
-                              href={detail.href}
-                              target="_blank"
-                              rel="noopener"
-                              className="inline-flex min-h-8 items-center text-[color:var(--theme-primary,#ff6b6b)] underline underline-offset-2"
-                            >
-                              {detail.value}
-                            </a>
-                          ) : (
-                            detail.value
-                          )}
-                        </dd>
-                      </div>
-                    </div>
-                  );
-                })}
-              </dl>
-            )}
-
-            {/* An even row rather than a wrapped one: three pills of different
-                widths broke 2 + 1 across two lines on a phone and read as two
-                unrelated groups. Stacking the icon over the label below `sm`
-                buys each label the full width of its third, so "Calendrier"
-                still fits on a 360px screen. */}
-            <div className={`grid gap-2 ${googleCalUrl ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              <Button asChild variant="outline" size="sm" className="h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm">
-                <a href={icsUrl}>
-                  <DownloadIcon />
-                  <span className="truncate">Calendrier</span>
-                </a>
-              </Button>
-              {googleCalUrl && (
-                <Button asChild variant="outline" size="sm" className="h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm">
-                  <a href={googleCalUrl} target="_blank" rel="noopener">
-                    <CalendarPlusIcon />
-                    <span className="truncate">Agenda</span>
-                  </a>
-                </Button>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm"
-                onClick={share}
-              >
-                <Share2Icon />
-                <span className="truncate">Partager</span>
-              </Button>
-            </div>
-
-            <div className="mt-8">
+            <div className="mt-7">
               {/* ---------- Already answered ---------- */}
               {confirmed ? (
                 <div
@@ -720,18 +661,18 @@ export default function Invitation() {
                     <div ref={ctaRef} className="flex flex-col items-stretch gap-2">
                       <Button
                         size="lg"
-                        className="h-auto animate-rsvp-pulse rounded-full py-4 font-display text-lg text-[color:var(--theme-button-text,#fff)] shadow-lg hover:animate-none"
+                        className="h-auto w-full animate-rsvp-pulse rounded-full py-5 font-display text-xl tracking-wide text-[color:var(--theme-button-text,#fff)] shadow-lg hover:animate-none"
                         style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }}
                         onClick={openRsvpForm}
                       >
-                        🎈 Je réponds à l'invitation
+                        🎈 Je réponds
                       </Button>
                       <Button
                         variant="ghost"
                         className="rounded-full font-medium text-[color:var(--theme-primary-dark,#c9184a)]"
                         onClick={openLookupForm}
                       >
-                        ✏️ J'ai déjà répondu, je modifie
+                        ✏️ Déjà répondu ? Modifier
                       </Button>
                     </div>
                   )}
@@ -959,6 +900,100 @@ export default function Invitation() {
                 </>
               )}
             </div>
+
+            {/* The practical details sit below the call to action now, under a
+                rule that marks them as reference rather than something to read
+                before answering. */}
+            {eventDetails.length > 0 && (
+              <div className="mt-8 flex items-center gap-3" aria-hidden="true">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-[0.68rem] tracking-[0.18em] uppercase opacity-50">Infos pratiques</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            )}
+
+            {/* One grouped list rather than five floating tiles. Five separate
+                cards each with their own padding and shadow ran to roughly
+                450px on a 390px-wide phone and pushed the RSVP button off the
+                bottom of a second screenful; the divided list says the same
+                thing in a little over half the height, and reads as the
+                grouped detail lists both mobile platforms use.
+
+                The fill and the rules are theme tokens, not black at a low
+                alpha: on the dark-surface themes a black wash is invisible,
+                and `--muted` / `--border` are derived from the card's own
+                colours so the list separates itself on either. */}
+            {eventDetails.length > 0 && (
+              <dl className="my-5 overflow-hidden rounded-2xl bg-muted sm:my-6">
+                {eventDetails.map((detail) => {
+                  const Icon = detail.icon;
+                  return (
+                    <div
+                      key={detail.label}
+                      className="flex items-start gap-3 border-t border-border px-3.5 py-2.5 first:border-t-0"
+                    >
+                      <span
+                        className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-[color:var(--theme-button-text,#fff)]"
+                        style={{ background: 'var(--theme-badge-gradient, var(--theme-primary,#ff6b6b))' }}
+                      >
+                        <Icon className="size-3.5" aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <dt className="text-[0.68rem] leading-tight tracking-wide uppercase opacity-60">
+                          {detail.label}
+                        </dt>
+                        <dd className="text-pretty text-[0.95rem] leading-snug font-semibold">
+                          {detail.href ? (
+                            <a
+                              href={detail.href}
+                              target="_blank"
+                              rel="noopener"
+                              className="inline-flex min-h-8 items-center text-[color:var(--theme-primary,#ff6b6b)] underline underline-offset-2"
+                            >
+                              {detail.value}
+                            </a>
+                          ) : (
+                            detail.value
+                          )}
+                        </dd>
+                      </div>
+                    </div>
+                  );
+                })}
+              </dl>
+            )}
+
+            {/* An even row rather than a wrapped one: three pills of different
+                widths broke 2 + 1 across two lines on a phone and read as two
+                unrelated groups. Stacking the icon over the label below `sm`
+                buys each label the full width of its third, so "Calendrier"
+                still fits on a 360px screen. */}
+            <div className={`grid gap-2 ${googleCalUrl ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <Button asChild variant="outline" size="sm" className="h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm">
+                <a href={icsUrl}>
+                  <DownloadIcon />
+                  <span className="truncate">Calendrier</span>
+                </a>
+              </Button>
+              {googleCalUrl && (
+                <Button asChild variant="outline" size="sm" className="h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm">
+                  <a href={googleCalUrl} target="_blank" rel="noopener">
+                    <CalendarPlusIcon />
+                    <span className="truncate">Agenda</span>
+                  </a>
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm"
+                onClick={share}
+              >
+                <Share2Icon />
+                <span className="truncate">Partager</span>
+              </Button>
+            </div>
           </div>
         )}
       </main>
@@ -991,7 +1026,7 @@ export default function Invitation() {
             style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }}
             onClick={openRsvpForm}
           >
-            🎈 Je réponds à l'invitation
+            🎈 Je réponds
           </Button>
         </div>
       )}
