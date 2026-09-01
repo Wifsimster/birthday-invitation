@@ -171,6 +171,11 @@ export default function Admin() {
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
+  // Phones only: the event grid is roughly a screenful, and it sat above every
+  // tab on every visit — including "Accès", which has nothing to do with an
+  // event. Once a fête is picked the grid folds into a one-line summary and the
+  // work is at the top of the page. `sm` and up has the room, so it stays open.
+  const [eventPickerOpen, setEventPickerOpen] = useState(false);
 
   // Selected-event RSVP data
   const [loading, setLoading] = useState(false);
@@ -514,6 +519,8 @@ export default function Admin() {
   function selectEvent(id) {
     setSelectedEventId(id);
     setActiveTab((tab) => (TABS.find((t) => t.id === tab)?.needsEvent ? tab : 'responses'));
+    // On a phone the grid folds away once there is a fête to work on.
+    setEventPickerOpen(false);
   }
 
   // Topbar refresh: reload everything the console is showing.
@@ -866,6 +873,8 @@ export default function Admin() {
   }
 
   const activeTabNeedsEvent = TABS.find((t) => t.id === activeTab)?.needsEvent;
+  // Only ever true below `sm` — the classes that read it are all `sm:`-reset.
+  const eventsFolded = !eventPickerOpen && !!selectedEvent && !eventsLoading && !eventsError;
 
   // Where the topbar's "Voir l'invitation" shortcut goes. It used to be a fixed
   // '/', which is the deployment's default party — the wrong page for anyone
@@ -880,8 +889,8 @@ export default function Admin() {
         phone, squeezing the brand down to a bare emoji. The invitation link and
         sign-out now collapse into a menu below `sm`, so the bar keeps its title
         and every control keeps a 44px touch target. */}
-      <header className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-2 px-4">
+      <header className="sticky top-0 z-40 border-b bg-card/95 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-card/80">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-1 px-3 sm:gap-2 sm:px-4">
           <span className="text-xl" aria-hidden="true">
             🎉
           </span>
@@ -938,10 +947,17 @@ export default function Admin() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 space-y-5 px-4 py-5">
+      <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 px-3 py-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:space-y-5 sm:px-4 sm:py-5">
         {/* ===================== EVENTS OVERVIEW ===================== */}
-        <Card>
-          <CardHeader>
+        {/* "Accès" is account-level, so on a phone — where every row costs a
+            slice of the only screen there is — the event picker gets out of its
+            way entirely. */}
+        <Card
+          className={`${activeTabNeedsEvent ? '' : 'hidden sm:flex'} ${
+            eventsFolded ? 'gap-0 py-4 sm:gap-6 sm:py-6' : ''
+          }`}
+        >
+          <CardHeader className={eventsFolded ? 'hidden sm:grid' : undefined}>
             <CardTitle className="flex items-center gap-2">
               <span aria-hidden="true">🎈</span> Événements
             </CardTitle>
@@ -958,7 +974,39 @@ export default function Admin() {
             </CardAction>
           </CardHeader>
 
-          <CardContent>
+          {/* The folded state: which fête is being worked on, and the way back
+              to the list. Replaced by the grid itself from `sm` up. */}
+          {eventsFolded && (
+            <div className="flex items-center gap-3 px-4 sm:hidden">
+              <span className="text-2xl" aria-hidden="true">
+                {themeIcon(selectedEvent.theme)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold">{selectedEvent.person || 'Sans nom'}</p>
+                {/* Just the date: the response count is already on the
+                    "Réponses" tab a few pixels below, and squeezing both in
+                    truncated whichever came second. */}
+                <p className="truncate text-xs text-muted-foreground">
+                  {selectedEvent.date ? formatEventDate(selectedEvent.date) : 'Détails à compléter'}
+                  {selectedEvent.town ? ` · ${selectedEvent.town}` : ''}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label="Nouvel événement"
+                title="Nouvel événement"
+                onClick={openCreateEventModal}
+              >
+                <PlusIcon />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setEventPickerOpen(true)}>
+                Changer
+              </Button>
+            </div>
+          )}
+
+          <CardContent className={eventsFolded ? 'hidden sm:block' : undefined}>
             {eventsLoading && !events.length ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-live="polite">
                 <span className="sr-only">Chargement des événements...</span>
@@ -1093,21 +1141,30 @@ export default function Admin() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-4">
           {/* Full width on a phone so the four tabs share the strip; back to
               shadcn's content width once there is room to spare. */}
-          <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
-            {/* Four labels plus their emoji overflow a 390px strip and the last
-                one gets clipped mid-word; the emoji are decoration, so they are
-                the part that goes. */}
-            {visibleTabs.map((tab) => (
-              <TabsTrigger key={tab.id} value={tab.id} className="text-xs sm:text-sm">
-                <span className="hidden sm:inline" aria-hidden="true">
-                  {tab.icon}
-                </span>
-                {tab.label}
-                {tab.id === 'responses' && selectedEvent && <Badge variant="secondary">{stats.total_responses}</Badge>}
-                {tab.id === 'access' && <Badge variant="secondary">{users.length}</Badge>}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          {/* Pinned under the topbar on a phone: the sections are the console's
+              main navigation and scrolling back up to reach them turned every
+              switch into a round trip. The wrapper is what sticks, so the strip
+              is opaque edge to edge instead of letting the list scroll past the
+              pill's rounded corners. */}
+          <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-30 -mx-3 bg-background px-3 py-2 sm:static sm:mx-0 sm:bg-transparent sm:p-0">
+            <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
+              {/* Four labels plus their emoji overflow a 390px strip and the
+                  last one gets clipped mid-word; the emoji are decoration, so
+                  they are the part that goes. */}
+              {visibleTabs.map((tab) => (
+                <TabsTrigger key={tab.id} value={tab.id} className="text-xs sm:text-sm">
+                  <span className="hidden sm:inline" aria-hidden="true">
+                    {tab.icon}
+                  </span>
+                  {tab.label}
+                  {tab.id === 'responses' && selectedEvent && (
+                    <Badge variant="secondary">{stats.total_responses}</Badge>
+                  )}
+                  {tab.id === 'access' && <Badge variant="secondary">{users.length}</Badge>}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
 
           {/* Shared "no event picked yet" state for the per-event tabs. */}
           {activeTabNeedsEvent && !selectedEvent && (
@@ -1127,7 +1184,9 @@ export default function Admin() {
           {/* ---------- Responses ---------- */}
           {selectedEvent && (
             <TabsContent value="responses" className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              {/* Hidden on a phone: the folded event summary directly above
+                  already names the fête and offers the way out of it. */}
+              <div className="hidden flex-wrap items-center justify-between gap-2 sm:flex">
                 <h2 className="text-lg font-semibold">
                   Gestion : <span className="text-primary">{selectedEvent.person || 'Sans nom'}</span>
                 </h2>
@@ -1137,48 +1196,70 @@ export default function Admin() {
                 </Button>
               </div>
 
-              {/* Two columns on a phone instead of one: the cards were stacking
-                  full-width, so the five figures took a whole screen to read. */}
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-                <div className="rounded-xl border bg-card p-4">
-                  <div className="text-lg" aria-hidden="true">
+              {/* Four boxed figures at two across, each with its own emoji
+                  row, filled a phone screen before the first response was
+                  visible. Below `sm` they become one strip of plain figures —
+                  the emoji were decoration and the border was repeated four
+                  times — so the whole summary reads at a glance and the list
+                  starts above the fold. The cards come back from `sm` up. */}
+              <div className="grid grid-cols-4 divide-x rounded-xl border bg-card sm:grid-cols-2 sm:gap-3 sm:divide-x-0 sm:rounded-none sm:border-0 sm:bg-transparent lg:grid-cols-5">
+                <div className="px-1 py-3 text-center sm:rounded-xl sm:border sm:bg-card sm:p-4 sm:text-left">
+                  <div className="hidden text-lg sm:block" aria-hidden="true">
                     📨
                   </div>
-                  <div className="mt-1 text-2xl font-bold tabular-nums">{stats.total_responses}</div>
-                  <div className="text-xs tracking-wide uppercase text-muted-foreground">Total réponses</div>
+                  <div className="text-xl font-bold tabular-nums sm:mt-1 sm:text-2xl">{stats.total_responses}</div>
+                  <div className="text-[0.6rem] leading-tight tracking-wide uppercase text-muted-foreground sm:text-xs">
+                    <span className="sm:hidden">Réponses</span>
+                    <span className="hidden sm:inline">Total réponses</span>
+                  </div>
                 </div>
-                <div className="rounded-xl border bg-card p-4">
-                  <div className="text-lg" aria-hidden="true">
+                <div className="px-1 py-3 text-center sm:rounded-xl sm:border sm:bg-card sm:p-4 sm:text-left">
+                  <div className="hidden text-lg sm:block" aria-hidden="true">
                     ✅
                   </div>
-                  <div className="mt-1 text-2xl font-bold tabular-nums text-success">{stats.confirmations}</div>
-                  <div className="text-xs tracking-wide uppercase text-muted-foreground">Confirmations</div>
+                  <div className="text-xl font-bold tabular-nums text-success sm:mt-1 sm:text-2xl">
+                    {stats.confirmations}
+                  </div>
+                  <div className="text-[0.6rem] leading-tight tracking-wide uppercase text-muted-foreground sm:text-xs">
+                    <span className="sm:hidden">Confirm.</span>
+                    <span className="hidden sm:inline">Confirmations</span>
+                  </div>
                 </div>
-                <div className="rounded-xl border bg-card p-4">
-                  <div className="text-lg" aria-hidden="true">
+                <div className="px-1 py-3 text-center sm:rounded-xl sm:border sm:bg-card sm:p-4 sm:text-left">
+                  <div className="hidden text-lg sm:block" aria-hidden="true">
                     ❌
                   </div>
-                  <div className="mt-1 text-2xl font-bold tabular-nums text-destructive">{stats.declined}</div>
-                  <div className="text-xs tracking-wide uppercase text-muted-foreground">Déclins</div>
+                  <div className="text-xl font-bold tabular-nums text-destructive sm:mt-1 sm:text-2xl">
+                    {stats.declined}
+                  </div>
+                  <div className="text-[0.6rem] leading-tight tracking-wide uppercase text-muted-foreground sm:text-xs">
+                    Déclins
+                  </div>
                 </div>
-                <div className="rounded-xl border bg-card p-4">
-                  <div className="text-lg" aria-hidden="true">
+                <div className="px-1 py-3 text-center sm:rounded-xl sm:border sm:bg-card sm:p-4 sm:text-left">
+                  <div className="hidden text-lg sm:block" aria-hidden="true">
                     👥
                   </div>
-                  <div className="mt-1 text-2xl font-bold tabular-nums">{stats.total_guests}</div>
-                  <div className="text-xs tracking-wide uppercase text-muted-foreground">Total invités</div>
+                  <div className="text-xl font-bold tabular-nums sm:mt-1 sm:text-2xl">{stats.total_guests}</div>
+                  <div className="text-[0.6rem] leading-tight tracking-wide uppercase text-muted-foreground sm:text-xs">
+                    <span className="sm:hidden">Invités</span>
+                    <span className="hidden sm:inline">Total invités</span>
+                  </div>
                 </div>
-                <div className="col-span-2 rounded-xl border bg-card p-4 lg:col-span-1">
-                  <div className="text-lg" aria-hidden="true">
+                <div className="col-span-4 flex items-center gap-2.5 border-t px-3 py-2.5 sm:col-span-2 sm:block sm:gap-0 sm:rounded-xl sm:border sm:bg-card sm:p-4 lg:col-span-1">
+                  <div className="hidden text-lg sm:block" aria-hidden="true">
                     📊
                   </div>
-                  <div className="mt-1 text-2xl font-bold tabular-nums">{acceptanceRate}%</div>
+                  <div className="text-sm font-bold tabular-nums sm:mt-1 sm:text-2xl">{acceptanceRate}%</div>
                   <Progress
                     value={acceptanceRate}
-                    className="my-2"
+                    className="order-last flex-1 sm:order-none sm:my-2 sm:w-auto sm:flex-none"
                     aria-label={`Taux d'acceptation ${acceptanceRate} %`}
                   />
-                  <div className="text-xs tracking-wide uppercase text-muted-foreground">Taux d'acceptation</div>
+                  <div className="text-[0.6rem] tracking-wide uppercase text-muted-foreground sm:text-xs">
+                    <span className="sm:hidden">acceptation</span>
+                    <span className="hidden sm:inline">Taux d'acceptation</span>
+                  </div>
                 </div>
               </div>
 
@@ -1314,10 +1395,33 @@ export default function Admin() {
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <h3 className="flex min-w-0 items-center gap-2 font-semibold">
-                                <span aria-hidden="true">{rsvp.attending === 'yes' ? '✅' : '❌'}</span>
-                                <span className="truncate">{rsvp.name}</span>
-                              </h3>
+                              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                <h3 className="flex min-w-0 items-center gap-2 font-semibold">
+                                  <span aria-hidden="true">{rsvp.attending === 'yes' ? '✅' : '❌'}</span>
+                                  <span className="truncate">{rsvp.name}</span>
+                                </h3>
+                                {/* The status was a row of its own in the list
+                                    below, where "Statut" and its value took the
+                                    full width of a phone for one word. It reads
+                                    as part of the identity, so it moves up here
+                                    as a badge. */}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <Badge
+                                    className={
+                                      rsvp.attending === 'yes'
+                                        ? 'bg-success text-success-foreground'
+                                        : 'bg-destructive text-white'
+                                    }
+                                  >
+                                    {rsvp.attending === 'yes' ? 'Confirmé' : 'Décliné'}
+                                  </Badge>
+                                  {rsvp.attending === 'yes' && (
+                                    <Badge variant="outline" className="text-muted-foreground">
+                                      👥 {rsvp.guests}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
                               <div className="flex shrink-0 items-center gap-1">
                                 <Button
                                   variant="ghost"
@@ -1339,53 +1443,45 @@ export default function Admin() {
                               </div>
                             </div>
 
-                            <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-                              <div className="flex gap-2">
-                                <dt className="font-medium text-muted-foreground">Statut</dt>
-                                <dd
-                                  className={
-                                    rsvp.attending === 'yes'
-                                      ? 'font-semibold text-success'
-                                      : 'font-semibold text-destructive'
-                                  }
-                                >
-                                  {rsvp.attending === 'yes' ? 'Confirmé' : 'Décliné'}
-                                </dd>
-                              </div>
+                            {/* Label and value share two real grid columns
+                                rather than a flex row each: at 390px the flex
+                                version let "Mis à jour" break across two lines
+                                and squeezed the email down to an ellipsis. */}
+                            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm sm:grid-cols-[auto_1fr_auto_1fr] sm:gap-x-6">
                               {rsvp.email && (
-                                <div className="flex min-w-0 gap-2">
-                                  <dt className="font-medium text-muted-foreground">✉️ Email</dt>
-                                  <dd className="truncate">
-                                    <a className="underline-offset-4 hover:underline" href={`mailto:${rsvp.email}`}>
+                                <>
+                                  <dt className="font-medium whitespace-nowrap text-muted-foreground">✉️ Email</dt>
+                                  <dd className="min-w-0">
+                                    <a
+                                      className="inline-flex min-h-7 items-center [overflow-wrap:anywhere] underline-offset-4 hover:underline"
+                                      href={`mailto:${rsvp.email}`}
+                                    >
                                       {rsvp.email}
                                     </a>
                                   </dd>
-                                </div>
+                                </>
                               )}
-                              <div className="flex gap-2">
-                                <dt className="font-medium text-muted-foreground">📱 Téléphone</dt>
-                                <dd>
-                                  <a className="underline-offset-4 hover:underline" href={`tel:${rsvp.phone}`}>
-                                    {rsvp.phone}
-                                  </a>
-                                </dd>
-                              </div>
-                              {rsvp.attending === 'yes' && (
-                                <div className="flex gap-2">
-                                  <dt className="font-medium text-muted-foreground">👥 Invités</dt>
-                                  <dd>{rsvp.guests}</dd>
-                                </div>
-                              )}
+                              <dt className="font-medium whitespace-nowrap text-muted-foreground">📱 Téléphone</dt>
+                              <dd className="min-w-0">
+                                <a
+                                  className="inline-flex min-h-7 items-center underline-offset-4 hover:underline"
+                                  href={`tel:${rsvp.phone}`}
+                                >
+                                  {rsvp.phone}
+                                </a>
+                              </dd>
                               {rsvp.dietary_restrictions && (
-                                <div className="flex gap-2 sm:col-span-2">
-                                  <dt className="font-medium text-muted-foreground">🥜 Allergies</dt>
-                                  <dd>{rsvp.dietary_restrictions}</dd>
-                                </div>
+                                <>
+                                  <dt className="font-medium whitespace-nowrap text-muted-foreground sm:col-start-1">
+                                    🥜 Allergies
+                                  </dt>
+                                  <dd className="min-w-0 sm:col-span-3">{rsvp.dietary_restrictions}</dd>
+                                </>
                               )}
-                              <div className="flex gap-2 sm:col-span-2">
-                                <dt className="font-medium text-muted-foreground">🕒 Mis à jour</dt>
-                                <dd className="text-muted-foreground">{formatDate(rsvp.updated_at)}</dd>
-                              </div>
+                              <dt className="font-medium whitespace-nowrap text-muted-foreground sm:col-start-1">
+                                🕒 Mis à jour
+                              </dt>
+                              <dd className="min-w-0 text-muted-foreground">{formatDate(rsvp.updated_at)}</dd>
                             </dl>
 
                             {rsvp.message && (
@@ -1483,7 +1579,7 @@ export default function Admin() {
                       {linkCopied ? 'Copié' : 'Copier le lien'}
                     </Button>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid gap-2 sm:flex sm:flex-wrap">
                     <Button asChild variant="outline" size="sm">
                       <a href={whatsAppShareUrl} target="_blank" rel="noopener">
                         <SendIcon />
