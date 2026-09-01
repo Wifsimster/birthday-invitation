@@ -209,13 +209,23 @@ jobs:
         working-directory: server
         run: npm version "$NEW_VERSION" --no-git-tag-version
 
+      # The build stamp in the app's footer is compiled from *this* file (see
+      # frontend/vite.config.js), so leaving it behind pinned every deployed
+      # build to the version the frontend was scaffolded at. --allow-same-version
+      # keeps a re-run from failing once the two are already in step.
+      - name: Bump version in frontend/package.json
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+        working-directory: frontend
+        run: npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version
+
       # Diff-guard: if the bump left the worktree clean (e.g. a re-run), skip
       # the commit so `git commit` doesn't exit 1 and kill the job.
       - name: Commit version bump
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
         run: |
-          git add server/package.json server/package-lock.json
+          git add server/package.json server/package-lock.json frontend/package.json frontend/package-lock.json
           if git diff --staged --quiet; then
             echo "No version changes staged — skipping commit (likely a re-run)."
           else
