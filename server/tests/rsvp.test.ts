@@ -529,23 +529,23 @@ describe('RSVP API', () => {
     describe('Settings API', () => {
         it('GET /api/settings returns the default theme when unset', async () => {
             const res = await request(app).get('/api/settings').expect(200);
-            expect(res.body).toMatchObject({ theme: 'fiesta' });
+            expect(res.body).toMatchObject({ theme: 'kid' });
         });
 
         it('PUT /api/settings requires authentication', async () => {
-            await request(app).put('/api/settings').send({ theme: 'dino' }).expect(401);
+            await request(app).put('/api/settings').send({ theme: 'floral' }).expect(401);
         });
 
         it('PUT /api/settings persists a valid theme and GET reflects it', async () => {
             const put = await request(app)
                 .put('/api/settings')
                 .set('Cookie', authCookie)
-                .send({ theme: 'spiderman' })
+                .send({ theme: 'retro' })
                 .expect(200);
-            expect(put.body).toMatchObject({ theme: 'spiderman' });
+            expect(put.body).toMatchObject({ theme: 'retro' });
 
             const get = await request(app).get('/api/settings').expect(200);
-            expect(get.body).toMatchObject({ theme: 'spiderman' });
+            expect(get.body).toMatchObject({ theme: 'retro' });
         });
 
         it('PUT /api/settings rejects an unknown theme with 400 + French error', async () => {
@@ -558,10 +558,10 @@ describe('RSVP API', () => {
         });
 
         it('PUT /api/settings upserts (a second write overwrites the first)', async () => {
-            await request(app).put('/api/settings').set('Cookie', authCookie).send({ theme: 'dino' }).expect(200);
-            await request(app).put('/api/settings').set('Cookie', authCookie).send({ theme: 'space' }).expect(200);
+            await request(app).put('/api/settings').set('Cookie', authCookie).send({ theme: 'floral' }).expect(200);
+            await request(app).put('/api/settings').set('Cookie', authCookie).send({ theme: 'robotic' }).expect(200);
             const get = await request(app).get('/api/settings').expect(200);
-            expect(get.body.theme).toBe('space');
+            expect(get.body.theme).toBe('robotic');
         });
     });
 

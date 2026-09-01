@@ -62,7 +62,7 @@ describe('Events API', () => {
     describe('Migration / default event', () => {
         it('creates a default event resolvable by the legacy settings route', async () => {
             const res = await request(app).get('/api/settings').expect(200);
-            expect(res.body).toMatchObject({ theme: 'fiesta' });
+            expect(res.body).toMatchObject({ theme: 'kid' });
         });
 
         it('GET /api/events/default returns the default event after updating it', async () => {
@@ -89,8 +89,8 @@ describe('Events API', () => {
         });
 
         it('creates an event with an auto slug from the person', async () => {
-            const created = await createEvent({ person: 'Émile Dupont', theme: 'dino' });
-            expect(created).toMatchObject({ person: 'Émile Dupont', slug: 'emile-dupont', theme: 'dino' });
+            const created = await createEvent({ person: 'Émile Dupont', theme: 'floral' });
+            expect(created).toMatchObject({ person: 'Émile Dupont', slug: 'emile-dupont', theme: 'floral' });
             expect(created.id).toEqual(expect.any(Number));
 
             const list = await request(app).get('/api/events').set('Cookie', authCookie).expect(200);
@@ -151,9 +151,9 @@ describe('Events API', () => {
             const res = await request(app)
                 .put(`/api/events/${created.id}`)
                 .set('Cookie', authCookie)
-                .send({ town: 'Lyon', theme: 'space' })
+                .send({ town: 'Lyon', theme: 'robotic' })
                 .expect(200);
-            expect(res.body).toMatchObject({ town: 'Lyon', theme: 'space', person: 'Nina' });
+            expect(res.body).toMatchObject({ town: 'Lyon', theme: 'robotic', person: 'Nina' });
         });
 
         it('rejects an invalid theme with 400', async () => {

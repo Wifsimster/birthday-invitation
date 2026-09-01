@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+/* Per-theme structure — shapes, borders, depth, texture, type treatment.
+   Loaded after the token definitions below so its `[data-theme]` blocks win. */
+@import './themes.css';
 
 @custom-variant dark (&:is(.dark *));
 
