@@ -31,7 +31,7 @@ const eventRow = (overrides: Partial<EventRow> = {}): EventRow => ({
     town: 'Artigues-près-Bordeaux',
     location: '🏠 Chez Léo',
     dress_code: '',
-    theme: 'fiesta',
+    theme: 'kid',
     rsvp_deadline: '',
     is_default: 1,
     owner_id: null,
@@ -182,7 +182,7 @@ describe('Open Graph card (served)', () => {
         await request(app)
             .post('/api/events')
             .set('Cookie', authCookie)
-            .send({ person: 'Léa', age: '7', slug: 'anniv-lea', theme: 'unicorn' })
+            .send({ person: 'Léa', age: '7', slug: 'anniv-lea', theme: 'floral' })
             .expect(201);
         const res = await request(app).get('/api/events/anniv-lea/og.png').expect(200);
         expect(pngSize(res.body)).toEqual({ width: OG_WIDTH, height: OG_HEIGHT });

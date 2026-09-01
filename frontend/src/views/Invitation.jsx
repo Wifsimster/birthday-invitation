@@ -470,14 +470,14 @@ export default function Invitation() {
       the selected theme rather than by the neutral admin palette.
     */
     <div
-      className={`theme-surface relative flex min-h-full flex-col items-center justify-center overflow-hidden px-3 py-4 sm:px-4 sm:py-6 ${
+      className={`theme-surface t-page relative flex min-h-full flex-col items-center justify-center overflow-hidden px-3 py-4 sm:px-4 sm:py-6 ${
         stickyCtaPossible ? 'pb-24 sm:pb-6' : ''
       }`}
     >
       {themeDef.decorations.map((emoji, i) => (
         <div
           key={`${theme}-${i}`}
-          className={`pointer-events-none absolute animate-float text-3xl opacity-30 select-none ${DECORATION_POSITIONS[i % DECORATION_POSITIONS.length]}`}
+          className={`t-decoration pointer-events-none absolute animate-float text-3xl select-none ${DECORATION_POSITIONS[i % DECORATION_POSITIONS.length]}`}
           style={{ animationDelay: `${i}s` }}
           aria-hidden="true"
         >
@@ -485,17 +485,12 @@ export default function Invitation() {
         </div>
       ))}
 
-      <main className="relative w-full max-w-[500px] animate-card-in overflow-hidden rounded-[20px] bg-card text-card-foreground shadow-[0_25px_50px_rgba(0,0,0,0.1)]">
+      <main className="t-panel relative w-full max-w-[500px] animate-card-in overflow-hidden bg-card text-card-foreground">
         <header
-          className="relative overflow-hidden px-5 py-6 text-center text-[color:var(--theme-header-text,#fff)] sm:px-8 sm:py-8"
+          className="t-header relative overflow-hidden px-5 py-6 text-center text-[color:var(--theme-header-text,#fff)] sm:px-8 sm:py-8"
           style={{ background: 'var(--theme-header-gradient, linear-gradient(135deg,#ff6b6b,#ff8e8e))' }}
         >
-          <span
-            className="pointer-events-none absolute inset-0 opacity-[0.18]"
-            style={{ background: 'radial-gradient(circle at 50% 0%, var(--theme-accent,#ffb703) 0%, transparent 60%)' }}
-            aria-hidden="true"
-          />
-          <div className="relative flex justify-center gap-3.5" aria-hidden="true">
+          <div className="relative z-2 flex justify-center gap-3.5" aria-hidden="true">
             {themeDef.heroEmojis.map((e, i) => (
               <span
                 key={i}
@@ -506,10 +501,12 @@ export default function Invitation() {
               </span>
             ))}
           </div>
-          <h1 className="relative mt-2.5 text-balance font-display text-2xl leading-tight font-bold tracking-wide sm:text-[2rem]">
+          <h1 className="t-display relative z-2 mt-2.5 text-balance font-display text-2xl leading-tight sm:text-[2rem]">
             {themeDef.copy.title}
           </h1>
-          <p className="relative mt-2 text-pretty text-base opacity-90 sm:mt-2.5 sm:text-lg">{themeDef.copy.subtitle}</p>
+          <p className="relative z-2 mt-2 text-pretty text-base opacity-90 sm:mt-2.5 sm:text-lg">
+            {themeDef.copy.subtitle}
+          </p>
         </header>
 
         {notFound ? (
@@ -524,12 +521,12 @@ export default function Invitation() {
         ) : (
           <div className="p-5 sm:p-8">
             <div className="text-center">
-              <p className="font-display text-[1.7rem] font-bold text-[color:var(--theme-primary,#ff6b6b)]">
+              <p className="t-display font-display text-[1.7rem] text-[color:var(--theme-primary,#ff6b6b)]">
                 {event.birthdayPerson}
               </p>
               {event.age && (
                 <p
-                  className="mt-3 inline-block rounded-full px-5 py-2.5 text-lg font-bold text-[color:var(--theme-badge-text,#fff)] shadow-[0_0_0_4px_var(--theme-primary-soft,#ff6b6b55),0_4px_15px_rgba(0,0,0,0.18)]"
+                  className="t-badge mt-3 inline-block px-5 py-2.5 text-lg font-bold text-[color:var(--theme-badge-text,#fff)]"
                   style={{ background: 'var(--theme-badge-gradient, linear-gradient(135deg,#ffd93d,#ff6b6b))' }}
                 >
                   {event.age} ans
@@ -574,7 +571,7 @@ export default function Invitation() {
               >
                 {countdown.isToday || countdown.isPast ? (
                   <span
-                    className="inline-block rounded-full px-6 py-3 font-display font-bold text-[color:var(--theme-button-text,#fff)]"
+                    className="t-badge t-display inline-block px-6 py-3 font-display text-[color:var(--theme-button-text,#fff)]"
                     style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }}
                   >
                     {countdown.isToday ? "🎉 C'est aujourd'hui !" : '🎂 Joyeux anniversaire !'}
@@ -583,13 +580,12 @@ export default function Invitation() {
                   countdownUnits.map((unit) => (
                     <div
                       key={unit.label}
-                      className="flex flex-col items-center justify-center rounded-2xl px-2 py-3"
-                      style={{ background: 'var(--theme-primary-soft, #ff6b6b55)' }}
+                      className="t-tile t-tile-countdown flex flex-col items-center justify-center px-2 py-3"
                     >
-                      <span className="font-display text-2xl leading-none font-bold text-[color:var(--theme-primary,#ff6b6b)] tabular-nums sm:text-[1.9rem]">
+                      <span className="t-display font-display text-2xl leading-none text-[color:var(--theme-primary,#ff6b6b)] tabular-nums sm:text-[1.9rem]">
                         {unit.value}
                       </span>
-                      <span className="mt-1.5 text-[0.68rem] tracking-wider uppercase opacity-65">{unit.label}</span>
+                      <span className="t-kicker mt-1.5 text-[0.68rem] opacity-70">{unit.label}</span>
                     </div>
                   ))
                 )}
@@ -661,7 +657,7 @@ export default function Invitation() {
                     <div ref={ctaRef} className="flex flex-col items-stretch gap-2">
                       <Button
                         size="lg"
-                        className="h-auto w-full animate-rsvp-pulse rounded-full py-5 font-display text-xl tracking-wide text-[color:var(--theme-button-text,#fff)] shadow-lg hover:animate-none"
+                        className="t-cta t-display h-auto w-full animate-rsvp-pulse py-5 font-display text-xl text-[color:var(--theme-button-text,#fff)] hover:animate-none"
                         style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }}
                         onClick={openRsvpForm}
                       >
@@ -681,7 +677,7 @@ export default function Invitation() {
                   {showRsvpForm && (
                     <form
                       ref={formPanelRef}
-                      className="mt-5 scroll-mt-4 space-y-5 rounded-2xl bg-muted p-4 sm:p-6"
+                      className="t-tile mt-5 scroll-mt-4 space-y-5 p-4 sm:p-6"
                       onSubmit={submitRSVP}
                     >
                       <h2
@@ -850,7 +846,7 @@ export default function Invitation() {
                   {showLookupForm && (
                     <form
                       ref={formPanelRef}
-                      className="mt-5 scroll-mt-4 space-y-5 rounded-2xl bg-muted p-4 sm:p-6"
+                      className="t-tile mt-5 scroll-mt-4 space-y-5 p-4 sm:p-6"
                       onSubmit={lookupRSVP}
                     >
                       <h2
@@ -924,7 +920,7 @@ export default function Invitation() {
                 and `--muted` / `--border` are derived from the card's own
                 colours so the list separates itself on either. */}
             {eventDetails.length > 0 && (
-              <dl className="my-5 overflow-hidden rounded-2xl bg-muted sm:my-6">
+              <dl className="t-tile my-5 overflow-hidden sm:my-6">
                 {eventDetails.map((detail) => {
                   const Icon = detail.icon;
                   return (
@@ -1022,7 +1018,7 @@ export default function Invitation() {
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/90 px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] shadow-[0_-6px_24px_rgba(0,0,0,0.15)] backdrop-blur-md sm:hidden">
           <Button
             size="lg"
-            className="h-12 w-full rounded-full font-display text-base text-[color:var(--theme-button-text,#fff)] shadow-md"
+            className="t-cta t-display h-12 w-full font-display text-base text-[color:var(--theme-button-text,#fff)]"
             style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }}
             onClick={openRsvpForm}
           >

@@ -194,7 +194,7 @@ describe('Per-account invitations', () => {
       const { cookie } = await register(ALICE);
       await request(app).get('/api/users').set('Cookie', cookie).expect(403);
       await request(app).get('/api/rsvps').set('Cookie', cookie).expect(403);
-      await request(app).put('/api/settings').set('Cookie', cookie).send({ theme: 'fiesta' }).expect(403);
+      await request(app).put('/api/settings').set('Cookie', cookie).send({ theme: 'kid' }).expect(403);
     });
   });
 

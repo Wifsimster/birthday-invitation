@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_THEME, LEGACY_THEME_ALIASES, THEME_IDS } from './themes.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -141,7 +142,7 @@ const MIGRATIONS: ((db: Db) => void)[] = [
   town TEXT NOT NULL DEFAULT '',
   location TEXT NOT NULL DEFAULT '',
   dress_code TEXT NOT NULL DEFAULT '',
-  theme TEXT NOT NULL DEFAULT 'fiesta',
+  theme TEXT NOT NULL DEFAULT 'kid',
   rsvp_deadline TEXT NOT NULL DEFAULT '',
   is_default INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -188,6 +189,26 @@ const MIGRATIONS: ((db: Db) => void)[] = [
       if (!/duplicate column name/.test((err as Error).message)) throw err;
     }
     db.run('CREATE INDEX IF NOT EXISTS idx_event_owner ON event(owner_id)');
+  },
+  // v5: the theme catalog was replaced. The old ids named a character or a
+  // motif and all rendered the same white card; the new ones each carry their
+  // own structure (see frontend/src/assets/themes.css). Every stored id is
+  // remapped onto the survivor closest to how it actually looked, so existing
+  // invitations keep a deliberate appearance rather than resetting to the
+  // default. Anything unrecognised — a hand-edited row, a much older backup —
+  // lands on the default, which is what the API would have served it anyway.
+  (db) => {
+    for (const [legacy, current] of Object.entries(LEGACY_THEME_ALIASES)) {
+      db.run('UPDATE event SET theme = ? WHERE theme = ?', [current, legacy]);
+    }
+    const known = [...THEME_IDS];
+    db.run(
+      `UPDATE event SET theme = ? WHERE theme NOT IN (${known.map(() => '?').join(', ')})`,
+      [DEFAULT_THEME, ...known]
+    );
+    // The theme lived in `settings` before v3 and is migrated from there on
+    // boot (see event.ts), so a stale row would reintroduce a retired id.
+    db.run('DELETE FROM settings WHERE key = ?', ['theme']);
   }
 ];
 

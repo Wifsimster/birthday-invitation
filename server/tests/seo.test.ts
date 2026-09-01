@@ -47,7 +47,7 @@ const eventRow = (overrides: Partial<EventRow> = {}): EventRow => ({
     town: 'Artigues-près-Bordeaux',
     location: '🏠 Chez Léo',
     dress_code: '',
-    theme: 'fiesta',
+    theme: 'kid',
     rsvp_deadline: '',
     is_default: 1,
     owner_id: null,

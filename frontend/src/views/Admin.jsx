@@ -62,7 +62,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { apiBaseUrl } from '../env.js';
 import { useSession, refresh, signOut } from '../session.js';
-import { themeList, applyTheme, getTheme, preloadThemeFonts, DEFAULT_THEME } from '../themes.js';
+import { themeList, applyTheme, getTheme, preloadThemeFonts, themeVars, DEFAULT_THEME } from '../themes.js';
 import { applySeo } from '../seo.js';
 
 // Section tabs. `needsEvent` marks the ones that operate on the selected event;
@@ -1517,12 +1517,12 @@ export default function Admin() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {themeList.map((t) => (
                       <button
                         key={t.id}
                         type="button"
-                        className={`flex flex-col items-center gap-2 rounded-xl border bg-card p-4 text-center outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60 ${
+                        className={`flex flex-col gap-3 rounded-xl border bg-card p-3 text-left outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60 ${
                           t.id === currentTheme
                             ? 'border-primary ring-3 ring-ring/25'
                             : 'hover:border-primary/40 hover:bg-accent/40'
@@ -1531,49 +1531,65 @@ export default function Admin() {
                         aria-pressed={t.id === currentTheme}
                         onClick={() => selectTheme(t.id)}
                       >
-                        {/* A miniature of the invitation — page gradient, card,
-                            header band — rather than three loose swatches. With
-                            eighteen themes on the grid, what tells them apart is
-                            the arrangement, not the hues in isolation. */}
+                        {/* A live miniature, not a drawing of one: the same
+                            `data-theme` attribute and `--theme-*` tokens the
+                            invitation runs on, so the preview picks up the real
+                            corner radius, border, shadow and texture from
+                            assets/themes.css. A hand-approximated swatch would
+                            drift from the theme the first time one changed. */}
                         <span
-                          className="flex h-16 w-full items-end justify-center overflow-hidden rounded-lg p-1.5 ring-1 ring-black/10"
-                          style={{
-                            background: `linear-gradient(135deg, ${t.palette.bgFrom}, ${t.palette.bgVia}, ${t.palette.bgTo})`
-                          }}
+                          data-theme={t.id}
+                          style={themeVars(t.id)}
+                          className="theme-surface t-page relative flex h-32 items-center justify-center overflow-hidden rounded-lg"
                           aria-hidden="true"
                         >
                           <span
-                            className="flex w-full flex-col items-center gap-1 rounded-md p-1 shadow-sm"
-                            style={{ background: t.palette.cardBg }}
-                          >
-                            <span
-                              className="flex h-4 w-full items-center justify-center rounded-sm text-[9px] leading-none"
-                              style={{
-                                background: `linear-gradient(135deg, ${t.palette.headerFrom || t.palette.primary}, ${t.palette.headerTo || t.palette.primaryDark})`
-                              }}
-                            >
-                              {t.icon}
+                            className="absolute inset-0"
+                            style={{ background: 'var(--theme-bg-gradient)' }}
+                          />
+                          {/* Drawn at the invitation's own size and scaled down
+                              as a whole, so corner radii, border weights and
+                              offset shadows shrink with it. Sized down directly
+                              they would read as one rounded rectangle for every
+                              theme — which is the thing these themes fixed. */}
+                          <span className="relative w-[420px] origin-center scale-[0.32]">
+                            <span className="t-panel flex flex-col overflow-hidden bg-card">
+                              <span
+                                className="t-header relative flex h-20 items-center justify-center overflow-hidden text-3xl"
+                                style={{ background: 'var(--theme-header-gradient)' }}
+                              >
+                                <span className="relative z-2">{t.icon}</span>
+                              </span>
+                              <span className="flex flex-col items-center gap-4 p-6">
+                                <span className="t-display font-display text-3xl leading-none text-[color:var(--theme-primary)]">
+                                  Aa
+                                </span>
+                                <span className="flex w-full gap-3">
+                                  {[0, 1, 2].map((i) => (
+                                    <span key={i} className="t-tile t-tile-countdown h-12 flex-1" />
+                                  ))}
+                                </span>
+                                <span
+                                  className="t-cta h-11 w-full"
+                                  style={{ background: 'var(--theme-button-gradient)' }}
+                                />
+                              </span>
                             </span>
-                            <span
-                              className="h-1.5 w-2/3 rounded-full"
-                              style={{
-                                background: `linear-gradient(135deg, ${t.palette.buttonFrom}, ${t.palette.buttonTo})`
-                              }}
-                            />
                           </span>
                         </span>
-                        <span
-                          className="text-sm font-medium"
-                          style={{ fontFamily: t.fonts.display }}
-                        >
-                          {t.label}
+
+                        <span className="flex flex-col gap-1">
+                          <span className="flex items-center gap-2">
+                            <span className="text-base font-semibold">{t.label}</span>
+                            {t.id === currentTheme && (
+                              <Badge className="bg-success text-success-foreground">
+                                <CheckIcon />
+                                Actif
+                              </Badge>
+                            )}
+                          </span>
+                          <span className="text-sm text-muted-foreground">{t.blurb}</span>
                         </span>
-                        {t.id === currentTheme && (
-                          <Badge className="bg-success text-success-foreground">
-                            <CheckIcon />
-                            Actif
-                          </Badge>
-                        )}
                       </button>
                     ))}
                   </div>

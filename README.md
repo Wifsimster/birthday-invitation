@@ -274,7 +274,7 @@ The TypeScript server is split for testability:
 | `src/emails.ts`  | Verification / password-reset email templates    |
 | `src/db.ts`      | Open SQLite (better-sqlite3), schema/migrations  |
 | `src/event.ts`   | Event config + `.ics` calendar invite            |
-| `src/themes.ts`  | Allow-list of valid theme ids + share-card palettes (mirrors the frontend catalog) |
+| `src/themes.ts`  | Allow-list of theme ids, retired-id aliases, share-card palettes |
 | `src/logger.ts`  | pino structured logger                           |
 | `tests/`         | Vitest hitting `createApp` over an in-memory DB  |
 
@@ -300,7 +300,8 @@ npm run build    # builds the SPA into ../dist (served by the backend)
 | `src/session.js`         | Session + role store (`useSession`), read from `/api/me` |
 | `src/components/ui/`     | shadcn/ui components (Radix primitives)          |
 | `src/env.js`             | Reads runtime config from `window.ENV`           |
-| `src/themes.js`          | Theme catalog + `applyTheme` (CSS custom properties) |
+| `src/themes.js`          | Theme catalog: palette, fonts, emoji + `applyTheme` |
+| `src/assets/themes.css`  | Per-theme structure (shape, borders, depth, texture, type) |
 | `scripts/check-themes.mjs` | WCAG AA contrast audit of the theme catalog (`npm run check:themes`) |
 
 ### Themes
@@ -311,22 +312,38 @@ of the event being managed in `/admin`, or from the event's own create/edit
 form — and it is stored on that event's row, so every visitor to that
 invitation (and its share card) sees it.
 
-| Theme | | Theme | | Theme | |
-| --- | --- | --- | --- | --- | --- |
-| 🎉 Fiesta | `fiesta` | 🪩 Néon | `neon` | ⚽ Football | `foot` |
-| 🕷️ Spider-Man | `spiderman` | 🎮 Gaming | `gaming` | 🧜‍♀️ Sirène | `mermaid` |
-| 🤖 Iron Man | `ironman` | 💿 Y2K | `y2k` | 🦁 Safari | `jungle` |
-| 🐾 Pat' Patrouille | `pawpatrol` | 🐭 Mickey | `mickey` | 🌸 Manga | `manga` |
-| 👑 Princesse | `princess` | 🦖 Dino | `dino` | 🌾 Bohème | `boho` |
-| 🚀 Espace | `space` | 🦄 Licorne | `unicorn` | 🛹 Skate | `skate` |
+| Theme | id | What changes beyond the colours |
+| --- | --- | --- |
+| 🎈 Kid | `kid` | Thick outline, hard "sticker" offset shadow, bubble counters, confetti-dot backdrop |
+| 🌸 Floral | `floral` | Scalloped header edge, circular counters, laid-paper grain, script display |
+| 🪩 Néon | `neon` | Dark card with a lit rim, bloom under the buttons, light beams raking the page |
+| 🤖 Robotic | `robotic` | Bevelled panel corners, hairline rules, grid over the header, wide-tracked capitals |
+| 📼 Retro | `retro` | Ink outlines and hard offset shadows on every part, diagonal stripes |
+| ✦ Modern | `modern` | No border, no texture, one hairline accent rule, tight editorial type |
+| 🥂 Élégant | `elegant` | Double gold frame, deep ink header, gold-hairline tiles, small capitals |
 
-Each theme is pure CSS (palette + emoji + fonts, no image assets) defined in
-`frontend/src/themes.js`, applied by writing `--theme-*` CSS custom properties
-on `<html>`. Néon, Gaming and Y2K set a dark `cardBg`; `.theme-surface` derives
-the shadcn surface tokens from the card colours, so the panel, its inputs and
-its outline buttons follow rather than staying white.
+A theme is two halves that ship together:
 
-Three things keep a growing catalog honest:
+- **Colour, type and copy** — `frontend/src/themes.js`, written onto `<html>`
+  as `--theme-*` custom properties by `applyTheme()`, which also stamps
+  `data-theme` on the root.
+- **Structure** — `frontend/src/assets/themes.css`, keyed off that attribute.
+  Shape language, borders, depth, surface texture, type treatment and motion
+  all belong to the theme, which is what makes Kid and Élégant read as
+  different objects rather than one card in two palettes.
+
+The invitation marks its parts with `t-` classes (`t-panel`, `t-header`,
+`t-tile`, `t-badge`, `t-cta`, `t-display`, `t-kicker`) instead of hard-coded
+radii and shadows, so a theme restyles them by setting `--t-*` tokens.
+`.theme-surface` re-derives the shadcn tokens — including the whole `--radius`
+scale — from the theme, so buttons, inputs and dialogs inside the invitation
+follow the same shape language for free. Adding a theme means writing its CSS
+block too: a palette on its own produces a recolour.
+
+Everything is CSS — gradients, borders, clip paths, shadows. No image assets,
+which is what keeps a theme switch instant and the bundle flat.
+
+Three things keep the catalog honest:
 
 - **Contrast.** `npm run check:themes` (in `frontend/`) audits every pair the
   invitation actually stacks — body copy, headings, and the text laid over the
@@ -341,6 +358,16 @@ Three things keep a growing catalog honest:
   known (Fredoka, Nunito, Poppins). Every other typeface is fetched by
   `applyTheme` the first time a theme that uses it is applied, so the catalog
   can grow without every guest paying for it.
+
+#### The previous catalog
+
+Up to v1.11 the themes were eighteen palette-and-emoji skins of one layout
+(Fiesta, Spider-Man, Licorne…). They are retired. `LEGACY_THEME_ALIASES` in
+`server/src/themes.ts` maps every retired id onto the survivor closest to how
+it looked — Spider-Man and Manga to Retro, Princesse and Sirène to Floral,
+Iron Man and Gaming to Robotic — and the v5 migration rewrites stored ids on
+boot, so existing invitations keep a deliberate appearance instead of resetting
+to the default.
 
 The Docker image builds the SPA from this source (multi-stage build), so `dist/`
 is never committed. For a full local run, build the frontend once, then start the

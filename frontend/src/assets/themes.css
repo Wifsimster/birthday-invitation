@@ -1,0 +1,520 @@
+/*
+ * Theme structure.
+ *
+ * src/themes.js supplies each theme's colours, fonts and emoji as `--theme-*`
+ * custom properties, and stamps the theme's id on <html data-theme="…">. This
+ * file supplies the other half: the shape language, borders, depth, surface
+ * texture, type treatment and motion that make Kid and Élégant read as
+ * different objects rather than the same card in two palettes.
+ *
+ * How it fits together
+ * --------------------
+ * `.theme-surface` (in index.css) declares neutral defaults for every `--t-*`
+ * token below, so an unknown or half-written theme still renders a sane card.
+ * Each `[data-theme="…"] .theme-surface` block then overrides the tokens it
+ * cares about, and adds rules for anything a token can't express — a scalloped
+ * edge, a bevelled corner, a grid overlay.
+ *
+ * The invitation marks its parts with `t-` classes (`t-panel`, `t-header`,
+ * `t-tile`, `t-badge`, `t-cta`, `t-kicker`) rather than hard-coded radii and
+ * shadows, so a theme restyles them by setting tokens. shadcn's own components
+ * follow `--radius`, which each theme also sets, so buttons, inputs and dialogs
+ * inside the invitation pick up the same shape language for free.
+ *
+ * Everything here is CSS — gradients, borders, clip paths, shadows. No image
+ * assets, which is what keeps a theme switch instant and the bundle flat.
+ */
+
+/* ------------------------------------------------------------------ *
+ * Neutral defaults. A theme overrides what it needs; anything it does
+ * not set falls back to a plain, unopinionated card.
+ * ------------------------------------------------------------------ */
+.theme-surface {
+  /* Tailwind's `@theme inline` resolves --radius-* against :root, so a theme
+     overriding --radius alone would leave every shadcn component at the app's
+     default shape. Re-deriving the scale here — on the same element the themes
+     set --radius on — is what lets buttons, inputs and dialogs inside the
+     invitation follow the theme's corners. */
+  --radius: 0.625rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --t-panel-radius: 20px;
+  --t-panel-border: 0 solid transparent;
+  --t-panel-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
+  --t-panel-texture: none;
+
+  --t-header-texture: radial-gradient(circle at 50% 0%, var(--theme-accent, #ffb703) 0%, transparent 60%);
+  --t-header-texture-opacity: 0.18;
+  --t-page-texture: none;
+
+  --t-tile-radius: 16px;
+  --t-countdown-radius: var(--t-tile-radius);
+  --t-tile-border: 0 solid transparent;
+  --t-tile-bg: var(--muted);
+  --t-tile-shadow: none;
+
+  --t-badge-radius: 999px;
+  --t-badge-shadow: 0 0 0 4px var(--theme-primary-soft, #ff6b6b55), 0 4px 15px rgba(0, 0, 0, 0.18);
+
+  --t-cta-radius: 999px;
+  --t-cta-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --t-cta-border: 0 solid transparent;
+  --t-cta-transform: none;
+  --t-cta-tracking: 0.025em;
+
+  --t-display-transform: none;
+  --t-display-tracking: 0.025em;
+  --t-display-weight: 700;
+  --t-display-shadow: none;
+
+  /* The small all-caps labels: countdown units, field hints. */
+  --t-kicker-transform: uppercase;
+  --t-kicker-tracking: 0.06em;
+  --t-kicker-weight: 500;
+
+  --t-decoration-opacity: 0.3;
+}
+
+/* The parts the invitation hands over to the theme. */
+.t-panel {
+  border-radius: var(--t-panel-radius);
+  background-image: var(--t-panel-texture);
+  border: var(--t-panel-border);
+  box-shadow: var(--t-panel-shadow);
+}
+
+.t-header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--t-header-texture);
+  opacity: var(--t-header-texture-opacity);
+}
+
+.t-tile {
+  background: var(--t-tile-bg);
+  border: var(--t-tile-border);
+  border-radius: var(--t-tile-radius);
+  box-shadow: var(--t-tile-shadow);
+}
+
+.t-tile-countdown {
+  border-radius: var(--t-countdown-radius);
+}
+
+.t-badge {
+  border-radius: var(--t-badge-radius);
+  box-shadow: var(--t-badge-shadow);
+}
+
+.t-cta {
+  border: var(--t-cta-border);
+  border-radius: var(--t-cta-radius);
+  box-shadow: var(--t-cta-shadow);
+  letter-spacing: var(--t-cta-tracking);
+  text-transform: var(--t-cta-transform);
+}
+
+.t-display {
+  font-weight: var(--t-display-weight);
+  letter-spacing: var(--t-display-tracking);
+  text-shadow: var(--t-display-shadow);
+  text-transform: var(--t-display-transform);
+}
+
+.t-kicker {
+  font-weight: var(--t-kicker-weight);
+  letter-spacing: var(--t-kicker-tracking);
+  text-transform: var(--t-kicker-transform);
+}
+
+/* The page backdrop's second layer, under the card and over the gradient. */
+.t-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--t-page-texture);
+  background-size: var(--t-page-texture-size, auto);
+}
+
+/* ================================================================== *
+ * Kid — chunky and round. Thick outline, hard "sticker" shadow, a
+ * confetti-dot backdrop, and counters that sit in tinted bubbles.
+ * ================================================================== */
+[data-theme='kid'] .theme-surface {
+  --radius: 1.1rem;
+
+  --t-panel-radius: 34px;
+  --t-panel-border: 4px solid var(--theme-primary, #e8443c);
+  --t-panel-shadow: 0 12px 0 var(--theme-primary-dark, #a82019), 0 30px 55px rgba(0, 0, 0, 0.28);
+
+  --t-header-texture:
+    radial-gradient(circle at 18% 120%, rgba(255, 255, 255, 0.55) 0 22%, transparent 22.5%),
+    radial-gradient(circle at 84% -30%, rgba(255, 255, 255, 0.45) 0 26%, transparent 26.5%);
+  --t-header-texture-opacity: 0.35;
+
+  --t-page-texture:
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.55) 0 5px, transparent 6px),
+    radial-gradient(circle at 78% 34%, rgba(255, 255, 255, 0.4) 0 7px, transparent 8px),
+    radial-gradient(circle at 33% 76%, rgba(255, 255, 255, 0.45) 0 6px, transparent 7px);
+  --t-page-texture-size: 260px 260px;
+
+  --t-tile-radius: 22px;
+  --t-tile-bg: color-mix(in srgb, var(--theme-accent, #ffc93c) 30%, var(--theme-card-bg, #fff));
+  --t-tile-border: 3px solid color-mix(in srgb, var(--theme-primary, #e8443c) 25%, transparent);
+  /* Outlined controls join the chunky language instead of hairlining out. */
+  --border: color-mix(in srgb, var(--theme-primary, #e8443c) 35%, transparent);
+
+  --t-badge-shadow: 0 6px 0 var(--theme-primary-dark, #a82019), 0 12px 22px rgba(0, 0, 0, 0.25);
+
+  --t-cta-shadow: 0 7px 0 var(--theme-primary-dark, #a82019), 0 16px 26px rgba(0, 0, 0, 0.22);
+
+  --t-display-transform: none;
+  --t-display-weight: 700;
+  --t-display-tracking: 0.01em;
+  --t-display-shadow: 0 3px 0 rgba(0, 0, 0, 0.14);
+}
+
+/* Pressing a sticker button should look like pressing it. */
+[data-theme='kid'] .theme-surface .t-cta:active {
+  transform: translateY(4px);
+  box-shadow: 0 3px 0 var(--theme-primary-dark, #a82019), 0 8px 14px rgba(0, 0, 0, 0.22);
+}
+
+/* ================================================================== *
+ * Floral — cream paper. No outline, a scalloped header edge, hairline
+ * botanical rules, and counters rounded all the way to circles.
+ * ================================================================== */
+[data-theme='floral'] .theme-surface {
+  --radius: 1rem;
+
+  --t-panel-radius: 26px;
+  --t-panel-shadow: 0 18px 40px -12px rgba(90, 60, 50, 0.35);
+  /* Barely-there laid-paper grain. */
+  --t-panel-texture: repeating-linear-gradient(
+    45deg,
+    rgba(120, 90, 70, 0.035) 0 1px,
+    transparent 1px 4px
+  );
+
+  --t-header-texture: radial-gradient(ellipse at 50% 130%, rgba(255, 255, 255, 0.5), transparent 65%);
+  --t-header-texture-opacity: 0.5;
+
+  --t-page-texture: radial-gradient(circle at 20% 25%, rgba(255, 255, 255, 0.5), transparent 45%),
+    radial-gradient(circle at 82% 72%, rgba(255, 255, 255, 0.4), transparent 40%);
+
+  --t-tile-radius: 20px;
+  --t-countdown-radius: 999px;
+  --t-tile-bg: color-mix(in srgb, var(--theme-accent, #e4b7a0) 26%, var(--theme-card-bg, #fff));
+  --border: color-mix(in srgb, var(--theme-primary, #a8446b) 22%, transparent);
+
+  --t-badge-radius: 999px;
+  --t-badge-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-primary, #a8446b) 35%, transparent);
+
+  --t-cta-shadow: 0 10px 24px -10px var(--theme-primary, #a8446b);
+
+  --t-display-weight: 700;
+  --t-display-tracking: 0.01em;
+
+  --t-kicker-tracking: 0.14em;
+  --t-decoration-opacity: 0.42;
+}
+
+/* Scalloped lower edge: a row of card-coloured circles biting into the
+   header band, which is what a die-cut invitation actually looks like. */
+[data-theme='floral'] .t-header {
+  padding-bottom: 2.75rem;
+}
+
+[data-theme='floral'] .t-header::before {
+  content: '';
+  position: absolute;
+  inset-inline: -2px;
+  bottom: -1px;
+  height: 18px;
+  z-index: 1;
+  background-image: radial-gradient(circle at 9px 9px, var(--theme-card-bg, #fff) 9px, transparent 9.5px);
+  background-size: 18px 18px;
+  background-repeat: repeat-x;
+}
+
+/* Coins, not ovals: the counters keep a 1:1 box so the pill radius reads as a
+   circle whatever the label inside is. */
+[data-theme='floral'] .t-tile-countdown {
+  aspect-ratio: 1;
+}
+
+/* ================================================================== *
+ * Néon — night. Everything glows: a lit rim on the panel, bloom under
+ * the buttons, light beams raking the backdrop.
+ * ================================================================== */
+[data-theme='neon'] .theme-surface {
+  --radius: 1rem;
+
+  --t-panel-radius: 24px;
+  --t-panel-border: 1px solid color-mix(in srgb, var(--theme-primary, #ff3d9a) 45%, transparent);
+  --t-panel-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-secondary, #22d3ee) 22%, transparent),
+    0 0 60px -10px color-mix(in srgb, var(--theme-primary, #ff3d9a) 55%, transparent),
+    0 30px 60px rgba(0, 0, 0, 0.55);
+
+  --t-header-texture:
+    conic-gradient(from 200deg at 50% 140%, transparent 0deg, rgba(255, 255, 255, 0.5) 12deg, transparent 26deg),
+    conic-gradient(from 320deg at 50% 140%, transparent 0deg, rgba(255, 255, 255, 0.4) 10deg, transparent 22deg);
+  --t-header-texture-opacity: 0.3;
+
+  --t-page-texture:
+    conic-gradient(from 250deg at 15% 0%, transparent 0deg, rgba(255, 61, 154, 0.35) 14deg, transparent 30deg),
+    conic-gradient(from 60deg at 85% 100%, transparent 0deg, rgba(34, 211, 238, 0.3) 16deg, transparent 34deg);
+
+  --border: color-mix(in srgb, var(--theme-primary, #ff3d9a) 26%, transparent);
+
+  --t-tile-radius: 18px;
+  --t-tile-bg: color-mix(in srgb, var(--theme-card-text, #f2eeff) 7%, var(--theme-card-bg, #141126));
+  --t-tile-border: 1px solid color-mix(in srgb, var(--theme-primary, #ff3d9a) 30%, transparent);
+
+  --t-badge-shadow: 0 0 26px -4px var(--theme-primary, #ff3d9a), 0 0 0 1px rgba(255, 255, 255, 0.25);
+
+  --t-cta-shadow: 0 0 32px -6px var(--theme-primary, #ff3d9a), 0 12px 26px rgba(0, 0, 0, 0.5);
+
+  --t-display-transform: uppercase;
+  --t-display-tracking: 0.05em;
+  --t-display-shadow: 0 0 18px color-mix(in srgb, var(--theme-primary, #ff3d9a) 70%, transparent);
+
+  --t-kicker-tracking: 0.18em;
+  --t-decoration-opacity: 0.45;
+}
+
+/* ================================================================== *
+ * Robotic — instrument panel. Bevelled corners, hairline rules, a
+ * technical grid over the header, wide-tracked capitals.
+ * ================================================================== */
+[data-theme='robotic'] .theme-surface {
+  --radius: 0.25rem;
+
+  --t-panel-radius: 4px;
+  --t-panel-border: 1px solid color-mix(in srgb, var(--theme-primary, #22d3ee) 40%, transparent);
+  /* clip-path (below) would cut a box-shadow off with the box, so the panel
+     takes its depth from the backdrop glow rather than a drop shadow. */
+  --t-panel-shadow: none;
+
+  --t-header-texture:
+    repeating-linear-gradient(to right, rgba(255, 255, 255, 0.5) 0 1px, transparent 1px 42px),
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 0 1px, transparent 1px 42px);
+  --t-header-texture-opacity: 0.16;
+
+  --t-page-texture:
+    repeating-linear-gradient(to bottom, rgba(125, 211, 252, 0.06) 0 1px, transparent 1px 3px),
+    radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.16), transparent 55%);
+
+  --border: color-mix(in srgb, var(--theme-primary, #22d3ee) 26%, transparent);
+  --input: color-mix(in srgb, var(--theme-primary, #22d3ee) 34%, transparent);
+
+  --t-tile-radius: 2px;
+  --t-tile-bg: color-mix(in srgb, var(--theme-primary, #22d3ee) 8%, var(--theme-card-bg, #0e1626));
+  --t-tile-border: 1px solid color-mix(in srgb, var(--theme-primary, #22d3ee) 28%, transparent);
+
+  --t-badge-radius: 2px;
+  --t-badge-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-primary, #22d3ee) 55%, transparent);
+
+  --t-cta-radius: 2px;
+  --t-cta-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-primary, #22d3ee) 45%, transparent);
+  --t-cta-transform: uppercase;
+  --t-cta-tracking: 0.14em;
+
+  --t-display-transform: uppercase;
+  --t-display-tracking: 0.08em;
+  --t-display-weight: 700;
+
+  --t-kicker-tracking: 0.24em;
+  --t-decoration-opacity: 0.25;
+}
+
+/* The corner cut is the theme's signature — a machined panel, not a card. */
+[data-theme='robotic'] .t-panel {
+  clip-path: polygon(22px 0, 100% 0, 100% calc(100% - 22px), calc(100% - 22px) 100%, 0 100%, 0 22px);
+}
+
+/* Registration ticks in the header corners. */
+[data-theme='robotic'] .t-header::before {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  z-index: 1;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--theme-primary, #22d3ee) 35%, transparent);
+  border-inline: 0;
+}
+
+/* ================================================================== *
+ * Retro — printed matter. Everything is outlined in ink and offset by a
+ * hard shadow, over diagonal stripes.
+ * ================================================================== */
+[data-theme='retro'] .theme-surface {
+  --radius: 0.125rem;
+
+  --t-panel-radius: 6px;
+  --t-panel-border: 3px solid var(--theme-secondary, #141414);
+  --t-panel-shadow: 12px 12px 0 var(--theme-secondary, #141414);
+
+  --t-header-texture: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.6) 0 10px,
+    transparent 10px 20px
+  );
+  --t-header-texture-opacity: 0.22;
+
+  --t-page-texture: repeating-linear-gradient(
+    -45deg,
+    rgba(20, 20, 20, 0.14) 0 14px,
+    transparent 14px 28px
+  );
+
+  --border: var(--theme-secondary, #141414);
+  --input: var(--theme-secondary, #141414);
+
+  --t-tile-radius: 4px;
+  --t-tile-bg: color-mix(in srgb, var(--theme-accent, #ffd400) 40%, var(--theme-card-bg, #fff8e7));
+  --t-tile-border: 2px solid var(--theme-secondary, #141414);
+  --t-tile-shadow: 4px 4px 0 var(--theme-secondary, #141414);
+
+  --t-badge-radius: 4px;
+  --t-badge-shadow: 4px 4px 0 var(--theme-secondary, #141414), 0 0 0 2px var(--theme-secondary, #141414);
+
+  --t-cta-radius: 4px;
+  --t-cta-border: 3px solid var(--theme-secondary, #141414);
+  --t-cta-shadow: 6px 6px 0 var(--theme-secondary, #141414);
+  --t-cta-transform: uppercase;
+  --t-cta-tracking: 0.06em;
+
+  --t-display-transform: uppercase;
+  --t-display-tracking: 0.02em;
+  --t-display-weight: 700;
+
+  --t-kicker-tracking: 0.14em;
+  --t-kicker-weight: 600;
+  --t-decoration-opacity: 0.5;
+}
+
+/* A printed button travels into its own shadow when pressed. */
+[data-theme='retro'] .theme-surface .t-cta:active {
+  transform: translate(4px, 4px);
+  box-shadow: 2px 2px 0 var(--theme-secondary, #141414);
+}
+
+/* ================================================================== *
+ * Modern — editorial. No outline, no texture, one hairline accent rule
+ * under the header, and type that leans on spacing rather than weight.
+ * ================================================================== */
+[data-theme='modern'] .theme-surface {
+  --radius: 0.5rem;
+
+  --t-panel-radius: 18px;
+  --t-panel-shadow: 0 24px 70px -24px rgba(17, 24, 39, 0.45);
+
+  --t-header-texture: linear-gradient(to bottom, rgba(255, 255, 255, 0.14), transparent 60%);
+  --t-header-texture-opacity: 1;
+
+  --t-tile-radius: 10px;
+  --t-tile-bg: color-mix(in srgb, var(--theme-card-text, #111827) 4%, var(--theme-card-bg, #fff));
+
+  --t-badge-radius: 6px;
+  --t-badge-shadow: none;
+
+  --t-cta-radius: 10px;
+  --t-cta-shadow: 0 12px 24px -12px var(--theme-primary, #2f5bff);
+  --t-cta-tracking: 0;
+
+  --t-display-transform: none;
+  --t-display-tracking: -0.02em;
+  --t-display-weight: 600;
+
+  --t-kicker-tracking: 0.2em;
+  --t-kicker-weight: 500;
+  --t-decoration-opacity: 0.16;
+}
+
+/* The one ornament the theme allows itself. */
+[data-theme='modern'] .t-header {
+  border-bottom: 3px solid var(--theme-accent, #0e9490);
+}
+
+/* ================================================================== *
+ * Élégant — engraved stationery. A double gold rule framing cream, a
+ * deep ink header, and small capitals throughout.
+ * ================================================================== */
+[data-theme='elegant'] .theme-surface {
+  --radius: 0.125rem;
+
+  --t-panel-radius: 3px;
+  --t-panel-border: 1px solid var(--theme-accent, #c9a227);
+  --t-panel-shadow:
+    0 0 0 4px var(--theme-card-bg, #fbf7ef),
+    0 0 0 5px color-mix(in srgb, var(--theme-accent, #c9a227) 60%, transparent),
+    0 30px 60px rgba(0, 0, 0, 0.45);
+  --t-panel-texture: repeating-linear-gradient(
+    90deg,
+    rgba(120, 100, 60, 0.03) 0 1px,
+    transparent 1px 3px
+  );
+
+  --t-header-texture: linear-gradient(to bottom, transparent 60%, rgba(201, 162, 39, 0.35));
+  --t-header-texture-opacity: 1;
+
+  --t-page-texture: radial-gradient(ellipse at 50% 0%, rgba(201, 162, 39, 0.16), transparent 60%);
+
+  --border: color-mix(in srgb, var(--theme-accent, #c9a227) 45%, transparent);
+  --input: color-mix(in srgb, var(--theme-accent, #c9a227) 55%, transparent);
+
+  --t-tile-radius: 0;
+  --t-tile-bg: transparent;
+  --t-tile-border: 1px solid color-mix(in srgb, var(--theme-accent, #c9a227) 45%, transparent);
+
+  --t-badge-radius: 2px;
+  --t-badge-shadow: 0 0 0 1px var(--theme-accent, #c9a227);
+
+  --t-cta-radius: 2px;
+  --t-cta-border: 1px solid var(--theme-accent, #c9a227);
+  --t-cta-shadow: none;
+  --t-cta-transform: uppercase;
+  --t-cta-tracking: 0.2em;
+
+  --t-display-transform: none;
+  --t-display-tracking: 0.02em;
+  --t-display-weight: 600;
+
+  --t-kicker-tracking: 0.3em;
+  --t-kicker-weight: 500;
+  --t-decoration-opacity: 0.28;
+}
+
+/* A hairline rule under the header, inset from the edges the way an
+   engraved card sets its rules in from the trim. */
+[data-theme='elegant'] .t-header::before {
+  content: '';
+  position: absolute;
+  inset-inline: 2.25rem;
+  bottom: 0.9rem;
+  z-index: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--theme-accent, #c9a227) 70%, transparent);
+}
+
+/* Élégant's serif sets smaller than the sans it replaces at the same size. */
+[data-theme='elegant'] .t-display {
+  font-size: 1.12em;
+}
+
+/* ------------------------------------------------------------------ *
+ * The decorations floating behind the card belong to the theme too: how
+ * present they are is part of its character. Motion is left to the
+ * reduced-motion block in index.css, which disables all of it.
+ * ------------------------------------------------------------------ */
+.t-decoration {
+  opacity: var(--t-decoration-opacity);
+}
