@@ -121,8 +121,9 @@ export function isRsvpClosed(cfg: EventConfig, now: Date = new Date()): boolean 
 }
 
 // Pull up to two "HHhMM" / "HH:MM" / "HHh" times out of free-form text.
-// Returns { start, end } as 'HHMMSS', or null when nothing parses.
-function parseTimeRange(time: string): { start: string; end: string } | null {
+// Returns { start, end } as 'HHMMSS' plus whether the end falls after midnight,
+// or null when nothing parses.
+function parseTimeRange(time: string): { start: string; end: string; endsNextDay: boolean } | null {
   const matches = [...String(time).matchAll(/(\d{1,2})\s*[h:]\s*(\d{0,2})/g)];
   if (matches.length === 0) return null;
 
@@ -138,7 +139,11 @@ function parseTimeRange(time: string): { start: string; end: string } | null {
     ? toHms(matches[1])
     : `${String((parseInt(start.slice(0, 2), 10) + 2) % 24).padStart(2, '0')}${start.slice(2)}`;
 
-  return { start, end };
+  // An evening party ("20h00 - 00h30", or a 23h start plus the two-hour
+  // default) ends on the following day. Both fields are zero-padded HHMMSS, so
+  // a lexicographic comparison is a chronological one — and without the roll
+  // the invite would carry a DTEND before its DTSTART, which calendars reject.
+  return { start, end, endsNextDay: end <= start };
 }
 
 // Escape a value for an iCalendar text field (RFC 5545 §3.3.11).
@@ -162,6 +167,13 @@ export function buildIcs(cfg: EventConfig, now: Date = new Date()): string | nul
   const compactDate = String(cfg.date).replace(/-/g, '');
   if (!/^\d{8}$/.test(compactDate)) return null;
 
+  // The day after `cfg.date`, as a compact YYYYMMDD.
+  const nextDay = (): string => {
+    const next = new Date(`${cfg.date}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    return formatStamp(next).slice(0, 8);
+  };
+
   const times = parseTimeRange(cfg.time);
   let dtStart: string;
   let dtEnd: string;
@@ -169,14 +181,11 @@ export function buildIcs(cfg: EventConfig, now: Date = new Date()): string | nul
     // Floating local time — calendars show it in the reader's own zone, which
     // is the right behaviour for a local party without a stored timezone.
     dtStart = `DTSTART:${compactDate}T${times.start}`;
-    dtEnd = `DTEND:${compactDate}T${times.end}`;
+    dtEnd = `DTEND:${times.endsNextDay ? nextDay() : compactDate}T${times.end}`;
   } else {
     // All-day event spanning the single date.
-    const next = new Date(`${cfg.date}T00:00:00Z`);
-    next.setUTCDate(next.getUTCDate() + 1);
-    const endDate = formatStamp(next).slice(0, 8);
     dtStart = `DTSTART;VALUE=DATE:${compactDate}`;
-    dtEnd = `DTEND;VALUE=DATE:${endDate}`;
+    dtEnd = `DTEND;VALUE=DATE:${nextDay()}`;
   }
 
   const title = cfg.age

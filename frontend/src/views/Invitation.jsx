@@ -50,9 +50,29 @@ const EMPTY_FORM = {
   message: ''
 };
 
+/**
+ * Parse a stored 'YYYY-MM-DD' event date into a Date anchored at *local* noon.
+ *
+ * `new Date('2025-09-06')` is midnight UTC, and every reader below formats in
+ * the viewer's own zone — so anyone west of UTC saw the party advertised a day
+ * early, and the countdown's "c'est aujourd'hui" flipped on the wrong date.
+ * Noon local keeps the day that was typed intact in every timezone, which is
+ * what the server already does when it renders the same date into the shell
+ * (see server/src/seo.ts).
+ */
+function parseEventDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
+  const d = parts
+    ? new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]), 12)
+    : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function formatDate(date) {
-  const d = date instanceof Date ? date : date ? new Date(date) : null;
-  if (!d || Number.isNaN(d.getTime())) return '';
+  const d = parseEventDate(date);
+  if (!d) return '';
   return d.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
@@ -71,7 +91,7 @@ export default function Invitation() {
   const [event, setEvent] = useState(() => ({
     birthdayPerson: isDefault ? eventConfig.birthdayPerson : '',
     age: isDefault ? eventConfig.age : '',
-    eventDate: isDefault ? eventConfig.eventDate : null,
+    eventDate: isDefault ? parseEventDate(eventConfig.eventDate) : null,
     eventTime: isDefault ? eventConfig.eventTime : '',
     eventTown: isDefault ? eventConfig.eventTown : '',
     eventLocation: isDefault ? eventConfig.eventLocation : '',
@@ -161,7 +181,7 @@ export default function Invitation() {
           // badge and the title match the share card instead of blanking on a
           // non-number.
           age: String(data.age ?? '').trim(),
-          eventDate: data.date ? new Date(data.date) : null,
+          eventDate: parseEventDate(data.date),
           eventTime: data.time || '',
           eventTown: data.town || '',
           eventLocation: data.location || '',
@@ -185,11 +205,7 @@ export default function Invitation() {
     };
   }, [effectiveSlug, updateSeo]);
 
-  const eventStart = useMemo(() => {
-    if (!event.eventDate) return null;
-    const d = event.eventDate instanceof Date ? event.eventDate : new Date(event.eventDate);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }, [event.eventDate]);
+  const eventStart = useMemo(() => parseEventDate(event.eventDate), [event.eventDate]);
 
   const countdown = useMemo(() => {
     if (!eventStart) return null;

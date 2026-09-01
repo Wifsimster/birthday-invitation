@@ -8,7 +8,10 @@ export const eventConfig = {
   birthdayPerson: ENV.VITE_BIRTHDAY_PERSON || '',
   // Free text on the server (a TEXT column: "5", "18 mois"), so keep it as one.
   age: ENV.VITE_BIRTHDAY_AGE || '',
-  eventDate: ENV.VITE_EVENT_DATE ? new Date(ENV.VITE_EVENT_DATE) : new Date(),
+  // Left as the raw 'YYYY-MM-DD' string: `new Date()` on it would land on
+  // midnight UTC, which renders as the previous day west of UTC. The view
+  // parses it at local noon instead (see parseEventDate in Invitation.jsx).
+  eventDate: ENV.VITE_EVENT_DATE || '',
   eventTime: ENV.VITE_EVENT_TIME || '',
   eventTown: ENV.VITE_EVENT_TOWN || '',
   eventLocation: ENV.VITE_EVENT_LOCATION || '',
