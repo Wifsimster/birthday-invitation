@@ -107,6 +107,21 @@ function makeRequireAdmin(auth: Auth) {
   });
 }
 
+// Build the signed-in guard. Every registered account passes: an account owns
+// the invitations it creates, so the event API is reachable without the admin
+// role. Only a missing session is refused (401) — the per-event ownership check
+// below decides what the account may actually touch.
+function makeRequireUser(auth: Auth) {
+  return asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const user = await currentUser(auth, req);
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    res.locals.user = user;
+    next();
+  });
+}
+
 // --- Validation (zod) --------------------------------------------------------
 
 const guestsMessage = (min: number) => `Le nombre d'invités doit être entre ${min} et 10`;
@@ -460,6 +475,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   app.use(express.json({ limit: '64kb' }));
 
   const requireAdmin = makeRequireAdmin(auth);
+  const requireUser = makeRequireUser(auth);
 
   app.use(rateLimit({
     windowMs: rateLimits.globalWindowMs ?? 15 * 60 * 1000,
@@ -494,6 +510,9 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   });
   // Every admin route is rate-limited then requires a valid admin session.
   const admin = [adminLimiter, requireAdmin];
+  // Event routes only need *a* session: the ownership check on each route
+  // narrows an account to the invitations it created (an admin sees them all).
+  const member = [adminLimiter, requireUser];
 
   // The default event backs the legacy single-event routes. Resolved lazily
   // per-request so it always reflects the current default row.
@@ -515,6 +534,29 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       [eventId, phone]
     );
     return !!row && row.id !== exceptRsvpId;
+  };
+
+  // The account acting on the current request. Only ever read inside routes
+  // mounted behind `admin` / `member`, both of which populate it.
+  const currentActor = (res: Response): SessionUser => res.locals.user as SessionUser;
+
+  // May this account manage this event? An admin manages every invitation,
+  // including the env-seeded default one (which has no owner). Everyone else
+  // manages exactly the invitations they created.
+  const canManage = (user: SessionUser, row: EventRow): boolean =>
+    user.role === 'admin' || (row.owner_id !== null && row.owner_id === user.id);
+
+  // Resolve the event named by a path parameter, or answer 404 and return null.
+  // Someone else's event is a 404 rather than a 403 so the API never confirms
+  // which ids exist to an account that cannot see them.
+  const manageableEvent = (raw: unknown, res: Response): EventRow | null => {
+    const id = Number(raw);
+    const row = Number.isInteger(id) ? getEventById(db, id) : undefined;
+    if (!row || !canManage(currentActor(res), row)) {
+      res.status(404).json({ error: 'Événement introuvable' });
+      return null;
+    }
+    return row;
   };
 
   // The default event as the legacy routes read it (deadline, calendar invite).
@@ -629,6 +671,9 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   }));
 
   // Admin: delete an account entirely (cascades its sessions and credentials).
+  // Its invitations go with it — and their RSVPs by the event_id cascade.
+  // Leaving them behind would keep publicly reachable invitation pages that no
+  // account can manage any more, since ownership is what grants access to them.
   app.delete('/api/users/:id', ...admin, asyncHandler(async (req, res) => {
     const target = getUser(String(req.params.id));
     if (!target) {
@@ -643,8 +688,12 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     }
 
     const ctx = await auth.$context;
+    // Account first: a failed deleteUser must not leave an account whose
+    // invitations were already destroyed. The reverse order only risks events
+    // outliving their owner, which an admin can still see and clean up.
     await ctx.internalAdapter.deleteUser(target.id);
-    logger.info({ actor: actor.id, target: target.id }, 'user deleted');
+    const events = db.run('DELETE FROM event WHERE owner_id = ?', [target.id]);
+    logger.info({ actor: actor.id, target: target.id, events: events.changes }, 'user deleted');
     res.json({ message: 'Compte supprimé' });
   }));
 
@@ -863,13 +912,21 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     res.json({ message: 'RSVP supprimé avec succès !', changes: result.changes });
   }));
 
-  // --- Event-management (admin) ---------------------------------------------
+  // --- Event management -----------------------------------------------------
+  // Every signed-in account may run as many invitations as it likes: creating
+  // one stamps it with the creator's id, and each route below is scoped to the
+  // invitations the account owns. An admin keeps the deployment-wide view —
+  // every event, the ownerless default one included.
+  //
   // Listed before the public GET /api/events/:slug so the param route can't
   // shadow this exact path. (Express distinguishes them anyway by segment
   // count, but keep the declaration order explicit.)
 
-  // List every event with aggregated RSVP counts.
-  app.get('/api/events', ...admin, asyncHandler((_req, res) => {
+  // The account's own events with aggregated RSVP counts; every event for an
+  // admin.
+  app.get('/api/events', ...member, asyncHandler((_req, res) => {
+    const user = currentActor(res);
+    const mine = user.role !== 'admin';
     const events = db.all<EventRow & {
       responses: number; confirmations: number; declined: number; total_guests: number;
     }>(`
@@ -879,14 +936,15 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
         (SELECT COUNT(*) FROM rsvp r WHERE r.event_id = e.id AND r.attending = 'no') AS declined,
         (SELECT COALESCE(SUM(r.guests), 0) FROM rsvp r WHERE r.event_id = e.id AND r.attending = 'yes') AS total_guests
       FROM event e
+      ${mine ? 'WHERE e.owner_id = ?' : ''}
       ORDER BY e.is_default DESC, e.created_at DESC, e.id DESC
-    `);
+    `, mine ? [user.id] : []);
     res.json({ events });
   }));
 
   // Create an event. Slug derives from the person's name when not provided and
   // is made unique by appending -2, -3… An explicitly-provided taken slug 409s.
-  app.post('/api/events', ...admin, asyncHandler((req, res) => {
+  app.post('/api/events', ...member, asyncHandler((req, res) => {
     const parsed = eventCreateSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ error: firstError(parsed.error) });
@@ -903,12 +961,14 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       slug = uniqueSlug(db, slugify(data.person));
     }
 
+    // The creator owns the invitation, which is what lets one account run
+    // several of them and see only its own on the routes above and below.
     const result = db.run(`
-      INSERT INTO event (slug, person, age, date, time, town, location, dress_code, theme, rsvp_deadline)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO event (slug, person, age, date, time, town, location, dress_code, theme, rsvp_deadline, owner_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       slug, data.person, data.age, data.date, data.time, data.town,
-      data.location, data.dress_code, data.theme, data.rsvp_deadline
+      data.location, data.dress_code, data.theme, data.rsvp_deadline, currentActor(res).id
     ]);
     const created = getEventById(db, Number(result.lastID));
     res.status(201).json(created);
@@ -916,15 +976,10 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
 
   // Update an event (partial). The default event's slug is fixed; other events
   // can change slug but must stay unique. is_default is never editable.
-  app.put('/api/events/:id', ...admin, asyncHandler((req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) {
-      return res.status(404).json({ error: 'Événement introuvable' });
-    }
-    const existing = getEventById(db, id);
-    if (!existing) {
-      return res.status(404).json({ error: 'Événement introuvable' });
-    }
+  app.put('/api/events/:id', ...member, asyncHandler((req, res) => {
+    const existing = manageableEvent(req.params.id, res);
+    if (!existing) return;
+    const id = existing.id;
     const parsed = eventUpdateSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ error: firstError(parsed.error) });
@@ -968,15 +1023,10 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
   }));
 
   // Delete an event (its RSVPs cascade). The default event cannot be removed.
-  app.delete('/api/events/:id', ...admin, asyncHandler((req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) {
-      return res.status(404).json({ error: 'Événement introuvable' });
-    }
-    const existing = getEventById(db, id);
-    if (!existing) {
-      return res.status(404).json({ error: 'Événement introuvable' });
-    }
+  app.delete('/api/events/:id', ...member, asyncHandler((req, res) => {
+    const existing = manageableEvent(req.params.id, res);
+    if (!existing) return;
+    const id = existing.id;
     if (existing.is_default) {
       return res.status(400).json({ error: 'Impossible de supprimer l\'événement par défaut' });
     }
@@ -984,20 +1034,15 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     res.json({ message: 'Événement supprimé', changes: result.changes });
   }));
 
-  // --- Per-event admin RSVP sub-routes --------------------------------------
+  // --- Per-event RSVP sub-routes (owner or admin) ---------------------------
 
   // Resolve the numeric event id from the path, or send a 404. Returns null
-  // when the param isn't a known event so callers can early-return.
-  const resolveEventId = (raw: string, res: Response): number | null => {
-    const id = Number(raw);
-    if (!Number.isInteger(id) || !getEventById(db, id)) {
-      res.status(404).json({ error: 'Événement introuvable' });
-      return null;
-    }
-    return id;
-  };
+  // when the param isn't an event this account manages, so callers can
+  // early-return.
+  const resolveEventId = (raw: string, res: Response): number | null =>
+    manageableEvent(raw, res)?.id ?? null;
 
-  app.get('/api/events/:id/rsvps', ...admin, asyncHandler((req, res) => {
+  app.get('/api/events/:id/rsvps', ...member, asyncHandler((req, res) => {
     const id = resolveEventId(String(req.params.id), res);
     if (id === null) return;
     const rsvps = db.all<RsvpRow>(
@@ -1007,13 +1052,13 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     res.json({ rsvps });
   }));
 
-  app.get('/api/events/:id/rsvps/count', ...admin, asyncHandler((req, res) => {
+  app.get('/api/events/:id/rsvps/count', ...member, asyncHandler((req, res) => {
     const id = resolveEventId(String(req.params.id), res);
     if (id === null) return;
     res.json(countRsvps(db, id));
   }));
 
-  app.get('/api/events/:id/rsvps/export.csv', ...admin, asyncHandler((req, res) => {
+  app.get('/api/events/:id/rsvps/export.csv', ...member, asyncHandler((req, res) => {
     const id = resolveEventId(String(req.params.id), res);
     if (id === null) return;
     const event = getEventById(db, id) as EventRow;
@@ -1026,7 +1071,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     res.send('﻿' + toCsv(rows));
   }));
 
-  app.post('/api/events/:id/rsvps', ...admin, asyncHandler((req, res) => {
+  app.post('/api/events/:id/rsvps', ...member, asyncHandler((req, res) => {
     const id = resolveEventId(String(req.params.id), res);
     if (id === null) return;
     const parsed = rsvpSchema({ requireAttending: true, minGuests: 0 }).safeParse(req.body ?? {});
@@ -1059,7 +1104,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     res.status(201).json({ message: 'RSVP ajouté avec succès !', id: Number(result.lastID) });
   }));
 
-  app.put('/api/events/:id/rsvp/:rsvpId', ...admin, asyncHandler((req, res) => {
+  app.put('/api/events/:id/rsvp/:rsvpId', ...member, asyncHandler((req, res) => {
     const id = resolveEventId(String(req.params.id), res);
     if (id === null) return;
     const parsed = rsvpSchema({ requireAttending: false, minGuests: 0 }).safeParse(req.body ?? {});
@@ -1102,7 +1147,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     res.json({ message: 'RSVP mis à jour avec succès !', changes: result.changes });
   }));
 
-  app.delete('/api/events/:id/rsvp/:rsvpId', ...admin, asyncHandler((req, res) => {
+  app.delete('/api/events/:id/rsvp/:rsvpId', ...member, asyncHandler((req, res) => {
     const id = resolveEventId(String(req.params.id), res);
     if (id === null) return;
     const result = db.run('DELETE FROM rsvp WHERE id = ? AND event_id = ?', [req.params.rsvpId, id]);
