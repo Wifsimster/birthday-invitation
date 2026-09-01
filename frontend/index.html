@@ -26,8 +26,11 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Display + body fonts used by the selectable themes (see src/themes.js). -->
-    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Bangers&family=Dancing+Script:wght@400;600;700&family=Nunito:wght@400;500;600;700&family=Orbitron:wght@500;700&family=Pacifico&family=Poppins:wght@300;400;500;600&family=Quicksand:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <!-- Only the families shown before a theme is known: the sign-in screens
+         (Poppins) and the default Fiesta paint (Fredoka + Nunito). Every other
+         theme fetches its own typefaces on demand — see ensureFonts() in
+         src/themes.js — so the catalog can grow without weighing down a phone. -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
     <!-- Runtime environment variables (injected by infra/inject-env.sh in the container) -->
     <script src="/env.js"></script>
     <!-- Umami — mesure d'audience auto-hébergée, sans cookie. Page publique d'invitation. -->

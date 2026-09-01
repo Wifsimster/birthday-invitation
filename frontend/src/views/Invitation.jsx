@@ -537,7 +537,7 @@ export default function Invitation() {
                 return (
                   <div
                     key={detail.label}
-                    className={`flex items-center gap-3 rounded-2xl bg-black/[0.035] p-3.5 ${detail.wide ? 'sm:col-span-2' : ''}`}
+                    className={`flex items-center gap-3 rounded-2xl bg-muted p-3.5 ${detail.wide ? 'sm:col-span-2' : ''}`}
                   >
                     <span
                       className="flex size-10 shrink-0 items-center justify-center rounded-full text-[color:var(--theme-button-text,#fff)]"
@@ -587,10 +587,14 @@ export default function Invitation() {
               {/* ---------- Already answered ---------- */}
               {confirmed ? (
                 <div
+                  /* Deliberately outside the theme palette: "je viens" and
+                     "je ne viens pas" have to read as an answer at a glance, in
+                     any theme. The stops are dark enough to carry white text at
+                     WCAG AA — the pastel pair they replaced sat at 2:1. */
                   className={`rounded-2xl p-6 text-center text-white ${
                     confirmed.isAttending
-                      ? 'bg-linear-to-br from-[#43cea2] to-[#22a06b]'
-                      : 'bg-linear-to-br from-[#ff7675] to-[#fd79a8]'
+                      ? 'bg-linear-to-br from-[#0E7D5D] to-[#0A6047]'
+                      : 'bg-linear-to-br from-[#C2415A] to-[#9E2740]'
                   }`}
                   role="status"
                 >
@@ -646,13 +650,16 @@ export default function Invitation() {
                       >
                         🎈 Je réponds à l'invitation
                       </Button>
+                      {/* Deliberately quieter than the CTA above it: this is the
+                          path for someone who has already answered. It used to be
+                          a second full-strength gradient built from `secondary`
+                          and `primaryDark`, a pairing no theme chose on purpose —
+                          and one that turned white-on-cyan on the dark themes. */}
                       <Button
                         size="lg"
-                        className="h-auto rounded-full py-4 font-display text-lg text-[color:var(--theme-button-text,#fff)] shadow-lg"
-                        style={{
-                          background:
-                            'linear-gradient(135deg, var(--theme-secondary,#667eea), var(--theme-primary-dark,#764ba2))'
-                        }}
+                        variant="outline"
+                        className="h-auto rounded-full border-2 py-4 font-display text-lg text-[color:var(--theme-primary-dark,#a80b3d)]"
+                        style={{ borderColor: 'var(--theme-primary-dark, #a80b3d)' }}
                         onClick={openLookupForm}
                       >
                         ✏️ Modifier ma réponse

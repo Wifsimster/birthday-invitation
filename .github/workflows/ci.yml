@@ -29,6 +29,29 @@ jobs:
 
       - run: npm run test:run
 
+  frontend:
+    name: Frontend (theme contrast + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # A theme is only finished when its text is readable on it. This audits
+      # every palette in the catalog against WCAG AA.
+      - run: npm run check:themes
+
+      - run: npm run build
+
   docker:
     name: Docker image builds
     runs-on: ubuntu-latest
