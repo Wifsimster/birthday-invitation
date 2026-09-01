@@ -412,11 +412,16 @@ export default function Admin() {
 
   // A newly picked event starts unfiltered on its responses, rather than
   // inheriting the search left over from the previous one.
+  //
+  // The tab is deliberately *not* touched here. This effect also runs for the
+  // selection made at mount (from ?event=, or the default event), so forcing a
+  // per-event tab here threw away the tab the URL asked for — reloading on
+  // ?tab=access always bounced back to the responses list. Moving to an event's
+  // own tab belongs to an explicit pick, so it lives in selectEvent() below.
   useEffect(() => {
     if (!selectedEventId) return;
     const ev = live.current.events.find((e) => e.id === selectedEventId);
     if (!ev) return;
-    setActiveTab((tab) => (TABS.find((t) => t.id === tab)?.needsEvent ? tab : 'responses'));
     setSearchQuery('');
     setStatusFilter('all');
     setCurrentTheme(ev.theme || DEFAULT_THEME);
@@ -487,6 +492,14 @@ export default function Admin() {
   function resetFilters() {
     setSearchQuery('');
     setStatusFilter('all');
+  }
+
+  // Picking a party from the list means "show me this one", so an account-level
+  // tab gives way to its responses. Only for a deliberate pick — the mount-time
+  // selection must leave the tab the URL restored alone.
+  function selectEvent(id) {
+    setSelectedEventId(id);
+    setActiveTab((tab) => (TABS.find((t) => t.id === tab)?.needsEvent ? tab : 'responses'));
   }
 
   // Topbar refresh: reload everything the console is showing.
@@ -639,12 +652,17 @@ export default function Admin() {
     const id = selectedEventId;
     setEditLoading(true);
     try {
+      // Clearing the number field leaves '' behind, and the API takes a number:
+      // posting the empty string failed the save with an untranslated schema
+      // error. The field is optional, so omit it and let the server apply its
+      // own default (and force 0 on a decline).
+      const guests = Number(editForm.guests);
       const body = JSON.stringify({
         attending: editForm.attending,
         name: editForm.name,
         email: editForm.email,
         phone: editForm.phone,
-        guests: editForm.guests,
+        guests: Number.isInteger(guests) ? guests : undefined,
         dietary_restrictions: editForm.dietary_restrictions,
         message: editForm.message
       });
@@ -790,7 +808,7 @@ export default function Admin() {
       setShowEventModal(false);
       toast.success(wasCreate ? `Événement « ${saved.person} » créé.` : 'Événement mis à jour.');
       // A brand new event is almost always the one you want to work on next.
-      if (wasCreate && saved?.id) setSelectedEventId(saved.id);
+      if (wasCreate && saved?.id) selectEvent(saved.id);
     } catch (err) {
       setEventError(err.message);
     } finally {
@@ -994,7 +1012,7 @@ export default function Admin() {
                           type="button"
                           className="text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
                           aria-pressed={ev.id === selectedEventId}
-                          onClick={() => setSelectedEventId(ev.id)}
+                          onClick={() => selectEvent(ev.id)}
                         >
                           {ev.person || 'Sans nom'}
                         </button>

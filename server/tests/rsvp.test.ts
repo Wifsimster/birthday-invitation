@@ -373,6 +373,56 @@ describe('RSVP API', () => {
             const list = await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(200);
             expect(list.body.rsvps[0]).toMatchObject({ attending: 'no', guests: 0 });
         });
+
+        // (event_id, phone) is UNIQUE, so this used to raise a constraint error
+        // and reach the client as a generic 500.
+        it('rejects an edit onto a number another response already holds (409)', async () => {
+            await request(app).post('/api/rsvp').send(validRsvp({ phone: '+33155000010' })).expect(201);
+            const second = await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ phone: '+33155000011' }))
+                .expect(201);
+
+            const res = await request(app)
+                .put(`/api/rsvp/${second.body.id}`)
+                .set('Cookie', authCookie)
+                .send(validRsvp({ phone: '+33155000010' }))
+                .expect(409);
+            expect(res.body.error).toMatch(/existe déjà/);
+        });
+
+        // The legacy routes all read the default event; the id in the path must
+        // not reach a response filed under a different party.
+        it('404s for an rsvp that belongs to another event', async () => {
+            const ev = await request(app)
+                .post('/api/events')
+                .set('Cookie', authCookie)
+                .send({ person: 'Autre' })
+                .expect(201);
+            const foreign = await request(app)
+                .post(`/api/events/${ev.body.id}/rsvps`)
+                .set('Cookie', authCookie)
+                .send(validRsvp({ phone: '+33155000012' }))
+                .expect(201);
+
+            await request(app)
+                .put(`/api/rsvp/${foreign.body.id}`)
+                .set('Cookie', authCookie)
+                .send(validRsvp({ name: 'Nope', phone: '+33155000013' }))
+                .expect(404);
+            await request(app)
+                .delete(`/api/rsvp/${foreign.body.id}`)
+                .set('Cookie', authCookie)
+                .expect(404);
+
+            // Untouched on its own event.
+            const list = await request(app)
+                .get(`/api/events/${ev.body.id}/rsvps`)
+                .set('Cookie', authCookie)
+                .expect(200);
+            expect(list.body.rsvps).toHaveLength(1);
+            expect(list.body.rsvps[0]).toMatchObject({ phone: '+33155000012' });
+        });
     });
 
     describe('Input validation bounds', () => {
@@ -403,6 +453,18 @@ describe('RSVP API', () => {
         it('returns 404 when no event date is configured', async () => {
             const noEvent = createApp(db, { event: { person: 'X', age: '', date: '', time: '', town: '', location: '' } });
             await request(noEvent).get('/api/event.ics').expect(404);
+        });
+
+        // An evening party ran DTEND before DTSTART on the same date, which
+        // calendars refuse to import.
+        it('rolls the end time to the next day when the party crosses midnight', async () => {
+            const lateEvent = createApp(db, {
+                event: { person: 'Léo', age: '', date: '2025-09-06', time: '20h00 - 00h30', town: '', location: '' }
+            });
+
+            const res = await request(lateEvent).get('/api/event.ics').expect(200);
+            expect(res.text).toContain('DTSTART:20250906T200000');
+            expect(res.text).toContain('DTEND:20250907T003000');
         });
 
         // Same event as /api/events/default/event.ics: once the host has edited

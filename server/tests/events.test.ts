@@ -127,6 +127,22 @@ describe('Events API', () => {
                 .expect(409);
             expect(res.body.error).toMatch(/déjà utilisé/);
         });
+
+        // A name whose slug already fills the 60-character budget used to make
+        // the de-duplication loop truncate every candidate back to the taken
+        // slug, spinning forever and wedging the process on this one request.
+        it('still finds a free slug when the name fills the length budget', async () => {
+            const person = 'A'.repeat(59);
+            const a = await createEvent({ person });
+            const b = await createEvent({ person });
+            expect(a.slug).toHaveLength(59);
+            expect(b.slug).not.toBe(a.slug);
+            expect(b.slug.length).toBeLessThanOrEqual(60);
+
+            // Both are reachable, so neither collapsed onto the other's link.
+            await request(app).get(`/api/events/${a.slug}`).expect(200);
+            await request(app).get(`/api/events/${b.slug}`).expect(200);
+        }, 10000);
     });
 
     describe('PUT /api/events/:id', () => {
@@ -299,6 +315,36 @@ describe('Events API', () => {
             await request(app)
                 .delete(`/api/events/${ev.id}/rsvp/${created.body.id}`)
                 .set('Cookie', authCookie)
+                .expect(200);
+        });
+
+        // The (event_id, phone) UNIQUE index used to fire here and surface as an
+        // opaque 500; the create route already answers 409 for the same clash.
+        it('rejects an edit that moves a response onto another guest\'s number (409)', async () => {
+            const ev = await createEvent({ person: 'Hugo' });
+            await request(app)
+                .post(`/api/events/${ev.id}/rsvps`)
+                .set('Cookie', authCookie)
+                .send(validRsvp({ name: 'First', phone: '+1440001' }))
+                .expect(201);
+            const second = await request(app)
+                .post(`/api/events/${ev.id}/rsvps`)
+                .set('Cookie', authCookie)
+                .send(validRsvp({ name: 'Second', phone: '+1440002' }))
+                .expect(201);
+
+            const res = await request(app)
+                .put(`/api/events/${ev.id}/rsvp/${second.body.id}`)
+                .set('Cookie', authCookie)
+                .send(validRsvp({ name: 'Second', phone: '+1440001' }))
+                .expect(409);
+            expect(res.body.error).toMatch(/existe déjà/);
+
+            // Keeping its own number is still a normal edit.
+            await request(app)
+                .put(`/api/events/${ev.id}/rsvp/${second.body.id}`)
+                .set('Cookie', authCookie)
+                .send(validRsvp({ name: 'Renamed', phone: '+1440002' }))
                 .expect(200);
         });
 
