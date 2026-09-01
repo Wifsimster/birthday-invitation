@@ -833,12 +833,19 @@ export default function Invitation() {
                       {/* Stacked, the primary action goes on top: it is the one
                           the thumb reaches first and the one nearly everyone
                           wants. Side by side from `sm` up it goes back to the
-                          right, as a desktop dialog expects. */}
+                          right, as a desktop dialog expects.
+
+                          `flex-1` is held back to `sm` on purpose: in the
+                          stacked column it resolves to `flex-basis: 0` on the
+                          *height*, which beat the `h-12` these buttons get from
+                          `size="lg"` and squashed them to their text — a 20px
+                          tap target on the one control the page exists for.
+                          Column stretch already makes them full width. */}
                       <div className="flex flex-col-reverse gap-3 sm:flex-row">
-                        <Button type="button" variant="outline" size="lg" className="flex-1" onClick={cancelForm}>
+                        <Button type="button" variant="outline" size="lg" className="sm:flex-1" onClick={cancelForm}>
                           Annuler
                         </Button>
-                        <Button type="submit" size="lg" className="flex-1" disabled={isSubmitting}>
+                        <Button type="submit" size="lg" className="sm:flex-1" disabled={isSubmitting}>
                           {isSubmitting && <Loader2Icon className="animate-spin" />}
                           {isSubmitting ? 'Envoi...' : 'Envoyer ma réponse'}
                         </Button>
@@ -887,10 +894,10 @@ export default function Invitation() {
                         </Alert>
                       )}
                       <div className="flex flex-col-reverse gap-3 sm:flex-row">
-                        <Button type="button" variant="outline" size="lg" className="flex-1" onClick={cancelForm}>
+                        <Button type="button" variant="outline" size="lg" className="sm:flex-1" onClick={cancelForm}>
                           Annuler
                         </Button>
-                        <Button type="submit" size="lg" className="flex-1" disabled={isLookingUp}>
+                        <Button type="submit" size="lg" className="sm:flex-1" disabled={isLookingUp}>
                           {isLookingUp && <Loader2Icon className="animate-spin" />}
                           {isLookingUp ? 'Recherche...' : 'Rechercher'}
                         </Button>
@@ -967,8 +974,15 @@ export default function Invitation() {
                 widths broke 2 + 1 across two lines on a phone and read as two
                 unrelated groups. Stacking the icon over the label below `sm`
                 buys each label the full width of its third, so "Calendrier"
-                still fits on a 360px screen. */}
-            <div className={`grid gap-2 ${googleCalUrl ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                still fits on a 360px screen.
+
+                The row carries its own top margin rather than leaning on the
+                details list above it: that list is dropped whenever the event
+                has no town, venue or dress code, and the row was then left
+                touching the RSVP panel with nothing between them. It collapses
+                against the list's `my-5` when the list is there, so the gap is
+                the same either way. */}
+            <div className={`mt-5 grid gap-2 sm:mt-6 ${googleCalUrl ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <Button asChild variant="outline" size="sm" className="h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm">
                 <a href={icsUrl}>
                   <DownloadIcon />
