@@ -37,6 +37,10 @@ export interface EventRow {
   theme: string;
   rsvp_deadline: string;
   is_default: number;
+  // Better Auth user id of the account that created the invitation, or NULL for
+  // the env-seeded default event (and any event predating ownership), which
+  // belongs to the deployment rather than to one account.
+  owner_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -167,6 +171,23 @@ const MIGRATIONS: ((db: Db) => void)[] = [
     // Swap the unique index: one RSVP per phone *per event*.
     db.run('DROP INDEX IF EXISTS idx_rsvp_phone');
     db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_rsvp_event_phone ON rsvp(event_id, phone)');
+  },
+  // v4: per-account invitations. `owner_id` holds the Better Auth user id of the
+  // account that created the event, so any registered account can run several
+  // invitations of its own and only ever sees those. Existing rows (the
+  // env-seeded default event included) keep a NULL owner: they belong to the
+  // deployment and stay admin-managed.
+  //
+  // No FOREIGN KEY here on purpose: Better Auth owns the `user` table and
+  // creates it in its own migration, which runs *after* initSchema — a
+  // reference would resolve to a missing table on a fresh database.
+  (db) => {
+    try {
+      db.run('ALTER TABLE event ADD COLUMN owner_id TEXT');
+    } catch (err) {
+      if (!/duplicate column name/.test((err as Error).message)) throw err;
+    }
+    db.run('CREATE INDEX IF NOT EXISTS idx_event_owner ON event(owner_id)');
   }
 ];
 
