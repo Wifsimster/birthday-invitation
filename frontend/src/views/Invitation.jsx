@@ -577,15 +577,20 @@ export default function Invitation() {
                 450px on a 390px-wide phone and pushed the RSVP button off the
                 bottom of a second screenful; the divided list says the same
                 thing in a little over half the height, and reads as the
-                grouped detail lists both mobile platforms use. */}
+                grouped detail lists both mobile platforms use.
+
+                The fill and the rules are theme tokens, not black at a low
+                alpha: on the dark-surface themes a black wash is invisible,
+                and `--muted` / `--border` are derived from the card's own
+                colours so the list separates itself on either. */}
             {eventDetails.length > 0 && (
-              <dl className="my-5 overflow-hidden rounded-2xl bg-black/[0.035] sm:my-6">
+              <dl className="my-5 overflow-hidden rounded-2xl bg-muted sm:my-6">
                 {eventDetails.map((detail) => {
                   const Icon = detail.icon;
                   return (
                     <div
                       key={detail.label}
-                      className="flex items-start gap-3 border-t border-black/[0.06] px-3.5 py-2.5 first:border-t-0"
+                      className="flex items-start gap-3 border-t border-border px-3.5 py-2.5 first:border-t-0"
                     >
                       <span
                         className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-[color:var(--theme-button-text,#fff)]"
@@ -654,10 +659,14 @@ export default function Invitation() {
               {/* ---------- Already answered ---------- */}
               {confirmed ? (
                 <div
+                  /* Deliberately outside the theme palette: "je viens" and
+                     "je ne viens pas" have to read as an answer at a glance, in
+                     any theme. The stops are dark enough to carry white text at
+                     WCAG AA — the pastel pair they replaced sat at 2:1. */
                   className={`rounded-2xl p-6 text-center text-white ${
                     confirmed.isAttending
-                      ? 'bg-linear-to-br from-[#43cea2] to-[#22a06b]'
-                      : 'bg-linear-to-br from-[#ff7675] to-[#fd79a8]'
+                      ? 'bg-linear-to-br from-[#0E7D5D] to-[#0A6047]'
+                      : 'bg-linear-to-br from-[#C2415A] to-[#9E2740]'
                   }`}
                   role="status"
                 >
@@ -975,7 +984,7 @@ export default function Invitation() {
         scrolls into view. Larger screens show the card's buttons without
         scrolling, so it never appears there. */}
       {showStickyCta && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-black/10 bg-card/90 px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] shadow-[0_-6px_24px_rgba(0,0,0,0.15)] backdrop-blur-md sm:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/90 px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] shadow-[0_-6px_24px_rgba(0,0,0,0.15)] backdrop-blur-md sm:hidden">
           <Button
             size="lg"
             className="h-12 w-full rounded-full font-display text-base text-[color:var(--theme-button-text,#fff)] shadow-md"

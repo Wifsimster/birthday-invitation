@@ -62,7 +62,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { apiBaseUrl } from '../env.js';
 import { useSession, refresh, signOut } from '../session.js';
-import { themeList, applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
+import { themeList, applyTheme, getTheme, preloadThemeFonts, DEFAULT_THEME } from '../themes.js';
 import { applySeo } from '../seo.js';
 
 // Section tabs. `needsEvent` marks the ones that operate on the selected event;
@@ -428,6 +428,13 @@ export default function Admin() {
     params.set('tab', activeTab);
     setSearchParams(params, { replace: true });
   }, [selectedEventId, activeTab, setSearchParams]);
+
+  // The theme picker previews each label in that theme's own display font, so
+  // the panel needs the whole catalog's typefaces — fetched when it is opened,
+  // not before, and never on the guest-facing invitation.
+  useEffect(() => {
+    if (activeTab === 'theme') preloadThemeFonts();
+  }, [activeTab]);
 
   // A newly picked event starts unfiltered on its responses, rather than
   // inheriting the search left over from the previous one.
@@ -1524,23 +1531,42 @@ export default function Admin() {
                         aria-pressed={t.id === currentTheme}
                         onClick={() => selectTheme(t.id)}
                       >
-                        <span className="text-2xl" aria-hidden="true">
-                          {t.icon}
+                        {/* A miniature of the invitation — page gradient, card,
+                            header band — rather than three loose swatches. With
+                            eighteen themes on the grid, what tells them apart is
+                            the arrangement, not the hues in isolation. */}
+                        <span
+                          className="flex h-16 w-full items-end justify-center overflow-hidden rounded-lg p-1.5 ring-1 ring-black/10"
+                          style={{
+                            background: `linear-gradient(135deg, ${t.palette.bgFrom}, ${t.palette.bgVia}, ${t.palette.bgTo})`
+                          }}
+                          aria-hidden="true"
+                        >
+                          <span
+                            className="flex w-full flex-col items-center gap-1 rounded-md p-1 shadow-sm"
+                            style={{ background: t.palette.cardBg }}
+                          >
+                            <span
+                              className="flex h-4 w-full items-center justify-center rounded-sm text-[9px] leading-none"
+                              style={{
+                                background: `linear-gradient(135deg, ${t.palette.headerFrom || t.palette.primary}, ${t.palette.headerTo || t.palette.primaryDark})`
+                              }}
+                            >
+                              {t.icon}
+                            </span>
+                            <span
+                              className="h-1.5 w-2/3 rounded-full"
+                              style={{
+                                background: `linear-gradient(135deg, ${t.palette.buttonFrom}, ${t.palette.buttonTo})`
+                              }}
+                            />
+                          </span>
                         </span>
-                        <span className="text-sm font-medium">{t.label}</span>
-                        <span className="flex gap-1" aria-hidden="true">
-                          <span
-                            className="size-3 rounded-full ring-1 ring-black/10"
-                            style={{ background: t.palette.primary }}
-                          />
-                          <span
-                            className="size-3 rounded-full ring-1 ring-black/10"
-                            style={{ background: t.palette.secondary }}
-                          />
-                          <span
-                            className="size-3 rounded-full ring-1 ring-black/10"
-                            style={{ background: t.palette.accent }}
-                          />
+                        <span
+                          className="text-sm font-medium"
+                          style={{ fontFamily: t.fonts.display }}
+                        >
+                          {t.label}
                         </span>
                         {t.id === currentTheme && (
                           <Badge className="bg-success text-success-foreground">
