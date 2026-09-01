@@ -97,19 +97,26 @@ a computed `rsvp_closed` flag — never internal ids/timestamps. Unknown slugs
 `404`. Submissions are scoped to the event: the **same phone can RSVP to several
 events**. Once an event's `rsvp_deadline` has passed, submissions `403`.
 
-### Multi-event — admin management
+### Multi-event — management (any session, scoped to its own events)
 ```
-GET    /api/events            # list all events with aggregated RSVP counts
-POST   /api/events            # create an event (auto-slug from person if omitted)
+GET    /api/events            # list your events with aggregated RSVP counts
+POST   /api/events            # create an event you own (auto-slug from person if omitted)
 PUT    /api/events/:id        # update an event (partial)
 DELETE /api/events/:id        # delete an event (its RSVPs cascade)
 ```
-The list items include `responses`, `confirmations`, `declined` and
-`total_guests`. Slugs are made unique automatically (`-2`, `-3`…); an explicit
-duplicate slug `409`s. The default event's slug is fixed (`default`) and the
-default event cannot be deleted (`400`).
+Every registered account may run **several invitations at once**: creating one
+stamps it with the creator's `owner_id`, and the routes here only ever resolve
+the caller's own events. An admin is the exception — it sees and edits every
+event, the ownerless default one included. Someone else's event `404`s, just
+like an id that does not exist, so the API never confirms what it is hiding; no
+session at all `401`s.
 
-### Multi-event — admin per-event RSVPs
+The list items include `responses`, `confirmations`, `declined` and
+`total_guests`. Slugs are made unique automatically (`-2`, `-3`…) across all
+accounts; an explicit duplicate slug `409`s. The default event's slug is fixed
+(`default`) and the default event cannot be deleted (`400`).
+
+### Multi-event — per-event RSVPs (owner or admin)
 ```
 GET    /api/events/:id/rsvps             # list this event's RSVPs (newest first)
 GET    /api/events/:id/rsvps/count       # scoped counts
@@ -118,8 +125,8 @@ POST   /api/events/:id/rsvps             # manually add (409 on duplicate phone)
 PUT    /api/events/:id/rsvp/:rsvpId      # edit (scoped to the event)
 DELETE /api/events/:id/rsvp/:rsvpId      # delete (scoped to the event)
 ```
-An unknown event id `404`s. Edits/deletes only affect RSVPs that belong to the
-named event.
+An unknown event id — or one belonging to another account — `404`s.
+Edits/deletes only affect RSVPs that belong to the named event.
 
 ### Authentication (Better Auth — email/password + Google)
 ```
@@ -170,9 +177,10 @@ GET    /api/rsvps/export.csv  # download all submissions as CSV
 PUT    /api/rsvp/:id          # edit a submission
 DELETE /api/rsvp/:id          # delete a submission
 ```
-Requests with no session get `401`. A valid session whose account has not been
-granted access gets `403` with `{ "code": "not_admin" }`, which the SPA turns
-into a "pending access" screen rather than a sign-in loop.
+These are the deployment-wide routes, so they stay admin-only — unlike the
+per-event routes above, which any account reaches for the invitations it owns.
+Requests with no session get `401`; a valid session without the admin role gets
+`403` with `{ "code": "not_admin" }`.
 
 ### Health Check
 ```
@@ -214,9 +222,16 @@ CREATE TABLE event (
   theme TEXT NOT NULL DEFAULT 'fiesta',
   rsvp_deadline TEXT NOT NULL DEFAULT '', -- YYYY-MM-DD or ''
   is_default INTEGER NOT NULL DEFAULT 0,
+  -- Better Auth user id of the account that created the invitation (migration
+  -- v4). NULL on the env-seeded default event and on any row predating
+  -- ownership: those belong to the deployment and stay admin-managed. No
+  -- FOREIGN KEY, because Better Auth creates the `user` table in its own
+  -- migration, which runs after this schema.
+  owner_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX idx_event_owner ON event(owner_id);
 
 CREATE TABLE rsvp (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -237,11 +252,13 @@ CREATE TABLE rsvp (
 CREATE UNIQUE INDEX idx_rsvp_event_phone ON rsvp(event_id, phone);
 ```
 
-Each invitation is an `event` row (theme, slug, details). A single
-`is_default = 1` row backs the legacy single-event routes, so env-configured
-deployments keep working: on boot `ensureDefaultEvent` seeds that row from the
-event environment variables (and migrates any previously stored global theme),
-but never clobbers it once an admin has edited it. The migration is idempotent
+Each invitation is an `event` row (theme, slug, details) owned by the account
+that created it, so one account can run any number of them and reaches only its
+own. Deleting an account deletes its events, and their RSVPs cascade with them.
+A single `is_default = 1` row backs the legacy single-event routes, so
+env-configured deployments keep working: on boot `ensureDefaultEvent` seeds that
+row from the event environment variables (and migrates any previously stored
+global theme), but never clobbers it once an admin has edited it. The migration is idempotent
 and runs automatically; the database file is created on first start (see
 `DB_PATH` below).
 
@@ -252,8 +269,10 @@ and runs automatically; the database file is created on first start (see
   (300/15min) — all proxy-aware
 - Better Auth email/password sessions: passwords hashed (scrypt), httpOnly
   signed session cookies, built-in CSRF (Origin) checks on state-changing routes
-- Open registration, but role-gated authorization: a new account reaches
-  nothing until an admin grants it, and `role` is never read from a request body
+- Open registration with per-account isolation: a new account manages the
+  invitations it creates and nothing else — another account's event is a `404`,
+  and the deployment-wide routes (accounts, default event) need the admin role.
+  Neither `role` nor `owner_id` is ever read from a request body
 - Email/password sign-up requires a confirmed address before a session is issued
 - Google account linking only adopts a local account that is itself verified,
   so an unverified pre-registration can't capture someone's Google identity

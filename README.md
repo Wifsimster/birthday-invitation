@@ -4,11 +4,15 @@ A small self-hosted birthday invitation web app with online RSVP. A single-page
 frontend shows the event details (who, when, where, dress code) and lets guests
 confirm their attendance; a Node.js/Express backend stores RSVPs in SQLite.
 
-**Multi-event:** the admin panel (`/admin`) manages any number of events at
-once. Each event has its own theme, invitation link (`/e/<slug>`), QR code and
-RSVP list. The `BIRTHDAY_*` / `EVENT_*` environment variables seed a **default
-event** (served at `/`) so existing single-event deployments keep working
-unchanged; further events are created and edited entirely from the admin UI.
+**Multi-event, per account:** anyone who registers gets the dashboard at
+`/admin` and can run **as many invitations as they like**. Each event has its own
+theme, invitation link (`/e/<slug>`), QR code and RSVP list, and belongs to the
+account that created it — the event routes are scoped to the caller, so one host
+never sees another's parties or guest lists. An admin keeps the deployment-wide
+view (every event, plus account management). The `BIRTHDAY_*` / `EVENT_*`
+environment variables seed a **default event** (served at `/`) so existing
+single-event deployments keep working unchanged; that one has no owner and stays
+admin-managed.
 
 Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
 `leo-birthday.${DOMAIN}`.
@@ -32,9 +36,9 @@ Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
 - **Frontend** — React 19 + Vite SPA under [`frontend/`](frontend/), styled with
   Tailwind v4 and [shadcn/ui](https://ui.shadcn.com) components on Radix: a per-event
   invitation view (`/` for the default event, `/e/:slug` for any other) with the
-  RSVP and lookup forms, and a multi-event admin dashboard (`/admin`) that lists
-  every event and lets the host create, edit, theme, share (link + QR) and manage
-  RSVPs for each one. Built to `dist/` by `npm run build`. The invitation view
+  RSVP and lookup forms, and a multi-event dashboard (`/admin`) that lists the
+  signed-in account's events and lets the host create, edit, theme, share
+  (link + QR) and manage RSVPs for each one. Built to `dist/` by `npm run build`. The invitation view
   fetches its event from the API by slug; the `BIRTHDAY_*` / `EVENT_*` values
   injected into `dist/env.js` by [`infra/inject-env.sh`](infra/inject-env.sh)
   seed the default event and provide an initial paint for `/`.
@@ -173,20 +177,24 @@ operate on the **default event**.
 | `GET`    | `/api/events/:slug/event.ics`           | —     | Calendar invite (.ics) for the event      |
 | `GET`    | `/api/events/:slug/og.png`              | —     | Share card (1200×630 PNG) for the event   |
 
-**Event management (admin)**
+**Event management (owner or admin)**
+
+Every route below takes a session and is scoped to the caller's own events; an
+admin reaches all of them. Another account's event answers `404`, exactly like an
+id that does not exist, so the API never confirms what it is hiding.
 
 | Method   | Endpoint                                | Auth  | Description                              |
 | -------- | --------------------------------------- | ----- | ---------------------------------------- |
-| `GET`    | `/api/events`                           | admin | All events with per-event counts          |
-| `POST`   | `/api/events`                           | admin | Create an event (auto-slug from name)     |
-| `PUT`    | `/api/events/:id`                       | admin | Edit an event (details + theme)           |
-| `DELETE` | `/api/events/:id`                       | admin | Delete an event (default event protected) |
-| `GET`    | `/api/events/:id/rsvps`                 | admin | RSVPs for the event                       |
-| `GET`    | `/api/events/:id/rsvps/count`           | admin | Counts for the event                      |
-| `GET`    | `/api/events/:id/rsvps/export.csv`      | admin | Export the event's RSVPs as CSV           |
-| `POST`   | `/api/events/:id/rsvps`                 | admin | Manually add an RSVP (409 on duplicate)   |
-| `PUT`    | `/api/events/:id/rsvp/:rsvpId`          | admin | Edit an RSVP within the event             |
-| `DELETE` | `/api/events/:id/rsvp/:rsvpId`          | admin | Delete an RSVP within the event           |
+| `GET`    | `/api/events`                           | user  | Your events with per-event counts (all, for an admin) |
+| `POST`   | `/api/events`                           | user  | Create an event you own (auto-slug from name) |
+| `PUT`    | `/api/events/:id`                       | owner | Edit an event (details + theme)           |
+| `DELETE` | `/api/events/:id`                       | owner | Delete an event (default event protected) |
+| `GET`    | `/api/events/:id/rsvps`                 | owner | RSVPs for the event                       |
+| `GET`    | `/api/events/:id/rsvps/count`           | owner | Counts for the event                      |
+| `GET`    | `/api/events/:id/rsvps/export.csv`      | owner | Export the event's RSVPs as CSV           |
+| `POST`   | `/api/events/:id/rsvps`                 | owner | Manually add an RSVP (409 on duplicate)   |
+| `PUT`    | `/api/events/:id/rsvp/:rsvpId`          | owner | Edit an RSVP within the event             |
+| `DELETE` | `/api/events/:id/rsvp/:rsvpId`          | owner | Delete an RSVP within the event           |
 
 **Default event / legacy**
 
@@ -224,12 +232,17 @@ sessions signed by `BETTER_AUTH_SECRET`. Two sign-in methods are available:
   `GOOGLE_CLIENT_SECRET` are set. Authorized redirect URI:
   `https://<your-host>/api/auth/callback/google`.
 
-**Registering grants nothing.** Every account starts on the `user` role, which
-has no access to events or guest data; the admin API answers `403` with
-`code: "not_admin"` and the SPA shows a "pending access" screen. An admin grants
-access from the **👥 Accès** panel in `/admin`, which is also where accounts are
-demoted or deleted. The role is never accepted from a request body, so a crafted
-sign-up cannot self-promote.
+**Registering gets you your own invitations, and nothing else.** Every account
+starts on the `user` role: it reaches `/admin`, where it creates and manages as
+many invitations as it wants, and sees only the ones it created. What the role
+does *not* grant is anything deployment-wide — the account list (**👥 Accès**),
+the seeded default event and its legacy routes stay admin-only and answer `403`
+with `code: "not_admin"`. An admin grants or revokes the admin role from that
+same panel, which is also where accounts are deleted; deleting an account also
+deletes its invitations and their RSVPs, since nobody could manage them
+afterwards. The role is never accepted from a request body, so a crafted sign-up
+cannot self-promote, and neither is the owner — it is always the creator's own
+session.
 
 `ADMIN_EMAIL` / `ADMIN_PASSWORD` seed the one bootstrap admin on first start.
 That account is re-granted the admin role (and marked verified) on every boot, so
@@ -280,10 +293,10 @@ npm run build    # builds the SPA into ../dist (served by the backend)
 
 | File                     | Responsibility                                   |
 | ------------------------ | ------------------------------------------------ |
-| `src/App.jsx`            | Routes, the admin route guard and the toaster    |
+| `src/App.jsx`            | Routes, the session route guard and the toaster  |
 | `src/views/Invitation.jsx` | Per-event invitation, RSVP + lookup (`/`, `/e/:slug`) |
-| `src/views/Admin.jsx`    | Multi-event admin: events list, create/edit/theme/share, per-event RSVPs, account access (`/admin`) |
-| `src/views/Auth.jsx`     | Sign-in, sign-up, Google, password reset, pending-access |
+| `src/views/Admin.jsx`    | Dashboard: the account's events, create/edit/theme/share, per-event RSVPs, account access for admins (`/admin`) |
+| `src/views/Auth.jsx`     | Sign-in, sign-up, Google, password reset, email confirmation |
 | `src/session.js`         | Session + role store (`useSession`), read from `/api/me` |
 | `src/components/ui/`     | shadcn/ui components (Radix primitives)          |
 | `src/env.js`             | Reads runtime config from `window.ENV`           |

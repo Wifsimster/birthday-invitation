@@ -50,6 +50,7 @@ const eventRow = (overrides: Partial<EventRow> = {}): EventRow => ({
     theme: 'fiesta',
     rsvp_deadline: '',
     is_default: 1,
+    owner_id: null,
     created_at: '2025-01-01 10:00:00',
     updated_at: '2025-02-03 10:00:00',
     ...overrides

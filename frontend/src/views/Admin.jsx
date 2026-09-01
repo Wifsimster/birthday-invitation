@@ -66,12 +66,13 @@ import { themeList, applyTheme, getTheme, DEFAULT_THEME } from '../themes.js';
 import { applySeo } from '../seo.js';
 
 // Section tabs. `needsEvent` marks the ones that operate on the selected event;
-// "Accès" is account-level and works without one.
+// "Accès" is account-level and works without one, and manages *every* account
+// of the deployment — so it is the one tab reserved to admins.
 const TABS = [
   { id: 'responses', label: 'Réponses', icon: '📋', needsEvent: true },
   { id: 'theme', label: 'Thème', icon: '🎨', needsEvent: true },
   { id: 'share', label: 'Partage', icon: '🔗', needsEvent: true },
-  { id: 'access', label: 'Accès', icon: '👥', needsEvent: false }
+  { id: 'access', label: 'Accès', icon: '👥', needsEvent: false, adminOnly: true }
 ];
 
 const STATUS_FILTERS = [
@@ -216,9 +217,13 @@ export default function Admin() {
 
   const selectedEvent = useMemo(() => events.find((e) => e.id === selectedEventId) || null, [events, selectedEventId]);
 
-  // The signed-in admin, so the users table can mark "vous" and disable the
+  // The signed-in account, so the users table can mark "vous" and disable the
   // actions the server would refuse anyway (self-demotion, self-deletion).
   const currentUserId = session.user?.id ?? null;
+  // Every account manages its own invitations; only an admin also manages the
+  // deployment's accounts (and sees every invitation, not just its own).
+  const isAdmin = session.user?.role === 'admin';
+  const visibleTabs = useMemo(() => TABS.filter((t) => !t.adminOnly || isAdmin), [isAdmin]);
 
   // Any open dialog pauses the 30s poll: replacing the list under an admin who
   // is mid-edit was how a half-typed response got wiped.
@@ -235,27 +240,27 @@ export default function Admin() {
 
   // ---- Session / access ----
   //
-  // The route guard has already established that this visitor is an admin (see
+  // The route guard has already established that this visitor is signed in (see
   // App.jsx), so the view no longer owns a sign-in form. It only has to react to
-  // *losing* that access mid-session — an admin revoked while the tab is open —
-  // which surfaces as a 401/403 on any admin call.
+  // *losing* access mid-session, which surfaces as a 401/403 on any call.
   //
-  // Both failure modes end up here: 401 is a session that ended, 403 the
-  // `not_admin` guard on an account demoted while the tab was open. Either way
-  // the 30s poll has to stop — otherwise the dashboard sits on an error and
-  // keeps spending the admin rate limit — and the cached session has to be
-  // re-read, or the route guard would wave the stale user straight back into
-  // /admin. Where to send them follows that re-read rather than the status: a
-  // session that survived means "no access yet", not "signed out".
+  // The two statuses now mean different things. 401 is the session itself
+  // ending: stop the 30s poll (otherwise the dashboard sits on an error and
+  // keeps spending the rate limit) and hand the visitor back to the sign-in
+  // form. 403 only comes from the admin-only account routes, so it means an
+  // admin demoted while the tab was open: the account keeps its own
+  // invitations, so re-read the cached session — the tab list follows the fresh
+  // role and drops "Accès" — and leave the dashboard where it is.
   const handleAuthFailure = useCallback(
     async (res) => {
       if (res.status !== 401 && res.status !== 403) return false;
+      const user = await refresh();
+      if (user && res.status === 403) return true;
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
       }
-      const user = await refresh();
-      navigate(user ? '/pending' : '/login', { replace: true });
+      navigate('/login', { replace: true });
       return true;
     },
     [navigate]
@@ -343,6 +348,13 @@ export default function Admin() {
     }
   }, []);
 
+  // A tab the account cannot open (?tab=access on a non-admin, or an admin
+  // demoted while the tab was open) would leave Tabs with a value no trigger
+  // carries, rendering an empty panel. Fall back to the responses list.
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.id === activeTab)) setActiveTab('responses');
+  }, [visibleTabs, activeTab]);
+
   // ---- Mount: SEO, first load, poll, "/" shortcut ----
   useEffect(() => {
     // The console is behind a login and has nothing to offer a search engine.
@@ -369,8 +381,10 @@ export default function Admin() {
         return (list.find((e) => e.is_default) || list[0]).id;
       });
     });
-    loadUsers();
-  }, [loadEvents, loadUsers]);
+    // The account list backs the admin-only "Accès" tab; asking for it as a
+    // regular account would only collect a 403 the dashboard has to ignore.
+    if (isAdmin) loadUsers();
+  }, [loadEvents, loadUsers, isAdmin]);
 
   useEffect(() => {
     // Poll only the data that actually moves: events and their RSVPs. The
@@ -513,7 +527,14 @@ export default function Admin() {
   async function refreshAll() {
     setRefreshing(true);
     try {
-      await Promise.all([loadEvents(), loadUsers(), selectedEventId ? loadEventData() : Promise.resolve()]);
+      // The account list is admin-only; asking for it as a regular account
+      // would answer 403 and surface as a "chargement impossible" error on a
+      // panel that account cannot even open.
+      await Promise.all([
+        loadEvents(),
+        isAdmin ? loadUsers() : Promise.resolve(),
+        selectedEventId ? loadEventData() : Promise.resolve()
+      ]);
     } finally {
       setRefreshing(false);
     }
@@ -855,6 +876,12 @@ export default function Admin() {
   // Only ever true below `sm` — the classes that read it are all `sm:`-reset.
   const eventsFolded = !eventPickerOpen && !!selectedEvent && !eventsLoading && !eventsError;
 
+  // Where the topbar's "Voir l'invitation" shortcut goes. It used to be a fixed
+  // '/', which is the deployment's default party — the wrong page for anyone
+  // running invitations of their own. Follow the selected event instead, and
+  // only fall back to '/' when nothing is selected yet.
+  const invitationPath = selectedEvent && !selectedEvent.is_default ? `/e/${selectedEvent.slug}` : '/';
+
   return (
     <div className="flex min-h-full flex-col bg-background">
       {/* ===================== TOPBAR =====================
@@ -868,7 +895,11 @@ export default function Admin() {
             🎉
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm leading-tight font-semibold">Administration</p>
+            {/* An admin oversees the whole deployment; everyone else is looking
+                at the invitations they created themselves. */}
+            <p className="truncate text-sm leading-tight font-semibold">
+              {isAdmin ? 'Administration' : 'Mes invitations'}
+            </p>
             <p className="truncate text-xs leading-tight text-muted-foreground">Événements et confirmations</p>
           </div>
 
@@ -884,7 +915,7 @@ export default function Admin() {
           </Button>
 
           <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
-            <Link to="/">
+            <Link to={invitationPath}>
               <ExternalLinkIcon />
               Voir l'invitation
             </Link>
@@ -902,7 +933,7 @@ export default function Admin() {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild className="sm:hidden">
-                <Link to="/">
+                <Link to={invitationPath}>
                   <ExternalLinkIcon />
                   Voir l'invitation
                 </Link>
@@ -931,7 +962,9 @@ export default function Admin() {
               <span aria-hidden="true">🎈</span> Événements
             </CardTitle>
             <CardDescription>
-              Sélectionne une fête pour gérer ses réponses, son thème et son lien.
+              {isAdmin
+                ? 'Sélectionne une fête pour gérer ses réponses, son thème et son lien.'
+                : 'Crée autant de fêtes que tu veux, puis sélectionnes-en une pour gérer ses réponses, son thème et son lien.'}
             </CardDescription>
             <CardAction>
               <Button size="sm" onClick={openCreateEventModal}>
@@ -994,7 +1027,9 @@ export default function Admin() {
                 </span>
                 <div>
                   <p className="font-medium">Aucun événement pour le moment</p>
-                  <p className="text-sm text-muted-foreground">Crée une première fête pour ouvrir les invitations.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Crée une première fête pour ouvrir les invitations — tu peux en gérer plusieurs en parallèle.
+                  </p>
                 </div>
                 <Button size="sm" onClick={openCreateEventModal}>
                   <PlusIcon />
@@ -1116,7 +1151,7 @@ export default function Admin() {
               {/* Four labels plus their emoji overflow a 390px strip and the
                   last one gets clipped mid-word; the emoji are decoration, so
                   they are the part that goes. */}
-              {TABS.map((tab) => (
+              {visibleTabs.map((tab) => (
                 <TabsTrigger key={tab.id} value={tab.id} className="text-xs sm:text-sm">
                   <span className="hidden sm:inline" aria-hidden="true">
                     {tab.icon}
@@ -2061,7 +2096,7 @@ export default function Admin() {
             <AlertDialogTitle>Supprimer le compte</AlertDialogTitle>
             <AlertDialogDescription>
               <strong className="font-medium text-foreground">{userToDelete?.email}</strong> perdra immédiatement son
-              accès. Cette action est irréversible.
+              accès, et ses invitations seront supprimées avec leurs réponses. Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
