@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { CircleAlertIcon, ClockIcon, EyeIcon, EyeOffIcon, Loader2Icon, MailCheckIcon } from 'lucide-react';
+import { CircleAlertIcon, EyeIcon, EyeOffIcon, Loader2Icon, MailCheckIcon } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { authClient } from '../auth-client.js';
-import { useSession, refresh, ensureSession, signOut, authProviders } from '../session.js';
+import { refresh, ensureSession, authProviders } from '../session.js';
 import { applySeo } from '../seo.js';
 
 // `check-email` and `reset-sent` are transient states the view enters after a
@@ -39,12 +39,6 @@ const COPY = {
     subtitle: 'Choisissez un mot de passe pour votre compte.',
     submit: 'Enregistrer',
     busy: 'Enregistrement...'
-  },
-  pending: {
-    title: 'Accès en attente',
-    subtitle: "Votre compte n'a pas encore les droits d'administration.",
-    submit: '',
-    busy: ''
   },
   'check-email': {
     title: 'Confirmez votre email',
@@ -81,7 +75,6 @@ const GOOGLE_ICON = (
 export default function Auth({ mode: routeMode }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const session = useSession();
 
   // Transient mode set after a submit; null means "follow the route".
   const [transientMode, setTransientMode] = useState(null);
@@ -141,7 +134,7 @@ export default function Auth({ mode: routeMode }) {
     if (routeMode !== 'signin') return undefined;
     let cancelled = false;
     ensureSession().then((user) => {
-      if (!cancelled && user) navigate(user.role === 'admin' ? '/admin' : '/pending', { replace: true });
+      if (!cancelled && user) navigate('/admin', { replace: true });
     });
     return () => {
       cancelled = true;
@@ -162,17 +155,14 @@ export default function Auth({ mode: routeMode }) {
     }
   }, []);
 
-  // Send a freshly signed-in visitor to the page they were headed for, or to
-  // the pending screen when their account has no access yet.
+  // Send a freshly signed-in visitor to the page they were headed for. Every
+  // account reaches the dashboard — it lists the invitations that account owns —
+  // so there is nothing left to sort by role here.
   async function goToDestination() {
-    const user = await refresh();
-    if (user?.role !== 'admin') {
-      navigate('/pending', { replace: true });
-      return;
-    }
+    await refresh();
     // Only a path within this app. A leading '//' (or '/\') is a
     // protocol-relative URL, so the bare startsWith('/') test would have let
-    // ?redirect=//example.com send a freshly signed-in admin off-site.
+    // ?redirect=//example.com send a freshly signed-in visitor off-site.
     const target = searchParams.get('redirect');
     navigate(target && /^\/(?![/\\])/.test(target) ? target : '/admin', { replace: true });
   }
@@ -203,9 +193,9 @@ export default function Auth({ mode: routeMode }) {
         name: form.name.trim(),
         email: form.email.trim(),
         password: form.password,
-        // Where the confirmation link lands. /admin, like the resend below, so
-        // both routes end on the same screen — the guard forwards an account
-        // that has no access yet to /pending rather than the invitation page.
+        // Where the confirmation link lands: the dashboard, like the resend
+        // below, so both routes end on the same screen — a freshly confirmed
+        // account can create its first invitation straight away.
         callbackURL: '/admin'
       });
       if (signUpError) {
@@ -256,23 +246,11 @@ export default function Auth({ mode: routeMode }) {
     setError(null);
     setLoading(true);
     // Full-page redirect to Google; the server drops the visitor back on
-    // /admin, where the route guard sorts admins from pending accounts.
+    // /admin, where the route guard resolves the restored session.
     authClient.signIn.social({ provider: 'google', callbackURL: '/admin' }).catch(() => {
       setLoading(false);
       setError('La connexion Google a échoué.');
     });
-  }
-
-  async function recheckAccess() {
-    setLoading(true);
-    const user = await refresh();
-    setLoading(false);
-    if (user?.role === 'admin') navigate('/admin', { replace: true });
-  }
-
-  async function handleSignOut() {
-    await signOut();
-    navigate('/login', { replace: true });
   }
 
   function submit(event) {
@@ -282,7 +260,7 @@ export default function Auth({ mode: routeMode }) {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center px-4 py-10">
+    <div className="flex min-h-full items-center justify-center px-3 py-8 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-4 sm:py-10">
       <Card className="w-full max-w-[26rem] shadow-xl">
         <CardHeader className="text-center">
           <span className="mx-auto mb-1 text-4xl" aria-hidden="true">
@@ -291,30 +269,6 @@ export default function Auth({ mode: routeMode }) {
           <CardTitle className="text-xl">{copy.title}</CardTitle>
           <CardDescription>{copy.subtitle}</CardDescription>
         </CardHeader>
-
-        {/* ---------- Signed in, but not yet granted access ---------- */}
-        {mode === 'pending' && (
-          <CardContent className="grid gap-3">
-            <Alert>
-              <ClockIcon />
-              <AlertTitle>En attente de validation</AlertTitle>
-              <AlertDescription>
-                <p>
-                  Votre compte <strong className="font-medium">{session.user?.email}</strong> est bien enregistré,
-                  mais il n'a pas encore accès à l'administration.
-                </p>
-                <p>Demandez à un administrateur de vous accorder l'accès, puis vérifiez à nouveau.</p>
-              </AlertDescription>
-            </Alert>
-            <Button className="w-full" disabled={loading} onClick={recheckAccess}>
-              {loading && <Loader2Icon className="animate-spin" />}
-              {loading ? 'Vérification...' : 'Vérifier à nouveau'}
-            </Button>
-            <Button variant="ghost" className="w-full" onClick={handleSignOut}>
-              Se déconnecter
-            </Button>
-          </CardContent>
-        )}
 
         {/* ---------- Verification email sent ---------- */}
         {mode === 'check-email' && (
@@ -374,7 +328,7 @@ export default function Auth({ mode: routeMode }) {
         )}
 
         {/* ---------- Forms ---------- */}
-        {mode !== 'pending' && mode !== 'check-email' && mode !== 'reset-sent' && (
+        {mode !== 'check-email' && mode !== 'reset-sent' && (
           <form noValidate onSubmit={submit}>
             <CardContent className="grid gap-4">
               {mode === 'signup' && (

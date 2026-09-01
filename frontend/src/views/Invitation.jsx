@@ -101,12 +101,20 @@ export default function Invitation() {
 
   const [showRsvpForm, setShowRsvpForm] = useState(false);
   const [showLookupForm, setShowLookupForm] = useState(false);
+  // True while the card's own RSVP buttons are on screen. The sticky bar at the
+  // bottom of a phone screen is a stand-in for them, so it steps aside rather
+  // than offering the same action twice.
+  const [ctaOnScreen, setCtaOnScreen] = useState(true);
   const [confirmed, setConfirmed] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupPhoneNumber, setLookupPhoneNumber] = useState('');
   const [formData, setFormData] = useState(EMPTY_FORM);
+
+  const ctaRef = useRef(null);
+  const formPanelRef = useRef(null);
+  const formHeadingRef = useRef(null);
 
   const themeDef = getTheme(theme);
   const setField = (key) => (event_) => setFormData((prev) => ({ ...prev, [key]: event_.target.value }));
@@ -239,21 +247,15 @@ export default function Invitation() {
   // "hide what we do not know" rule in one place instead of a conditional per
   // tile.
   const eventDetails = useMemo(() => {
-    const tiles = [];
-    if (formattedDate) tiles.push({ label: 'Date', value: formattedDate, icon: CalendarDaysIcon });
-    if (event.eventTime) tiles.push({ label: 'Heure', value: event.eventTime, icon: ClockIcon });
-    if (event.eventTown) tiles.push({ label: 'Ville', value: event.eventTown, icon: Building2Icon });
+    const rows = [];
+    if (formattedDate) rows.push({ label: 'Date', value: formattedDate, icon: CalendarDaysIcon });
+    if (event.eventTime) rows.push({ label: 'Heure', value: event.eventTime, icon: ClockIcon });
+    if (event.eventTown) rows.push({ label: 'Ville', value: event.eventTown, icon: Building2Icon });
     if (event.eventLocation) {
-      tiles.push({
-        label: 'Lieu',
-        value: event.eventLocation,
-        icon: MapPinIcon,
-        href: mapUrl || undefined,
-        wide: true
-      });
+      rows.push({ label: 'Lieu', value: event.eventLocation, icon: MapPinIcon, href: mapUrl || undefined });
     }
-    if (event.dresscode) tiles.push({ label: 'Tenue', value: event.dresscode, icon: ShirtIcon });
-    return tiles;
+    if (event.dresscode) rows.push({ label: 'Tenue', value: event.dresscode, icon: ShirtIcon });
+    return rows;
   }, [formattedDate, event.eventTime, event.eventTown, event.eventLocation, event.dresscode, mapUrl]);
 
   // The three usual answers, plus the recorded value when a response the host
@@ -281,6 +283,14 @@ export default function Invitation() {
 
   const icsUrl = `${apiBaseUrl}/events/${encodeURIComponent(effectiveSlug)}/event.ics`;
 
+  const rsvpOpen = !notFound && !confirmed && !rsvpClosed;
+  // The bar only earns its space while there is an answer to give. The page
+  // reserves room for it as soon as it *could* appear, not only while it is
+  // showing: growing and shrinking the document under a scrolling finger is
+  // what makes a page feel like it is fighting back.
+  const stickyCtaPossible = rsvpOpen && !showRsvpForm && !showLookupForm;
+  const showStickyCta = stickyCtaPossible && !ctaOnScreen;
+
   const googleCalUrl = useMemo(() => {
     if (!eventStart) return '';
     const d = eventStart;
@@ -305,6 +315,29 @@ export default function Invitation() {
     formData.attending === 'yes'
       ? 'Un petit mot pour nous dire votre joie de venir...'
       : "Un petit mot pour s'excuser...";
+
+  // Track the card's RSVP buttons so the sticky bar can stand in for them.
+  useEffect(() => {
+    const node = ctaRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setCtaOnScreen(true);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => setCtaOnScreen(entry.isIntersecting));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [rsvpOpen, showRsvpForm, showLookupForm]);
+
+  // Opening a form from the sticky bar (or from buttons the page has scrolled
+  // past) has to bring the form into view, or the tap looks like it did
+  // nothing. Focus goes to the heading rather than the first field: moving it
+  // into an input would throw up the on-screen keyboard over the form the
+  // visitor has not read yet.
+  useEffect(() => {
+    if (!showRsvpForm && !showLookupForm) return;
+    formPanelRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    formHeadingRef.current?.focus({ preventScroll: true });
+  }, [showRsvpForm, showLookupForm]);
 
   function openRsvpForm() {
     setErrorMessage('');
@@ -437,7 +470,11 @@ export default function Invitation() {
       src/assets/index.css), so every Button, Input and Card below is dressed by
       the selected theme rather than by the neutral admin palette.
     */
-    <div className="theme-surface relative flex min-h-full flex-col items-center justify-center overflow-hidden px-4 py-6">
+    <div
+      className={`theme-surface relative flex min-h-full flex-col items-center justify-center overflow-hidden px-3 py-4 sm:px-4 sm:py-6 ${
+        stickyCtaPossible ? 'pb-24 sm:pb-6' : ''
+      }`}
+    >
       {themeDef.decorations.map((emoji, i) => (
         <div
           key={`${theme}-${i}`}
@@ -451,7 +488,7 @@ export default function Invitation() {
 
       <main className="relative w-full max-w-[500px] animate-card-in overflow-hidden rounded-[20px] bg-card text-card-foreground shadow-[0_25px_50px_rgba(0,0,0,0.1)]">
         <header
-          className="relative overflow-hidden px-6 py-8 text-center text-[color:var(--theme-header-text,#fff)] sm:px-8"
+          className="relative overflow-hidden px-5 py-6 text-center text-[color:var(--theme-header-text,#fff)] sm:px-8 sm:py-8"
           style={{ background: 'var(--theme-header-gradient, linear-gradient(135deg,#ff6b6b,#ff8e8e))' }}
         >
           <span
@@ -470,15 +507,15 @@ export default function Invitation() {
               </span>
             ))}
           </div>
-          <h1 className="relative mt-2.5 font-display text-2xl leading-tight font-bold tracking-wide sm:text-[2rem]">
+          <h1 className="relative mt-2.5 text-balance font-display text-2xl leading-tight font-bold tracking-wide sm:text-[2rem]">
             {themeDef.copy.title}
           </h1>
-          <p className="relative mt-2.5 text-lg opacity-90">{themeDef.copy.subtitle}</p>
+          <p className="relative mt-2 text-pretty text-base opacity-90 sm:mt-2.5 sm:text-lg">{themeDef.copy.subtitle}</p>
         </header>
 
         {notFound ? (
-          <div className="p-6 sm:p-8">
-            <div className="rounded-2xl border-2 border-dashed bg-muted px-6 py-8 text-center">
+          <div className="p-5 sm:p-8">
+            <div className="rounded-2xl border-2 border-dashed bg-muted px-5 py-8 text-center">
               <h2 className="text-lg font-bold text-[color:var(--theme-primary-dark,#c9184a)]">
                 🔍 Événement introuvable
               </h2>
@@ -486,7 +523,7 @@ export default function Invitation() {
             </div>
           </div>
         ) : (
-          <div className="p-6 sm:p-8">
+          <div className="p-5 sm:p-8">
             <div className="text-center">
               <p className="font-display text-[1.7rem] font-bold text-[color:var(--theme-primary,#ff6b6b)]">
                 {event.birthdayPerson}
@@ -503,7 +540,11 @@ export default function Invitation() {
 
             {countdown && (
               <div
-                className="my-6 flex flex-wrap items-stretch justify-center gap-3"
+                className={`my-5 sm:my-6 ${
+                  countdown.isToday || countdown.isPast
+                    ? 'flex justify-center'
+                    : 'mx-auto grid max-w-[19rem] grid-cols-3 gap-2.5 sm:gap-3'
+                }`}
                 role="status"
                 aria-label={countdownAria}
               >
@@ -518,7 +559,7 @@ export default function Invitation() {
                   countdownUnits.map((unit) => (
                     <div
                       key={unit.label}
-                      className="flex min-w-14 flex-col items-center justify-center rounded-2xl px-2.5 py-3 sm:min-w-16"
+                      className="flex flex-col items-center justify-center rounded-2xl px-2 py-3"
                       style={{ background: 'var(--theme-primary-soft, #ff6b6b55)' }}
                     >
                       <span className="font-display text-2xl leading-none font-bold text-[color:var(--theme-primary,#ff6b6b)] tabular-nums sm:text-[1.9rem]">
@@ -531,55 +572,86 @@ export default function Invitation() {
               </div>
             )}
 
-            <div className="my-6 grid gap-3 sm:grid-cols-2">
-              {eventDetails.map((detail) => {
-                const Icon = detail.icon;
-                return (
-                  <div
-                    key={detail.label}
-                    className={`flex items-center gap-3 rounded-2xl bg-muted p-3.5 ${detail.wide ? 'sm:col-span-2' : ''}`}
-                  >
-                    <span
-                      className="flex size-10 shrink-0 items-center justify-center rounded-full text-[color:var(--theme-button-text,#fff)]"
-                      style={{ background: 'var(--theme-badge-gradient, var(--theme-primary,#ff6b6b))' }}
-                    >
-                      <Icon className="size-4" aria-hidden="true" />
-                    </span>
-                    <div className="flex min-w-0 flex-col">
-                      <span className="text-[0.72rem] tracking-wide uppercase opacity-60">{detail.label}</span>
-                      {detail.href ? (
-                        <a
-                          href={detail.href}
-                          target="_blank"
-                          rel="noopener"
-                          className="font-semibold text-[color:var(--theme-primary,#ff6b6b)] underline underline-offset-2"
-                        >
-                          {detail.value}
-                        </a>
-                      ) : (
-                        <span className="font-semibold">{detail.value}</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {/* One grouped list rather than five floating tiles. Five separate
+                cards each with their own padding and shadow ran to roughly
+                450px on a 390px-wide phone and pushed the RSVP button off the
+                bottom of a second screenful; the divided list says the same
+                thing in a little over half the height, and reads as the
+                grouped detail lists both mobile platforms use.
 
-            <div className="flex flex-wrap justify-center gap-2.5">
-              <Button asChild variant="outline" size="sm" className="rounded-full">
+                The fill and the rules are theme tokens, not black at a low
+                alpha: on the dark-surface themes a black wash is invisible,
+                and `--muted` / `--border` are derived from the card's own
+                colours so the list separates itself on either. */}
+            {eventDetails.length > 0 && (
+              <dl className="my-5 overflow-hidden rounded-2xl bg-muted sm:my-6">
+                {eventDetails.map((detail) => {
+                  const Icon = detail.icon;
+                  return (
+                    <div
+                      key={detail.label}
+                      className="flex items-start gap-3 border-t border-border px-3.5 py-2.5 first:border-t-0"
+                    >
+                      <span
+                        className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-[color:var(--theme-button-text,#fff)]"
+                        style={{ background: 'var(--theme-badge-gradient, var(--theme-primary,#ff6b6b))' }}
+                      >
+                        <Icon className="size-3.5" aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <dt className="text-[0.68rem] leading-tight tracking-wide uppercase opacity-60">
+                          {detail.label}
+                        </dt>
+                        <dd className="text-pretty text-[0.95rem] leading-snug font-semibold">
+                          {detail.href ? (
+                            <a
+                              href={detail.href}
+                              target="_blank"
+                              rel="noopener"
+                              className="inline-flex min-h-8 items-center text-[color:var(--theme-primary,#ff6b6b)] underline underline-offset-2"
+                            >
+                              {detail.value}
+                            </a>
+                          ) : (
+                            detail.value
+                          )}
+                        </dd>
+                      </div>
+                    </div>
+                  );
+                })}
+              </dl>
+            )}
+
+            {/* An even row rather than a wrapped one: three pills of different
+                widths broke 2 + 1 across two lines on a phone and read as two
+                unrelated groups. Stacking the icon over the label below `sm`
+                buys each label the full width of its third, so "Calendrier"
+                still fits on a 360px screen. */}
+            <div className={`grid gap-2 ${googleCalUrl ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <Button asChild variant="outline" size="sm" className="h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm">
                 <a href={icsUrl}>
-                  <DownloadIcon /> Calendrier (.ics)
+                  <DownloadIcon />
+                  <span className="truncate">Calendrier</span>
                 </a>
               </Button>
               {googleCalUrl && (
-                <Button asChild variant="outline" size="sm" className="rounded-full">
+                <Button asChild variant="outline" size="sm" className="h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm">
                   <a href={googleCalUrl} target="_blank" rel="noopener">
-                    <CalendarPlusIcon /> Google Agenda
+                    <CalendarPlusIcon />
+                    <span className="truncate">Agenda</span>
                   </a>
                 </Button>
               )}
-              <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={share}>
-                <Share2Icon /> Partager
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm"
+                onClick={share}
+              >
+                <Share2Icon />
+                <span className="truncate">Partager</span>
               </Button>
             </div>
 
@@ -640,8 +712,12 @@ export default function Invitation() {
                     </p>
                   )}
 
+                  {/* Two equally loud gradient buttons made the visitor choose
+                      before reading; answering is what almost everyone is here
+                      for, so it keeps the weight and "already answered" drops
+                      to a quiet second line. */}
                   {!showRsvpForm && !showLookupForm && (
-                    <div className="flex flex-col items-stretch gap-3">
+                    <div ref={ctaRef} className="flex flex-col items-stretch gap-2">
                       <Button
                         size="lg"
                         className="h-auto animate-rsvp-pulse rounded-full py-4 font-display text-lg text-[color:var(--theme-button-text,#fff)] shadow-lg hover:animate-none"
@@ -650,27 +726,28 @@ export default function Invitation() {
                       >
                         🎈 Je réponds à l'invitation
                       </Button>
-                      {/* Deliberately quieter than the CTA above it: this is the
-                          path for someone who has already answered. It used to be
-                          a second full-strength gradient built from `secondary`
-                          and `primaryDark`, a pairing no theme chose on purpose —
-                          and one that turned white-on-cyan on the dark themes. */}
                       <Button
-                        size="lg"
-                        variant="outline"
-                        className="h-auto rounded-full border-2 py-4 font-display text-lg text-[color:var(--theme-primary-dark,#a80b3d)]"
-                        style={{ borderColor: 'var(--theme-primary-dark, #a80b3d)' }}
+                        variant="ghost"
+                        className="rounded-full font-medium text-[color:var(--theme-primary-dark,#c9184a)]"
                         onClick={openLookupForm}
                       >
-                        ✏️ Modifier ma réponse
+                        ✏️ J'ai déjà répondu, je modifie
                       </Button>
                     </div>
                   )}
 
                   {/* ---------- RSVP form ---------- */}
                   {showRsvpForm && (
-                    <form className="mt-5 space-y-5 rounded-2xl bg-muted p-5 sm:p-6" onSubmit={submitRSVP}>
-                      <h2 className="text-center text-xl font-bold text-[color:var(--theme-primary,#ff6b6b)]">
+                    <form
+                      ref={formPanelRef}
+                      className="mt-5 scroll-mt-4 space-y-5 rounded-2xl bg-muted p-4 sm:p-6"
+                      onSubmit={submitRSVP}
+                    >
+                      <h2
+                        ref={formHeadingRef}
+                        tabIndex={-1}
+                        className="text-center text-xl font-bold text-[color:var(--theme-primary,#ff6b6b)] outline-none"
+                      >
                         Réponds à l'invitation
                       </h2>
 
@@ -713,7 +790,7 @@ export default function Invitation() {
                         </Label>
                         <Input
                           id="rsvp-name"
-                          className="h-11 bg-card"
+                          className="bg-card"
                           type="text"
                           required
                           placeholder="Prénom de l'enfant"
@@ -731,7 +808,7 @@ export default function Invitation() {
                         </Label>
                         <Input
                           id="rsvp-phone"
-                          className="h-11 bg-card"
+                          className="bg-card"
                           type="tel"
                           inputMode="tel"
                           autoComplete="tel"
@@ -746,7 +823,7 @@ export default function Invitation() {
                         <Label htmlFor="rsvp-email">✉️ Email du parent</Label>
                         <Input
                           id="rsvp-email"
-                          className="h-11 bg-card"
+                          className="bg-card"
                           type="email"
                           inputMode="email"
                           autoComplete="email"
@@ -766,7 +843,7 @@ export default function Invitation() {
                           >
                             <SelectTrigger
                               id="rsvp-guests"
-                              className="h-11 w-full min-w-0 bg-card *:data-[slot=select-value]:min-w-0"
+                              className="w-full min-w-0 bg-card *:data-[slot=select-value]:min-w-0"
                             >
                               <SelectValue />
                             </SelectTrigger>
@@ -812,7 +889,11 @@ export default function Invitation() {
                         </Alert>
                       )}
 
-                      <div className="flex flex-col gap-3 sm:flex-row">
+                      {/* Stacked, the primary action goes on top: it is the one
+                          the thumb reaches first and the one nearly everyone
+                          wants. Side by side from `sm` up it goes back to the
+                          right, as a desktop dialog expects. */}
+                      <div className="flex flex-col-reverse gap-3 sm:flex-row">
                         <Button type="button" variant="outline" size="lg" className="flex-1" onClick={cancelForm}>
                           Annuler
                         </Button>
@@ -826,8 +907,16 @@ export default function Invitation() {
 
                   {/* ---------- Lookup form ---------- */}
                   {showLookupForm && (
-                    <form className="mt-5 space-y-5 rounded-2xl bg-muted p-5 sm:p-6" onSubmit={lookupRSVP}>
-                      <h2 className="text-center text-xl font-bold text-[color:var(--theme-primary,#ff6b6b)]">
+                    <form
+                      ref={formPanelRef}
+                      className="mt-5 scroll-mt-4 space-y-5 rounded-2xl bg-muted p-4 sm:p-6"
+                      onSubmit={lookupRSVP}
+                    >
+                      <h2
+                        ref={formHeadingRef}
+                        tabIndex={-1}
+                        className="text-center text-xl font-bold text-[color:var(--theme-primary,#ff6b6b)] outline-none"
+                      >
                         Retrouver ma réponse
                       </h2>
                       <div className="grid gap-2">
@@ -839,7 +928,7 @@ export default function Invitation() {
                         </Label>
                         <Input
                           id="lookup-phone"
-                          className="h-11 bg-card"
+                          className="bg-card"
                           type="tel"
                           inputMode="tel"
                           autoComplete="tel"
@@ -856,7 +945,7 @@ export default function Invitation() {
                           <AlertDescription>{errorMessage}</AlertDescription>
                         </Alert>
                       )}
-                      <div className="flex flex-col gap-3 sm:flex-row">
+                      <div className="flex flex-col-reverse gap-3 sm:flex-row">
                         <Button type="button" variant="outline" size="lg" className="flex-1" onClick={cancelForm}>
                           Annuler
                         </Button>
@@ -887,6 +976,25 @@ export default function Invitation() {
           <Link to="/admin">🔐 Admin</Link>
         </Button>
       </div>
+
+      {/* ---------- Sticky RSVP bar (phones) ----------
+        The invitation is a single tall card, so on a phone the one action it
+        exists for sits two screenfuls below the fold. The bar keeps it in the
+        thumb zone the whole way down and retires as soon as the real button
+        scrolls into view. Larger screens show the card's buttons without
+        scrolling, so it never appears there. */}
+      {showStickyCta && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/90 px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] shadow-[0_-6px_24px_rgba(0,0,0,0.15)] backdrop-blur-md sm:hidden">
+          <Button
+            size="lg"
+            className="h-12 w-full rounded-full font-display text-base text-[color:var(--theme-button-text,#fff)] shadow-md"
+            style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }}
+            onClick={openRsvpForm}
+          >
+            🎈 Je réponds à l'invitation
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

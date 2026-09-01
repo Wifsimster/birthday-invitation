@@ -8,15 +8,17 @@ import Auth from './views/Auth.jsx';
 import { ensureSession, refresh } from './session.js';
 
 /**
- * Route guard. The server is the authority — every admin API call is checked
- * again there — but resolving the session up front avoids rendering a dashboard
- * that would only fill with 401s, and routes a registered-but-ungranted account
- * to the pending screen instead of a bare error.
+ * Route guard. The server is the authority — every API call is checked again
+ * there — but resolving the session up front avoids rendering a dashboard that
+ * would only fill with 401s.
  *
- * `requires` is 'admin' (the console) or 'auth' (the pending screen). Nothing
+ * Any session gets through, whatever its role: every registered account owns
+ * the invitations it creates, so the dashboard is not an admin-only place any
+ * more. The role only decides whether the account-management tab shows, and the
+ * server scopes each event route to the caller's own invitations. Nothing
  * renders until the session resolves, so no view sees a half-known session.
  */
-function Guard({ requires, children }) {
+function Guard({ children }) {
   const location = useLocation();
   const [resolved, setResolved] = useState(false);
   const [redirect, setRedirect] = useState(null);
@@ -33,18 +35,13 @@ function Guard({ requires, children }) {
       // Google sign-in lands back on /admin as a full page load; re-read rather
       // than trust a session resolved before the redirect.
       let user = await ensureSession();
-      if (!user && requires === 'admin') user = await refresh();
+      if (!user) user = await refresh();
       if (cancelled) return;
 
       const { pathname, search } = locationRef.current;
       const fullPath = `${pathname}${search}`;
       if (!user) {
         setRedirect(fullPath === '/admin' ? '/login' : `/login?redirect=${encodeURIComponent(fullPath)}`);
-      } else if (requires === 'admin' && user.role !== 'admin') {
-        setRedirect('/pending');
-      } else if (pathname === '/pending' && user.role === 'admin') {
-        // An admin has no reason to sit on the pending screen.
-        setRedirect('/admin');
       } else {
         setRedirect(null);
       }
@@ -53,7 +50,7 @@ function Guard({ requires, children }) {
     return () => {
       cancelled = true;
     };
-  }, [requires, location.pathname]);
+  }, [location.pathname]);
 
   if (!resolved) return null;
   if (redirect) return <Navigate to={redirect} replace />;
@@ -69,7 +66,7 @@ export default function App() {
         <Route
           path="/admin"
           element={
-            <Guard requires="admin">
+            <Guard>
               <Admin />
             </Guard>
           }
@@ -78,14 +75,10 @@ export default function App() {
         <Route path="/register" element={<Auth mode="signup" />} />
         <Route path="/forgot-password" element={<Auth mode="forgot" />} />
         <Route path="/reset-password" element={<Auth mode="reset" />} />
-        <Route
-          path="/pending"
-          element={
-            <Guard requires="auth">
-              <Auth mode="pending" />
-            </Guard>
-          }
-        />
+        {/* Registering used to land here and wait for an admin to grant access.
+            Every account can now run its own invitations, so the screen is gone
+            and the old links (emails, bookmarks) forward to the dashboard. */}
+        <Route path="/pending" element={<Navigate to="/admin" replace />} />
       </Routes>
       <BuildFooter />
       {/* One toaster for the whole app: views raise feedback with `toast()`

@@ -150,6 +150,24 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    /* iOS keeps the previous section under the finger for a beat when a tab or
+       an anchor moves the page; smooth scrolling makes the jump readable. The
+       reduced-motion block at the end of this file turns it back off. */
+    scroll-behavior: smooth;
+  }
+
+  /* The grey flash Android paints over any tapped element fights the components'
+     own :active and focus styles, and it bleeds outside rounded corners. */
+  html,
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Anything the page scrolls to (a tab panel, the RSVP form) has to clear the
+     sticky admin bar, or it lands underneath it. */
+  :target,
+  [data-scroll-margin] {
+    scroll-margin-top: calc(3.5rem + 0.75rem);
   }
 
   /* The app column owns the page height so the build stamp can sit at the end
@@ -159,6 +177,10 @@
     min-height: 100vh;
     min-height: 100dvh;
     flex-direction: column;
+    /* A phone held sideways puts the notch and the rounded corners over the
+       page's left or right edge; the insets are 0 everywhere else. */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   #app > :first-child {
