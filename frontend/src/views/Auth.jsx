@@ -279,7 +279,7 @@ export default function Auth({ mode: routeMode }) {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center px-4 py-10">
+    <div className="flex min-h-full items-center justify-center px-3 py-8 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-4 sm:py-10">
       <Card className="w-full max-w-[26rem] shadow-xl">
         <CardHeader className="text-center">
           <span className="mx-auto mb-1 text-4xl" aria-hidden="true">

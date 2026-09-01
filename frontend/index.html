@@ -3,7 +3,11 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `viewport-fit=cover` lets the page paint under the notch and the home
+         indicator, which is also what makes env(safe-area-inset-*) report real
+         values — the sticky RSVP bar and the admin topbar pad themselves with
+         those. No maximum-scale: pinch zoom stays available. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Invitation d'anniversaire</title>
 
     <!-- SEO / social preview. The server rewrites the <title> and replaces the

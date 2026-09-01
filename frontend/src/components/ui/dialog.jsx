@@ -67,18 +67,28 @@ function DialogContent({ className, children, showCloseButton = true, ...props }
  * long form. Here the overlay owns the scrolling and the panel keeps its natural
  * height, so every field stays reachable. Used by the admin's event and RSVP
  * forms.
+ *
+ * Below `sm` the panel is a full-screen page rather than a floating card — the
+ * pattern every mobile OS uses for a form — so the fields get the whole width
+ * and DialogFooter can pin the actions to the bottom of the screen. From `sm`
+ * up it goes back to a centred, rounded panel.
  */
 function DialogScrollContent({ className, children, ...props }) {
   return (
     <DialogPortal>
       <DialogPrimitive.Overlay
         data-slot="dialog-overlay"
-        className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+        /* `place-items-center` in a scroll container puts the top of an
+           over-tall panel above scroll position 0, where it can never be
+           reached. Centring with an auto margin on a flex item does not: the
+           panel simply starts at the top once it outgrows the viewport. */
+        className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/80 sm:py-8 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
       >
         <DialogPrimitive.Content
           data-slot="dialog-content"
           className={cn(
-            'relative z-50 my-8 grid w-full max-w-lg gap-4 border border-border bg-background p-6 shadow-lg duration-200 sm:rounded-lg md:w-full',
+            'relative z-50 flex min-h-dvh w-full flex-col gap-4 border-border bg-background p-4 pb-0 shadow-lg duration-200',
+            'sm:my-auto sm:h-fit sm:min-h-0 sm:max-w-lg sm:rounded-lg sm:border sm:p-6',
             className
           )}
           onPointerDownOutside={(event) => {
@@ -98,9 +108,9 @@ function DialogScrollContent({ className, children, ...props }) {
           {children}
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="absolute top-4 right-4 rounded-md p-0.5 transition-colors hover:bg-secondary"
+            className="absolute top-2.5 right-3 flex size-10 items-center justify-center rounded-md transition-colors hover:bg-secondary sm:top-4 sm:right-4 sm:size-8"
           >
-            <XIcon className="size-4" />
+            <XIcon className="size-5 sm:size-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         </DialogPrimitive.Content>
@@ -111,15 +121,25 @@ function DialogScrollContent({ className, children, ...props }) {
 
 function DialogHeader({ className, ...props }) {
   return (
-    <div data-slot="dialog-header" className={cn('flex flex-col gap-2 text-center sm:text-left', className)} {...props} />
+    <div data-slot="dialog-header" className={cn('flex flex-col gap-1.5 pr-10 text-left sm:gap-2', className)} {...props} />
   );
 }
 
+/**
+ * Actions stick to the bottom of the phone screen. A long form (the admin's
+ * event editor runs to ten fields) otherwise pushes "Enregistrer" past the
+ * fold, and the visitor has to scroll back down to submit. From `sm` up the
+ * panel is short enough that the footer can go back to sitting in the flow.
+ */
 function DialogFooter({ className, ...props }) {
   return (
     <div
       data-slot="dialog-footer"
-      className={cn('flex flex-col-reverse gap-2 sm:flex-row sm:justify-end', className)}
+      className={cn(
+        'sticky bottom-0 z-10 -mx-4 mt-auto flex flex-col-reverse gap-2 border-t bg-background px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]',
+        'sm:static sm:mx-0 sm:mt-0 sm:flex-row sm:justify-end sm:border-0 sm:p-0',
+        className
+      )}
       {...props}
     />
   );
