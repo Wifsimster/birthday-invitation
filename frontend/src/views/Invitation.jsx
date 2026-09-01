@@ -6,7 +6,6 @@ import {
   CalendarDaysIcon,
   CalendarPlusIcon,
   CircleAlertIcon,
-  ClockIcon,
   DownloadIcon,
   Loader2Icon,
   MapPinIcon,
@@ -240,8 +239,8 @@ export default function Invitation() {
   // tile.
   const eventDetails = useMemo(() => {
     const tiles = [];
-    if (formattedDate) tiles.push({ label: 'Date', value: formattedDate, icon: CalendarDaysIcon });
-    if (event.eventTime) tiles.push({ label: 'Heure', value: event.eventTime, icon: ClockIcon });
+    // Date and time are not repeated here: the hero above the call to action
+    // already carries them.
     if (event.eventTown) tiles.push({ label: 'Ville', value: event.eventTown, icon: Building2Icon });
     if (event.eventLocation) {
       tiles.push({
@@ -254,7 +253,7 @@ export default function Invitation() {
     }
     if (event.dresscode) tiles.push({ label: 'Tenue', value: event.dresscode, icon: ShirtIcon });
     return tiles;
-  }, [formattedDate, event.eventTime, event.eventTown, event.eventLocation, event.dresscode, mapUrl]);
+  }, [event.eventTown, event.eventLocation, event.dresscode, mapUrl]);
 
   // The three usual answers, plus the recorded value when a response the host
   // entered by hand carries more people than the form normally offers — the
@@ -501,6 +500,31 @@ export default function Invitation() {
               )}
             </div>
 
+            {/* The hero answers "who" and "when" before it asks for anything:
+                name, age, then the date on one line. The full grid of practical
+                details moves below the call to action, where it is reference
+                material rather than a hurdle in front of the button. */}
+            {(formattedDate || event.eventTime) && (
+              <p className="mt-4 flex flex-col items-center justify-center gap-x-2 text-center text-base font-semibold opacity-80 sm:flex-row">
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarDaysIcon className="size-4 shrink-0 opacity-70" aria-hidden="true" />
+                  {formattedDate}
+                </span>
+                {event.eventTime && (
+                  <span className="inline-flex items-center gap-2">
+                    {/* The separator only makes sense while the two sit on one
+                        line; stacked on a phone it would dangle. */}
+                    {formattedDate && (
+                      <span className="hidden opacity-40 sm:inline" aria-hidden="true">
+                        •
+                      </span>
+                    )}
+                    {event.eventTime}
+                  </span>
+                )}
+              </p>
+            )}
+
             {countdown && (
               <div
                 className="my-6 flex flex-wrap items-stretch justify-center gap-3"
@@ -531,59 +555,7 @@ export default function Invitation() {
               </div>
             )}
 
-            <div className="my-6 grid gap-3 sm:grid-cols-2">
-              {eventDetails.map((detail) => {
-                const Icon = detail.icon;
-                return (
-                  <div
-                    key={detail.label}
-                    className={`flex items-center gap-3 rounded-2xl bg-black/[0.035] p-3.5 ${detail.wide ? 'sm:col-span-2' : ''}`}
-                  >
-                    <span
-                      className="flex size-10 shrink-0 items-center justify-center rounded-full text-[color:var(--theme-button-text,#fff)]"
-                      style={{ background: 'var(--theme-badge-gradient, var(--theme-primary,#ff6b6b))' }}
-                    >
-                      <Icon className="size-4" aria-hidden="true" />
-                    </span>
-                    <div className="flex min-w-0 flex-col">
-                      <span className="text-[0.72rem] tracking-wide uppercase opacity-60">{detail.label}</span>
-                      {detail.href ? (
-                        <a
-                          href={detail.href}
-                          target="_blank"
-                          rel="noopener"
-                          className="font-semibold text-[color:var(--theme-primary,#ff6b6b)] underline underline-offset-2"
-                        >
-                          {detail.value}
-                        </a>
-                      ) : (
-                        <span className="font-semibold">{detail.value}</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex flex-wrap justify-center gap-2.5">
-              <Button asChild variant="outline" size="sm" className="rounded-full">
-                <a href={icsUrl}>
-                  <DownloadIcon /> Calendrier (.ics)
-                </a>
-              </Button>
-              {googleCalUrl && (
-                <Button asChild variant="outline" size="sm" className="rounded-full">
-                  <a href={googleCalUrl} target="_blank" rel="noopener">
-                    <CalendarPlusIcon /> Google Agenda
-                  </a>
-                </Button>
-              )}
-              <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={share}>
-                <Share2Icon /> Partager
-              </Button>
-            </div>
-
-            <div className="mt-8">
+            <div className="mt-7">
               {/* ---------- Already answered ---------- */}
               {confirmed ? (
                 <div
@@ -637,25 +609,27 @@ export default function Invitation() {
                   )}
 
                   {!showRsvpForm && !showLookupForm && (
-                    <div className="flex flex-col items-stretch gap-3">
+                    /* One short, loud call to action. The other way in — "I
+                       already replied" — is a quiet link underneath rather than
+                       a second full-width button, so nothing competes with the
+                       one we actually want pressed. */
+                    <div className="flex flex-col items-center gap-2">
                       <Button
                         size="lg"
-                        className="h-auto animate-rsvp-pulse rounded-full py-4 font-display text-lg text-[color:var(--theme-button-text,#fff)] shadow-lg hover:animate-none"
+                        className="h-auto w-full animate-rsvp-pulse rounded-full py-5 font-display text-xl tracking-wide text-[color:var(--theme-button-text,#fff)] shadow-lg hover:animate-none"
                         style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }}
                         onClick={openRsvpForm}
                       >
-                        🎈 Je réponds à l'invitation
+                        🎈 Je réponds
                       </Button>
                       <Button
-                        size="lg"
-                        className="h-auto rounded-full py-4 font-display text-lg text-[color:var(--theme-button-text,#fff)] shadow-lg"
-                        style={{
-                          background:
-                            'linear-gradient(135deg, var(--theme-secondary,#667eea), var(--theme-primary-dark,#764ba2))'
-                        }}
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        className="text-current opacity-60 hover:opacity-100"
                         onClick={openLookupForm}
                       >
-                        ✏️ Modifier ma réponse
+                        Déjà répondu ? Modifier
                       </Button>
                     </div>
                   )}
@@ -862,6 +836,68 @@ export default function Invitation() {
                   )}
                 </>
               )}
+            </div>
+
+            {eventDetails.length > 0 && (
+              <>
+                <div className="mt-10 flex items-center gap-3" aria-hidden="true">
+                  <span className="h-px flex-1 bg-black/10" />
+                  <span className="text-[0.68rem] tracking-[0.18em] uppercase opacity-50">Infos pratiques</span>
+                  <span className="h-px flex-1 bg-black/10" />
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {eventDetails.map((detail) => {
+                    const Icon = detail.icon;
+                    return (
+                      <div
+                        key={detail.label}
+                        className={`flex items-center gap-3 rounded-2xl bg-black/[0.035] p-3.5 ${detail.wide ? 'sm:col-span-2' : ''}`}
+                      >
+                        <span
+                          className="flex size-10 shrink-0 items-center justify-center rounded-full text-[color:var(--theme-button-text,#fff)]"
+                          style={{ background: 'var(--theme-badge-gradient, var(--theme-primary,#ff6b6b))' }}
+                        >
+                          <Icon className="size-4" aria-hidden="true" />
+                        </span>
+                        <div className="flex min-w-0 flex-col">
+                          <span className="text-[0.72rem] tracking-wide uppercase opacity-60">{detail.label}</span>
+                          {detail.href ? (
+                            <a
+                              href={detail.href}
+                              target="_blank"
+                              rel="noopener"
+                              className="font-semibold text-[color:var(--theme-primary,#ff6b6b)] underline underline-offset-2"
+                            >
+                              {detail.value}
+                            </a>
+                          ) : (
+                            <span className="font-semibold">{detail.value}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            <div className="mt-6 flex flex-wrap justify-center gap-2.5">
+              <Button asChild variant="outline" size="sm" className="rounded-full">
+                <a href={icsUrl}>
+                  <DownloadIcon /> Calendrier (.ics)
+                </a>
+              </Button>
+              {googleCalUrl && (
+                <Button asChild variant="outline" size="sm" className="rounded-full">
+                  <a href={googleCalUrl} target="_blank" rel="noopener">
+                    <CalendarPlusIcon /> Google Agenda
+                  </a>
+                </Button>
+              )}
+              <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={share}>
+                <Share2Icon /> Partager
+              </Button>
             </div>
           </div>
         )}
