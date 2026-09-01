@@ -15,7 +15,7 @@ single-event deployments keep working unchanged; that one has no owner and stays
 admin-managed.
 
 Deployed on the homelab as `wifsimster/birthday-invitation` behind Traefik at
-`leo-birthday.${DOMAIN}`.
+`birthday.${DOMAIN}`.
 
 > ℹ️ **Provenance:** this repository was originally reconstructed from the
 > published Docker image (the original Vite source had been lost). The frontend
