@@ -2009,20 +2009,22 @@ export default function Admin() {
               <Label htmlFor="event-location">Lieu</Label>
               <Textarea id="event-location" value={eventForm.location} onChange={setEventField('location')} />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-2">
-                <Label htmlFor="event-dress">Dress code</Label>
-                <Input id="event-dress" value={eventForm.dress_code} onChange={setEventField('dress_code')} />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="event-deadline">Date limite de réponse</Label>
-                <Input
-                  id="event-deadline"
-                  type="date"
-                  value={eventForm.rsvp_deadline}
-                  onChange={setEventField('rsvp_deadline')}
-                />
-              </div>
+            {/* A dress code is a sentence, not a word — "Tenue de rechange ou
+                maillot de bain ! Il y aura des jeux d'eau" ran off the end of a
+                single-line input with no way to see what was already saved. It
+                gets the same full-width textarea as the address above it. */}
+            <div className="grid gap-2">
+              <Label htmlFor="event-dress">Dress code</Label>
+              <Textarea id="event-dress" value={eventForm.dress_code} onChange={setEventField('dress_code')} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="event-deadline">Date limite de réponse</Label>
+              <Input
+                id="event-deadline"
+                type="date"
+                value={eventForm.rsvp_deadline}
+                onChange={setEventField('rsvp_deadline')}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="event-theme">Thème</Label>

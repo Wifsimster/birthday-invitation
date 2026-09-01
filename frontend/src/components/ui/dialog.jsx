@@ -81,8 +81,15 @@ function DialogScrollContent({ className, children, ...props }) {
         /* `place-items-center` in a scroll container puts the top of an
            over-tall panel above scroll position 0, where it can never be
            reached. Centring with an auto margin on a flex item does not: the
-           panel simply starts at the top once it outgrows the viewport. */
-        className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/80 sm:py-8 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+           panel simply starts at the top once it outgrows the viewport.
+
+           `items-start` matters as much: the overlay's height is the viewport,
+           so the default `stretch` pinned the panel to exactly that and let a
+           taller form spill past its own background — the bottom of a long
+           edit form sat on the black overlay instead of on the panel. Starting
+           the item at the top lets it take its content height, and the panel's
+           own `min-h-dvh` still fills the screen when the form is short. */
+        className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 sm:py-8 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
       >
         <DialogPrimitive.Content
           data-slot="dialog-content"
