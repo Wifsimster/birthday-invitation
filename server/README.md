@@ -75,6 +75,25 @@ RSVP bodies may include `dietary_restrictions` (allergies). Submissions are
 rejected with `403` once `EVENT_RSVP_DEADLINE` has passed. The lookup response
 is rate-limited and returns only the fields the form needs (never `ip_address`).
 
+### Shared responses (who else is coming)
+```
+GET /api/participants/:phone                    # default event
+GET /api/events/:slug/participants/:phone       # any event
+```
+RSVP bodies may also include `share_response` (boolean): the guest's opt-in
+consent to appear in the list the other guests see. It is only ever set on a
+confirmation — a decline resets it — and an omitted field keeps whatever is
+stored, so a client that predates it never publishes anyone.
+
+The routes above serve that list. The `:phone` is the caller's own, exactly as
+on the lookup route: unless it holds a **confirmed** RSVP for the event the
+answer is `403 { code: 'not_attending' }` — the same answer an unknown number
+gets, so the route is not a membership oracle. It shares the phone-lookup rate
+limiter. The payload carries `participants` (`name` + `guests` of the responses
+that opted in, alphabetical), `shared_count`, `shared_guests`, the event-wide
+`confirmations` / `total_guests`, and `you_share`. Nothing else of a response —
+phone, email, message, allergies — is exposed.
+
 ### Settings (UI theme)
 ```
 GET /api/settings            # { theme } — public, defaults to "fiesta"
@@ -242,6 +261,10 @@ CREATE TABLE rsvp (
   guests INTEGER DEFAULT 1,
   dietary_restrictions TEXT,
   message TEXT,
+  -- Opt-in consent to be listed to the other confirmed guests (migration v6).
+  -- Only name + guests of a row with share_response = 1 is ever served by the
+  -- participants routes; a decline resets it to 0.
+  share_response INTEGER NOT NULL DEFAULT 0,
   ip_address TEXT,
   event_id INTEGER REFERENCES event(id) ON DELETE CASCADE,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

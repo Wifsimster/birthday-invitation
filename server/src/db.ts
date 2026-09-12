@@ -14,6 +14,10 @@ export interface RsvpRow {
   guests: number;
   dietary_restrictions: string | null;
   message: string | null;
+  // 1 when the guest ticked "partager ma réponse" on the invitation form: their
+  // first name and party size may then be listed to the other confirmed guests.
+  // Always 0 for a decline — see `shareFlag` in app.ts.
+  share_response: number;
   ip_address: string | null;
   created_at: string;
   updated_at: string;
@@ -209,6 +213,18 @@ const MIGRATIONS: ((db: Db) => void)[] = [
     // The theme lived in `settings` before v3 and is migrated from there on
     // boot (see event.ts), so a stale row would reintroduce a retired id.
     db.run('DELETE FROM settings WHERE key = ?', ['theme']);
+  },
+  // v6: opt-in sharing of a response with the other guests. A confirmed guest
+  // may tick a box on the invitation form; only rows with share_response = 1
+  // are ever listed back to the other guests (see the participants route in
+  // app.ts). Defaults to 0, so responses recorded before this migration — and
+  // anyone who does not tick the box — stay private.
+  (db) => {
+    try {
+      db.run('ALTER TABLE rsvp ADD COLUMN share_response INTEGER NOT NULL DEFAULT 0');
+    } catch (err) {
+      if (!/duplicate column name/.test((err as Error).message)) throw err;
+    }
   }
 ];
 
@@ -232,7 +248,8 @@ export function initSchema(db: Db): Db {
   // "duplicate column name" just means the column already exists.
   for (const ddl of [
     `ALTER TABLE rsvp ADD COLUMN attending TEXT DEFAULT 'yes' CHECK(attending IN ('yes', 'no'))`,
-    'ALTER TABLE rsvp ADD COLUMN dietary_restrictions TEXT'
+    'ALTER TABLE rsvp ADD COLUMN dietary_restrictions TEXT',
+    'ALTER TABLE rsvp ADD COLUMN share_response INTEGER NOT NULL DEFAULT 0'
   ]) {
     try {
       db.run(ddl);

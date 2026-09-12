@@ -275,7 +275,9 @@ describe('RSVP API', () => {
             expect(res.headers['content-disposition']).toMatch(/rsvps\.csv/);
             expect(res.text.charCodeAt(0)).toBe(0xfeff); // BOM
             const lines = res.text.replace(/^\uFEFF/, '').trim().split('\r\n');
-            expect(lines[0]).toBe('id,name,attending,email,phone,guests,dietary_restrictions,message,created_at,updated_at');
+            expect(lines[0]).toBe(
+                'id,name,attending,email,phone,guests,dietary_restrictions,message,share_response,created_at,updated_at'
+            );
             expect(lines).toHaveLength(3);
             // The quote/comma-bearing message must be RFC 4180 escaped.
             expect(res.text).toContain('"a, b ""c"""');
@@ -302,6 +304,122 @@ describe('RSVP API', () => {
                 .expect(201);
             const res = await request(app).get('/api/rsvp/lookup/+33122000001').expect(200);
             expect(res.body.dietary_restrictions).toBe('Allergie aux arachides');
+        });
+    });
+
+    describe('Shared responses (share_response)', () => {
+        // Everyone below answers on the default event, reachable through both the
+        // legacy routes and /api/events/default/*.
+        const accept = (phone: string, name: string, share: boolean, guests = 2) =>
+            request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ phone, name, guests, share_response: share }))
+                .expect(201);
+
+        it('defaults to not sharing and round-trips the consent through lookup', async () => {
+            await request(app).post('/api/rsvp').send(validRsvp({ phone: '+33144000001' })).expect(201);
+            const quiet = await request(app).get('/api/rsvp/lookup/+33144000001').expect(200);
+            expect(quiet.body.share_response).toBe(0);
+
+            await accept('+33144000002', 'Nina', true);
+            const shared = await request(app).get('/api/rsvp/lookup/+33144000002').expect(200);
+            expect(shared.body.share_response).toBe(1);
+        });
+
+        it('keeps the consent when a resubmission omits the field', async () => {
+            await accept('+33144000003', 'Sam', true);
+            await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ phone: '+33144000003', name: 'Sam', guests: 3 }))
+                .expect(200);
+            const res = await request(app).get('/api/rsvp/lookup/+33144000003').expect(200);
+            expect(res.body).toMatchObject({ guests: 3, share_response: 1 });
+        });
+
+        it('clears the consent when the guest switches to a decline', async () => {
+            await accept('+33144000004', 'Ana', true);
+            await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ phone: '+33144000004', name: 'Ana', attending: 'no', share_response: true }))
+                .expect(200);
+            const res = await request(app).get('/api/rsvp/lookup/+33144000004').expect(200);
+            expect(res.body.share_response).toBe(0);
+        });
+
+        it('lists only the guests who shared, to a guest who confirmed', async () => {
+            await accept('+33144000010', 'Zoé', true, 2);
+            await accept('+33144000011', 'Alice', true, 1);
+            await accept('+33144000012', 'Discret', false, 4);
+            await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ phone: '+33144000013', name: 'Absent', attending: 'no' }))
+                .expect(201);
+
+            const res = await request(app).get('/api/participants/+33144000012').expect(200);
+            // Alphabetical, name + party size only — nothing else of the row.
+            expect(res.body.participants).toEqual([
+                { name: 'Alice', guests: 1 },
+                { name: 'Zoé', guests: 2 }
+            ]);
+            expect(res.body).toMatchObject({
+                shared_count: 2,
+                shared_guests: 3,
+                confirmations: 3,
+                total_guests: 7,
+                you_share: false
+            });
+        });
+
+        it('serves the same list on the event-scoped route', async () => {
+            await accept('+33144000020', 'Manon', true, 2);
+            const res = await request(app).get('/api/events/default/participants/+33144000020').expect(200);
+            expect(res.body.participants).toEqual([{ name: 'Manon', guests: 2 }]);
+            expect(res.body.you_share).toBe(true);
+        });
+
+        it('refuses a caller who declined or never answered', async () => {
+            await accept('+33144000030', 'Léa', true);
+            await request(app)
+                .post('/api/rsvp')
+                .send(validRsvp({ phone: '+33144000031', name: 'Nope', attending: 'no' }))
+                .expect(201);
+
+            const declined = await request(app).get('/api/participants/+33144000031').expect(403);
+            expect(declined.body.code).toBe('not_attending');
+            // An unknown number gets the exact same answer: no membership oracle.
+            const unknown = await request(app).get('/api/participants/+33199999999').expect(403);
+            expect(unknown.body).toEqual(declined.body);
+        });
+
+        it('never leaks a response across events', async () => {
+            await accept('+33144000040', 'Ici', true);
+            db.run("INSERT INTO event (slug, person) VALUES ('autre', 'Autre')");
+            const other = db.get<{ id: number }>("SELECT id FROM event WHERE slug = 'autre'");
+            db.run(
+                "INSERT INTO rsvp (event_id, attending, name, phone, guests, share_response) VALUES (?, 'yes', 'Ailleurs', '+33144000041', 1, 1)",
+                [other!.id]
+            );
+            const res = await request(app).get('/api/participants/+33144000040').expect(200);
+            expect(res.body.participants).toEqual([{ name: 'Ici', guests: 2 }]);
+        });
+
+        it('404s on an unknown event slug', async () => {
+            await request(app).get('/api/events/nope/participants/+33144000001').expect(404);
+        });
+
+        it('leaves the consent alone when an admin edit omits it', async () => {
+            await accept('+33144000050', 'Chloé', true);
+            const listed = await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(200);
+            const row = listed.body.rsvps.find((r: { phone: string }) => r.phone === '+33144000050');
+            expect(row.share_response).toBe(1);
+
+            await request(app)
+                .put(`/api/rsvp/${row.id}`)
+                .set('Cookie', authCookie)
+                .send({ attending: 'yes', name: 'Chloé B.', phone: '+33144000050', guests: 3 })
+                .expect(200);
+            const after = await request(app).get('/api/rsvp/lookup/+33144000050').expect(200);
+            expect(after.body).toMatchObject({ name: 'Chloé B.', share_response: 1 });
         });
     });
 

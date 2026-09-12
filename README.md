@@ -174,6 +174,7 @@ operate on the **default event**.
 | `GET`    | `/api/events/:slug`                     | —     | Public event details + `rsvp_closed`     |
 | `POST`   | `/api/events/:slug/rsvp`                | —     | Submit/update an RSVP for the event       |
 | `GET`    | `/api/events/:slug/rsvp/lookup/:phone`  | —     | Look up an RSVP within the event          |
+| `GET`    | `/api/events/:slug/participants/:phone` | guest | Guests who agreed to share their response |
 | `GET`    | `/api/events/:slug/event.ics`           | —     | Calendar invite (.ics) for the event      |
 | `GET`    | `/api/events/:slug/og.png`              | —     | Share card (1200×630 PNG) for the event   |
 
@@ -203,6 +204,7 @@ id that does not exist, so the API never confirms what it is hiding.
 | `GET`    | `/api/health`             | —     | Health check                             |
 | `POST`   | `/api/rsvp`               | —     | Submit/update an RSVP (default event)    |
 | `GET`    | `/api/rsvp/lookup/:phone` | —     | Look up an RSVP (default event)          |
+| `GET`    | `/api/participants/:phone`| guest | Shared responses (default event)         |
 | `GET`    | `/api/event.ics`          | —     | Calendar invite (.ics), default event    |
 | `GET`    | `/api/og.png`             | —     | Share card (PNG), default event          |
 | `GET`    | `/api/settings`           | —     | Current UI settings (default theme)      |
@@ -219,6 +221,22 @@ id that does not exist, so the API never confirms what it is hiding.
 | `GET`    | `/api/rsvps/export.csv`   | admin | Export RSVPs as CSV (default event)      |
 | `PUT`    | `/api/rsvp/:id`           | admin | Edit an RSVP                             |
 | `DELETE` | `/api/rsvp/:id`           | admin | Delete an RSVP                           |
+
+### Shared responses
+
+A guest answering "je viens" may tick **« Partager ma réponse »**. It is opt-in
+and stored per response (`rsvp.share_response`); a decline always clears it, so
+switching to "je ne peux pas venir" removes the name from the list again.
+
+The two `participants` routes above are how a guest reads that list, and they
+are guest-authenticated the same way the lookup route is: the caller passes the
+phone number they answered with, and the server replies `403 not_attending`
+unless that number holds a **confirmed** RSVP for the event. The same 403 covers
+"never answered", so the endpoint cannot be used to test whether a number is on
+the guest list, and it is behind the phone-lookup rate limiter for the same
+reason. Only the **first name and the party size** of the responses that opted
+in are returned — never a phone, an email, a message or a dietary restriction —
+alongside aggregate counts (confirmations, total guests) that carry no identity.
 
 ### Authentication
 

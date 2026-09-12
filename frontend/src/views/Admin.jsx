@@ -57,6 +57,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
@@ -89,7 +90,9 @@ const EMPTY_RSVP_FORM = {
   phone: '',
   guests: 1,
   dietary_restrictions: '',
-  message: ''
+  message: '',
+  // The guest's own consent to appear in the list the other guests see.
+  share_response: false
 };
 
 const EMPTY_EVENT_FORM = {
@@ -670,7 +673,8 @@ export default function Admin() {
       phone: rsvp.phone,
       guests: rsvp.guests || 1,
       dietary_restrictions: rsvp.dietary_restrictions || '',
-      message: rsvp.message || ''
+      message: rsvp.message || '',
+      share_response: Boolean(rsvp.share_response)
     });
     setShowEditModal(true);
   }
@@ -699,7 +703,8 @@ export default function Admin() {
         phone: editForm.phone,
         guests: Number.isInteger(guests) ? guests : undefined,
         dietary_restrictions: editForm.dietary_restrictions,
-        message: editForm.message
+        message: editForm.message,
+        share_response: editForm.share_response
       });
       const wasCreate = editMode === 'create';
       const res = wasCreate
@@ -1427,6 +1432,11 @@ export default function Admin() {
                                       👥 {rsvp.guests}
                                     </Badge>
                                   )}
+                                  {rsvp.attending === 'yes' && Boolean(rsvp.share_response) && (
+                                    <Badge variant="outline" className="text-muted-foreground">
+                                      👋 Réponse partagée
+                                    </Badge>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex shrink-0 items-center gap-1">
@@ -1920,6 +1930,30 @@ export default function Admin() {
                 onChange={setEditField('dietary_restrictions')}
               />
             </div>
+            {editForm.attending === 'yes' && (
+              /* The guest ticks this themselves on the invitation; it is here so
+                 a response taken by phone can carry the same consent, and so an
+                 admin can honour a "retire-moi de la liste" asked for out of
+                 band. */
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="edit-share"
+                  className="mt-0.5"
+                  checked={editForm.share_response}
+                  onCheckedChange={(checked) =>
+                    setEditForm((prev) => ({ ...prev, share_response: checked === true }))
+                  }
+                />
+                <div className="grid gap-1">
+                  <Label htmlFor="edit-share" className="cursor-pointer">
+                    <span aria-hidden="true">👋</span> Réponse partagée avec les autres invités
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Le prénom et le nombre de personnes apparaissent dans la liste visible par les invités confirmés.
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="edit-message">
                 <span aria-hidden="true">💌</span> Message

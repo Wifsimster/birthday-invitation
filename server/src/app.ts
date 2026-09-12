@@ -156,7 +156,11 @@ function rsvpSchema(opts: { requireAttending: boolean; minGuests: number }) {
       .max(10, guestsMessage(opts.minGuests))
       .optional(),
     dietary_restrictions: optionalText(500),
-    message: optionalText(2000)
+    message: optionalText(2000),
+    // Opt-in: may this response be listed to the other confirmed guests?
+    // Absent means "leave as is" on an update and "no" on a create, so a client
+    // that predates the field never publishes anyone by accident.
+    share_response: z.boolean().optional()
   });
 }
 
@@ -361,9 +365,18 @@ function guestCount(attending: 'yes' | 'no', guests?: number | null): number {
   return attending === 'yes' ? (guests || 1) : 0;
 }
 
+// The stored sharing consent. Only a confirmed guest can appear in the list the
+// other guests see, so a decline always resets the flag — otherwise switching
+// "je viens" to "je ne viens pas" would leave the name published. `current` is
+// the value already stored, kept when the caller omits the field.
+function shareFlag(attending: 'yes' | 'no', consent?: boolean, current = false): number {
+  if (attending !== 'yes') return 0;
+  return (consent ?? current) ? 1 : 0;
+}
+
 const CSV_COLUMNS = [
   'id', 'name', 'attending', 'email', 'phone', 'guests', 'dietary_restrictions',
-  'message', 'created_at', 'updated_at'
+  'message', 'share_response', 'created_at', 'updated_at'
 ] as const;
 
 // Render RSVP rows as a CSV document (RFC 4180 quoting).
@@ -410,7 +423,14 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     // so guest phone numbers never land in the request logs.
     serializers: {
       req(req: { url?: string }) {
-        if (req.url) req.url = req.url.replace(/\/api\/rsvp\/lookup\/[^?]+/, '/api/rsvp/lookup/[redacted]');
+        // Both the un-slugged and the event-scoped variants, plus the guest
+        // list route, carry the phone number as the last path segment.
+        if (req.url) {
+          req.url = req.url.replace(
+            /(\/api\/(?:events\/[^/]+\/)?(?:rsvp\/lookup|participants))\/[^?]+/,
+            '$1/[redacted]'
+          );
+        }
         return req;
       }
     }
@@ -760,7 +780,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(400).json({ error: 'Le numéro de téléphone est requis' });
     }
     const row = db.get<RsvpRow>(
-      `SELECT id, attending, name, email, phone, guests, dietary_restrictions, message
+      `SELECT id, attending, name, email, phone, guests, dietary_restrictions, message, share_response
        FROM rsvp WHERE event_id = ? AND phone = ? ORDER BY created_at DESC LIMIT 1`,
       [defaultEventId(), phone]
     );
@@ -793,25 +813,26 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     const dietary = body.dietary_restrictions ? body.dietary_restrictions : null;
 
     const eventId = defaultEventId();
-    const existing = db.get<{ id: number }>(
-      'SELECT id FROM rsvp WHERE event_id = ? AND phone = ?',
+    const existing = db.get<{ id: number; share_response: number }>(
+      'SELECT id, share_response FROM rsvp WHERE event_id = ? AND phone = ?',
       [eventId, phone]
     );
+    const share = shareFlag(attending, body.share_response, Boolean(existing?.share_response));
 
     if (existing) {
       db.run(`
         UPDATE rsvp
         SET attending = ?, name = ?, email = ?, guests = ?, dietary_restrictions = ?,
-            message = ?, ip_address = ?, updated_at = CURRENT_TIMESTAMP
+            message = ?, share_response = ?, ip_address = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `, [attending, body.name, email, guests, dietary, message, ipAddress, existing.id]);
+      `, [attending, body.name, email, guests, dietary, message, share, ipAddress, existing.id]);
       return res.json({ message: 'Réponse mise à jour avec succès !', id: existing.id });
     }
 
     const result = db.run(`
-      INSERT INTO rsvp (event_id, attending, name, email, phone, guests, dietary_restrictions, message, ip_address)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [eventId, attending, body.name, email, phone, guests, dietary, message, ipAddress]);
+      INSERT INTO rsvp (event_id, attending, name, email, phone, guests, dietary_restrictions, message, share_response, ip_address)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [eventId, attending, body.name, email, phone, guests, dietary, message, share, ipAddress]);
 
     res.status(201).json({ message: 'Réponse soumise avec succès !', id: Number(result.lastID) });
   }));
@@ -835,8 +856,8 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     const attending = body.attending as 'yes' | 'no';
     const guests = guestCount(attending, body.guests);
     const result = db.run(`
-      INSERT INTO rsvp (event_id, attending, name, email, phone, guests, dietary_restrictions, message)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO rsvp (event_id, attending, name, email, phone, guests, dietary_restrictions, message, share_response)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       eventId,
       attending,
@@ -845,7 +866,8 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       phone,
       guests,
       body.dietary_restrictions ? body.dietary_restrictions : null,
-      body.message ? body.message : null
+      body.message ? body.message : null,
+      shareFlag(attending, body.share_response)
     ]);
     res.status(201).json({ message: 'RSVP ajouté avec succès !', id: Number(result.lastID) });
   }));
@@ -877,10 +899,16 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(409).json({ error: 'Une réponse existe déjà pour ce numéro' });
     }
 
+    // The guest's own consent is not the admin's to flip by accident: an edit
+    // that omits the field keeps whatever the guest chose.
+    const current = db.get<{ share_response: number }>(
+      'SELECT share_response FROM rsvp WHERE id = ? AND event_id = ?',
+      [rsvpId, eventId]
+    );
     const result = db.run(`
       UPDATE rsvp
       SET attending = ?, name = ?, email = ?, phone = ?, guests = ?,
-          dietary_restrictions = ?, message = ?, updated_at = CURRENT_TIMESTAMP
+          dietary_restrictions = ?, message = ?, share_response = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND event_id = ?
     `, [
       attending,
@@ -890,6 +918,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       guestCount(attending, body.guests),
       body.dietary_restrictions ? body.dietary_restrictions : null,
       body.message ? body.message : null,
+      shareFlag(attending, body.share_response, Boolean(current?.share_response)),
       rsvpId,
       eventId
     ]);
@@ -1089,8 +1118,8 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     const attending = body.attending as 'yes' | 'no';
     const guests = guestCount(attending, body.guests);
     const result = db.run(`
-      INSERT INTO rsvp (event_id, attending, name, email, phone, guests, dietary_restrictions, message)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO rsvp (event_id, attending, name, email, phone, guests, dietary_restrictions, message, share_response)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       id,
       attending,
@@ -1099,7 +1128,8 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       phone,
       guests,
       body.dietary_restrictions ? body.dietary_restrictions : null,
-      body.message ? body.message : null
+      body.message ? body.message : null,
+      shareFlag(attending, body.share_response)
     ]);
     res.status(201).json({ message: 'RSVP ajouté avec succès !', id: Number(result.lastID) });
   }));
@@ -1125,10 +1155,15 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     if (phoneTaken(id, phone, rsvpId)) {
       return res.status(409).json({ error: 'Une réponse existe déjà pour ce numéro' });
     }
+    // See the legacy edit route: an omitted consent keeps the guest's choice.
+    const current = db.get<{ share_response: number }>(
+      'SELECT share_response FROM rsvp WHERE id = ? AND event_id = ?',
+      [rsvpId, id]
+    );
     const result = db.run(`
       UPDATE rsvp
       SET attending = ?, name = ?, email = ?, phone = ?, guests = ?,
-          dietary_restrictions = ?, message = ?, updated_at = CURRENT_TIMESTAMP
+          dietary_restrictions = ?, message = ?, share_response = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND event_id = ?
     `, [
       attending,
@@ -1138,6 +1173,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       guestCount(attending, body.guests),
       body.dietary_restrictions ? body.dietary_restrictions : null,
       body.message ? body.message : null,
+      shareFlag(attending, body.share_response, Boolean(current?.share_response)),
       rsvpId,
       id
     ]);
@@ -1194,24 +1230,25 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
     const message = body.message ? body.message : null;
     const dietary = body.dietary_restrictions ? body.dietary_restrictions : null;
 
-    const existing = db.get<{ id: number }>(
-      'SELECT id FROM rsvp WHERE event_id = ? AND phone = ?',
+    const existing = db.get<{ id: number; share_response: number }>(
+      'SELECT id, share_response FROM rsvp WHERE event_id = ? AND phone = ?',
       [row.id, phone]
     );
+    const share = shareFlag(attending, body.share_response, Boolean(existing?.share_response));
     if (existing) {
       db.run(`
         UPDATE rsvp
         SET attending = ?, name = ?, email = ?, guests = ?, dietary_restrictions = ?,
-            message = ?, ip_address = ?, updated_at = CURRENT_TIMESTAMP
+            message = ?, share_response = ?, ip_address = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `, [attending, body.name, email, guests, dietary, message, ipAddress, existing.id]);
+      `, [attending, body.name, email, guests, dietary, message, share, ipAddress, existing.id]);
       return res.json({ message: 'Réponse mise à jour avec succès !', id: existing.id });
     }
 
     const result = db.run(`
-      INSERT INTO rsvp (event_id, attending, name, email, phone, guests, dietary_restrictions, message, ip_address)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [row.id, attending, body.name, email, phone, guests, dietary, message, ipAddress]);
+      INSERT INTO rsvp (event_id, attending, name, email, phone, guests, dietary_restrictions, message, share_response, ip_address)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [row.id, attending, body.name, email, phone, guests, dietary, message, share, ipAddress]);
     res.status(201).json({ message: 'Réponse soumise avec succès !', id: Number(result.lastID) });
   }));
 
@@ -1226,7 +1263,7 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(400).json({ error: 'Le numéro de téléphone est requis' });
     }
     const rsvp = db.get<RsvpRow>(
-      `SELECT id, attending, name, email, phone, guests, dietary_restrictions, message
+      `SELECT id, attending, name, email, phone, guests, dietary_restrictions, message, share_response
        FROM rsvp WHERE event_id = ? AND phone = ? ORDER BY created_at DESC LIMIT 1`,
       [row.id, phone]
     );
@@ -1234,6 +1271,68 @@ export function createApp(db: Db, options: CreateAppOptions = {}): Express {
       return res.status(404).json({ error: 'Aucune réponse trouvée pour ce numéro de téléphone' });
     }
     res.json(rsvp);
+  }));
+
+  // --- Shared guest list ------------------------------------------------------
+  // Who else is coming, as seen by a guest. Two rules keep this from becoming a
+  // public directory of the invitation:
+  //   * the caller has to prove they are a confirmed guest of that event by
+  //     giving the phone number they answered with (same identity the RSVP form
+  //     uses), and
+  //   * only the responses whose owner ticked "partager ma réponse" are listed,
+  //     with just the name and the party size — never a phone, an email, a
+  //     message or a dietary restriction.
+  // Rate-limited with the phone-lookup limiter: the phone parameter makes it the
+  // same enumeration oracle.
+  const sharedGuests = (eventId: number, rawPhone: string, res: Response): void => {
+    const phone = normalizePhone(rawPhone);
+    if (!phone) {
+      res.status(400).json({ error: 'Le numéro de téléphone est requis' });
+      return;
+    }
+    const viewer = db.get<{ attending: 'yes' | 'no'; share_response: number }>(
+      'SELECT attending, share_response FROM rsvp WHERE event_id = ? AND phone = ? ORDER BY created_at DESC LIMIT 1',
+      [eventId, phone]
+    );
+    if (!viewer || viewer.attending !== 'yes') {
+      // One answer for "never answered" and for "answered no", so the endpoint
+      // cannot be used to test whether a number is on the guest list.
+      res.status(403).json({
+        error: 'Cette liste est réservée aux invités ayant confirmé leur venue.',
+        code: 'not_attending'
+      });
+      return;
+    }
+    const participants = db.all<{ name: string; guests: number }>(
+      `SELECT name, guests FROM rsvp
+       WHERE event_id = ? AND attending = 'yes' AND share_response = 1
+       ORDER BY name COLLATE NOCASE ASC, id ASC`,
+      [eventId]
+    );
+    const counts = countRsvps(db, eventId);
+    res.json({
+      participants,
+      shared_count: participants.length,
+      shared_guests: participants.reduce((sum, row) => sum + (row.guests || 0), 0),
+      // Aggregates over *every* confirmation, so the list can say how many of
+      // the confirmed guests chose to appear in it. No identity attached.
+      confirmations: counts.confirmations,
+      total_guests: counts.total_guests,
+      you_share: viewer.share_response === 1
+    });
+  };
+
+  app.get('/api/events/:slug/participants/:phone', lookupLimiter, asyncHandler((req, res) => {
+    const row = getEventBySlug(db, String(req.params.slug));
+    if (!row) {
+      return res.status(404).json({ error: 'Événement introuvable' });
+    }
+    sharedGuests(row.id, String(req.params.phone ?? ''), res);
+  }));
+
+  // Legacy un-slugged variant: the shared guest list of the default event.
+  app.get('/api/participants/:phone', lookupLimiter, asyncHandler((req, res) => {
+    sharedGuests(defaultEventId(), String(req.params.phone ?? ''), res);
   }));
 
   // --- Open Graph share card -------------------------------------------------

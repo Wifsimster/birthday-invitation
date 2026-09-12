@@ -10,10 +10,12 @@ import {
   Loader2Icon,
   MapPinIcon,
   Share2Icon,
-  ShirtIcon
+  ShirtIcon,
+  UsersIcon
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -46,7 +48,9 @@ const EMPTY_FORM = {
   email: '',
   guests: 1,
   dietary_restrictions: '',
-  message: ''
+  message: '',
+  // Opt-in, never pre-ticked: sharing has to be a deliberate gesture.
+  share_response: false
 };
 
 /**
@@ -110,6 +114,12 @@ export default function Invitation() {
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupPhoneNumber, setLookupPhoneNumber] = useState('');
   const [formData, setFormData] = useState(EMPTY_FORM);
+  // The phone number of the guest reading the page, once they have proved who
+  // they are by answering (or by retrieving their answer). It is what the guest
+  // list route authenticates against — nothing is fetched before that.
+  const [viewerPhone, setViewerPhone] = useState('');
+  const [guestList, setGuestList] = useState(null);
+  const [guestListState, setGuestListState] = useState('idle');
 
   const ctaRef = useRef(null);
   const formPanelRef = useRef(null);
@@ -338,6 +348,34 @@ export default function Invitation() {
     formHeadingRef.current?.focus({ preventScroll: true });
   }, [showRsvpForm, showLookupForm]);
 
+  // Fetch the guests who agreed to appear in the list. The phone number is the
+  // guest's identity here exactly as it is on the RSVP form: the server answers
+  // 403 to anyone who has not confirmed their own attendance, which is the
+  // normal case for a decline — the panel then simply stays hidden.
+  const loadGuestList = useCallback(
+    async (phone) => {
+      const identity = String(phone ?? '').trim();
+      if (!identity) return;
+      setGuestListState('loading');
+      try {
+        const res = await fetch(
+          `${apiBaseUrl}/events/${encodeURIComponent(effectiveSlug)}/participants/${encodeURIComponent(identity)}`
+        );
+        if (!res.ok) {
+          setGuestList(null);
+          setGuestListState(res.status === 403 ? 'idle' : 'error');
+          return;
+        }
+        setGuestList(await res.json());
+        setGuestListState('ready');
+      } catch {
+        setGuestList(null);
+        setGuestListState('error');
+      }
+    },
+    [effectiveSlug]
+  );
+
   function openRsvpForm() {
     setErrorMessage('');
     setShowRsvpForm(true);
@@ -405,20 +443,32 @@ export default function Invitation() {
           phone: formData.phone,
           guests: formData.guests,
           dietary_restrictions: formData.dietary_restrictions,
-          message: formData.message
+          message: formData.message,
+          share_response: formData.share_response
         })
       });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Erreur lors de l'envoi");
       }
+      const isAttending = formData.attending === 'yes';
       setConfirmed({
-        isAttending: formData.attending === 'yes',
+        isAttending,
         name: formData.name,
         guests: formData.guests,
-        message: formData.message
+        message: formData.message,
+        shareResponse: isAttending && formData.share_response
       });
       setShowRsvpForm(false);
+      setViewerPhone(formData.phone);
+      if (isAttending) {
+        // Reload rather than patch the list locally: the answer just changed
+        // the guest's own line in it, and other guests may have answered since.
+        loadGuestList(formData.phone);
+      } else {
+        setGuestList(null);
+        setGuestListState('idle');
+      }
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -451,11 +501,16 @@ export default function Invitation() {
         phone: data.phone,
         guests: data.guests || 1,
         dietary_restrictions: data.dietary_restrictions || '',
-        message: data.message || ''
+        message: data.message || '',
+        share_response: Boolean(data.share_response)
       });
       setShowLookupForm(false);
       setShowRsvpForm(true);
       setLookupPhoneNumber('');
+      // Retrieving one's own response proves the same thing a submission does,
+      // so a guest coming back gets the list without having to answer again.
+      setViewerPhone(data.phone);
+      if (data.attending === 'yes') loadGuestList(data.phone);
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -808,6 +863,32 @@ export default function Invitation() {
                         </div>
                       )}
 
+                      {formData.attending === 'yes' && (
+                        /* Consent, so: opt-in, never pre-ticked, and the label
+                           says exactly what leaves the row — the prénom and the
+                           party size, nothing else. Téléphone, email, allergies
+                           and message are never shown to another guest. */
+                        <div className="flex items-start gap-3 rounded-xl border-2 bg-card p-3">
+                          <Checkbox
+                            id="rsvp-share"
+                            className="mt-0.5"
+                            checked={formData.share_response}
+                            onCheckedChange={(checked) =>
+                              setFormData((prev) => ({ ...prev, share_response: checked === true }))
+                            }
+                          />
+                          <div className="grid gap-1">
+                            <Label htmlFor="rsvp-share" className="cursor-pointer font-medium">
+                              👋 Partager ma réponse avec les autres invités
+                            </Label>
+                            <p className="text-sm text-muted-foreground">
+                              Seuls ton prénom et le nombre de personnes apparaîtront, et uniquement pour les invités
+                              qui ont eux aussi confirmé leur venue.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="grid gap-2">
                         <Label htmlFor="rsvp-message">💌 Message (optionnel)</Label>
                         <Textarea
@@ -903,6 +984,72 @@ export default function Invitation() {
                 </>
               )}
             </div>
+
+            {/* ---------- Who else is coming ----------
+                Only ever rendered once the server has answered the guest's own
+                phone number with a list, i.e. once it has established that this
+                reader is a confirmed guest. A visitor who has not answered, or
+                who declined, never sees this block. */}
+            {guestListState === 'ready' && guestList && (
+              <section className="t-tile mt-6 p-4 sm:p-5" aria-labelledby="guest-list-heading">
+                <h2
+                  id="guest-list-heading"
+                  className="flex items-center gap-2 text-lg font-bold text-[color:var(--theme-primary,#ff6b6b)]"
+                >
+                  <UsersIcon className="size-4.5" aria-hidden="true" />
+                  Qui vient ?
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {guestList.confirmations} réponse(s) confirmée(s) pour {guestList.total_guests} personne(s).{' '}
+                  {guestList.shared_count > 0
+                    ? `${guestList.shared_count} invité(s) ont accepté de partager leur réponse.`
+                    : 'Personne ne partage encore sa réponse.'}
+                </p>
+
+                {guestList.participants.length > 0 ? (
+                  <ul className="mt-3 grid gap-1.5">
+                    {guestList.participants.map((participant, i) => (
+                      <li
+                        key={`${participant.name}-${i}`}
+                        className="flex items-center justify-between gap-3 rounded-xl bg-card px-3 py-2"
+                      >
+                        <span className="min-w-0 truncate font-medium">🎈 {participant.name}</span>
+                        <span className="shrink-0 text-sm text-muted-foreground">
+                          {participant.guests} pers.
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 rounded-xl border-2 border-dashed px-3 py-4 text-center text-sm text-muted-foreground">
+                    Sois le premier à partager ta réponse ! 🎉
+                  </p>
+                )}
+
+                {!guestList.you_share && (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Ta réponse reste privée. Coche « Partager ma réponse » en modifiant ta réponse pour apparaître
+                    dans cette liste.
+                  </p>
+                )}
+              </section>
+            )}
+
+            {guestListState === 'loading' && (
+              <p className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground" role="status">
+                <Loader2Icon className="size-4 animate-spin" aria-hidden="true" />
+                Chargement des invités...
+              </p>
+            )}
+
+            {guestListState === 'error' && (
+              <div className="mt-6 flex flex-col items-center gap-2">
+                <p className="text-sm text-muted-foreground">La liste des invités n'a pas pu être chargée.</p>
+                <Button variant="outline" size="sm" onClick={() => loadGuestList(viewerPhone)}>
+                  Réessayer
+                </Button>
+              </div>
+            )}
 
             {/* The practical details sit below the call to action now, under a
                 rule that marks them as reference rather than something to read
