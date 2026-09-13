@@ -64,12 +64,6 @@ export function applySeo({ title, description, robots = 'index, follow', url, im
   setLink('canonical', canonical);
 }
 
-/** Absolute URL of an event's share card, matching the server's own routes. */
-export function ogImageUrl(apiBaseUrl, slug) {
-  const path = slug ? `${apiBaseUrl}/events/${encodeURIComponent(slug)}/og.png` : `${apiBaseUrl}/og.png`;
-  return new URL(path, window.location.origin).href;
-}
-
 /** Title + description for one event. Mirrors buildEventMeta on the server. */
 export function eventSeo({ person, age, formattedDate, time, town, location, rsvpClosed }) {
   if (!person) {
