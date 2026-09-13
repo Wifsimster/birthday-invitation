@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
 import type { EventRow } from './db.ts';
 import { getPalette } from './themes.ts';
-import { isRsvpClosed, eventConfigFromRow } from './event.ts';
+import { isRsvpClosed, eventConfigFromRow } from './domain/event.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');

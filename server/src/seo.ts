@@ -9,7 +9,7 @@
 // dist/index.html per request (see the static SPA section of app.ts).
 
 import type { EventRow } from './db.ts';
-import { isRsvpClosed, eventConfigFromRow } from './event.ts';
+import { isRsvpClosed, eventConfigFromRow } from './domain/event.ts';
 import { OG_WIDTH, OG_HEIGHT, ogImageAlt } from './og-image.ts';
 
 export interface SeoMeta {
