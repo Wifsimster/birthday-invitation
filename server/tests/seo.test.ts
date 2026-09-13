@@ -15,7 +15,7 @@ import {
     indexingAllowed,
     renderIndexHtml,
     resolveOrigin
-} from '../src/seo.ts';
+} from '../src/seo/index.ts';
 
 process.env.BETTER_AUTH_SECRET = 'test-secret-0123456789-abcdefghijklmnop';
 process.env.BETTER_AUTH_URL = 'http://localhost:3000';

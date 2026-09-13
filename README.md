@@ -109,7 +109,7 @@ a `rsvp-*.db` snapshot over `/app/data/rsvp.db`.
 Guests mostly arrive by pasting the invitation link into a chat. Those scrapers
 (WhatsApp, Messenger, iMessage, Slack, X) and search-engine crawlers never run
 the SPA's JavaScript, so the server renders each event's metadata **into the
-HTML shell** before sending it ([`server/src/seo.ts`](server/src/seo.ts)):
+HTML shell** before sending it ([`server/src/seo/`](server/src/seo/)):
 
 - `<title>` and `<meta name="description">` built from the event — who, how old,
   when and where, plus whether RSVPs are still open.
@@ -281,20 +281,26 @@ npm test           # vitest (runs against the real app via createApp)
 npm run lint       # eslint (typescript-eslint)
 ```
 
-The TypeScript server is split for testability:
+The TypeScript server is layered, so each concern has one home (see
+[`docs/SOLID-REVIEW.md`](docs/SOLID-REVIEW.md) for why it is shaped this way):
 
-| File             | Responsibility                                   |
-| ---------------- | ------------------------------------------------ |
-| `server.ts`      | Bootstrap: open DB, build app, listen, shutdown  |
-| `src/app.ts`     | `createApp(db, options)` — routes, zod validation |
-| `src/auth.ts`    | Better Auth (email/password + Google), roles, admin seed |
-| `src/mailer.ts`  | Resend/SMTP transport (nodemailer), no-op when unconfigured |
-| `src/emails.ts`  | Verification / password-reset email templates    |
-| `src/db.ts`      | Open SQLite (better-sqlite3), schema/migrations  |
-| `src/event.ts`   | Event config + `.ics` calendar invite            |
-| `src/themes.ts`  | Allow-list of theme ids, retired-id aliases, share-card palettes |
-| `src/logger.ts`  | pino structured logger                           |
-| `tests/`         | Vitest hitting `createApp` over an in-memory DB  |
+| File / directory    | Responsibility                                   |
+| ------------------- | ------------------------------------------------ |
+| `server.ts`         | Bootstrap: open DB, build app, listen, shutdown  |
+| `src/app.ts`        | `createApp(db, options)` — the composition root: wires the pieces and mounts the routers |
+| `src/domain/`       | The rules, with no Express and no SQL: event config + `.ics`, RSVP normalisation, the ownership policy, `DomainError` |
+| `src/repositories/` | One narrow port per aggregate, plus its SQLite adapter — the only code that knows the schema |
+| `src/services/`     | The use-cases (events, RSVPs, accounts, share card), depending on those ports |
+| `src/http/`         | Transport: guards, zod validation, presenters, CSV, rate limits, security headers, error mapping |
+| `src/routes/`       | Seven routers, one slice of the API each        |
+| `src/seo/`          | Page metadata, shell injection, robots.txt + sitemap.xml |
+| `src/auth.ts`       | Better Auth (email/password + Google), roles, admin seed |
+| `src/mailer.ts`     | Resend/SMTP transport (nodemailer), no-op when unconfigured |
+| `src/emails.ts`     | Verification / password-reset email templates    |
+| `src/db.ts`         | Open SQLite (better-sqlite3); `src/migrations.ts` holds the schema history |
+| `src/themes.ts`     | Allow-list of theme ids, retired-id aliases, share-card palettes |
+| `src/logger.ts`     | pino structured logger                           |
+| `tests/`            | Vitest hitting `createApp` over an in-memory DB, plus the services against fake repositories |
 
 Tests exercise the same `createApp` used in production, so they can't drift from
 the real routes. CI runs typecheck + lint + tests and builds the Docker image on
@@ -309,12 +315,14 @@ npm run dev      # Vite dev server (proxy /api to the backend, or run both)
 npm run build    # builds the SPA into ../dist (served by the backend)
 ```
 
-| File                     | Responsibility                                   |
+| File / directory         | Responsibility                                   |
 | ------------------------ | ------------------------------------------------ |
 | `src/App.jsx`            | Routes, the session route guard and the toaster  |
-| `src/views/Invitation.jsx` | Per-event invitation, RSVP + lookup (`/`, `/e/:slug`) |
-| `src/views/Admin.jsx`    | Dashboard: the account's events, create/edit/theme/share, per-event RSVPs, account access for admins (`/admin`) |
-| `src/views/Auth.jsx`     | Sign-in, sign-up, Google, password reset, email confirmation |
+| `src/api/`               | The only place the app talks HTTP: one client, endpoints named as functions |
+| `src/hooks/`             | The state each view moves: events, RSVPs, accounts, guest list, countdown, polling |
+| `src/views/Invitation.jsx` | Per-event invitation, RSVP + lookup (`/`, `/e/:slug`) — composed from `src/views/invitation/` |
+| `src/views/Admin.jsx`    | Dashboard: the account's events, create/edit/theme/share, per-event RSVPs, account access for admins (`/admin`) — composed from `src/views/admin/` |
+| `src/views/Auth.jsx`     | Sign-in, sign-up, Google, password reset, email confirmation — flows described in `src/views/auth/modes.js` |
 | `src/session.js`         | Session + role store (`useSession`), read from `/api/me` |
 | `src/components/ui/`     | shadcn/ui components (Radix primitives)          |
 | `src/env.js`             | Reads runtime config from `window.ENV`           |

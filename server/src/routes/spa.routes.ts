@@ -11,7 +11,7 @@ import type { EventRow } from '../db.ts';
 import {
   buildEventMeta, buildRobotsTxt, buildSitemapXml, FALLBACK_META, indexingAllowed,
   renderIndexHtml, resolveOrigin
-} from '../seo.ts';
+} from '../seo/index.ts';
 import type { EventService } from '../services/event.service.ts';
 import type { EventRepository } from '../repositories/types.ts';
 
