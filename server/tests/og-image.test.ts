@@ -7,7 +7,7 @@ import { createApp } from '../src/app.ts';
 import { createAuth, migrateAuth, seedAdminUser } from '../src/auth.ts';
 import { openDb, initSchema, type Db, type EventRow } from '../src/db.ts';
 import { buildOgSvg, cardContent, ogImageAlt, renderOgPng, stripPictographs, OG_WIDTH, OG_HEIGHT } from '../src/og-image.ts';
-import { buildEventMeta, renderIndexHtml } from '../src/seo.ts';
+import { buildEventMeta, renderIndexHtml } from '../src/seo/index.ts';
 import { THEME_IDS } from '../src/themes.ts';
 
 process.env.BETTER_AUTH_SECRET = 'test-secret-0123456789-abcdefghijklmnop';

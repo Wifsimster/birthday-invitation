@@ -15,6 +15,18 @@ export function isRole(value: unknown): value is Role {
   return typeof value === 'string' && (ROLES as readonly string[]).includes(value);
 }
 
+// The signed-in account as the rest of the app needs it. Better Auth returns
+// the user row including our `role` additional field, which it does not type on
+// the session — the request guard normalises it (see http/guards.ts).
+export interface SessionUser {
+  id: string;
+  email: string;
+  name?: string | null;
+  image?: string | null;
+  emailVerified?: boolean;
+  role: Role;
+}
+
 export interface GoogleCredentials {
   clientId: string;
   clientSecret: string;

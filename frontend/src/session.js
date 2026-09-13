@@ -9,7 +9,7 @@
 // component mounts, and the imperative helpers below are called from event
 // handlers. Components subscribe with `useSession()`.
 import { useSyncExternalStore } from 'react';
-import { apiBaseUrl } from './env.js';
+import { accountApi } from './api/index.js';
 import { authClient } from './auth-client.js';
 
 const state = {
@@ -50,11 +50,10 @@ export const isAdmin = () => state.user?.role === 'admin';
 /** Re-read the current account from the server. Returns the user, or null. */
 export async function refresh() {
   try {
-    const res = await fetch(`${apiBaseUrl}/me`, { credentials: 'include' });
-    state.user = res.ok ? (await res.json()).user : null;
+    state.user = await accountApi.me();
   } catch {
-    // Offline or the API is down: treat as signed out rather than trapping the
-    // visitor on a spinner.
+    // Signed out, offline, or the API is down: all three mean "no account" here
+    // rather than trapping the visitor on a spinner.
     state.user = null;
   } finally {
     state.ready = true;
@@ -81,10 +80,11 @@ export async function signOut() {
 }
 
 /** Which sign-in methods the deployment offers (cached for the page's life). */
+const DEFAULT_PROVIDERS = { emailPassword: true, google: false };
 let providersPromise = null;
 export function authProviders() {
-  providersPromise ??= fetch(`${apiBaseUrl}/auth-providers`, { credentials: 'include' })
-    .then((res) => (res.ok ? res.json() : { emailPassword: true, google: false }))
-    .catch(() => ({ emailPassword: true, google: false }));
+  // A deployment always has email/password; only Google is optional, so an
+  // unreachable API degrades to hiding the button rather than to an error.
+  providersPromise ??= accountApi.providers().catch(() => DEFAULT_PROVIDERS);
   return providersPromise;
 }

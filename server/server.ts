@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './src/app.ts';
 import { openDb, initSchema, defaultDbPath } from './src/db.ts';
-import { eventConfig, ensureDefaultEvent } from './src/event.ts';
+import { eventConfig } from './src/domain/event.ts';
+import { createRepositories } from './src/repositories/index.ts';
+import { createEventService } from './src/services/event.service.ts';
 import { createAuth, migrateAuth, seedAdminUser, googleCredentialsFromEnv } from './src/auth.ts';
 import { createMailer, mailerConfigFromEnv } from './src/mailer.ts';
 import { logger } from './src/logger.ts';
@@ -25,7 +27,13 @@ async function main(): Promise<void> {
   initSchema(db);
   // Seed/repair the default event from the env config so env-configured
   // deployments flow their configuration into the default event row.
-  ensureDefaultEvent(db, eventConfig());
+  const repos = createRepositories(db);
+  const config = eventConfig();
+  createEventService({
+    events: repos.events,
+    settings: repos.settings,
+    fallbackConfig: config
+  }).seedDefault(config);
   logger.info({ dbPath }, 'connected to SQLite database');
 
   // Authentication (Better Auth): email/password with a verification round-trip,
