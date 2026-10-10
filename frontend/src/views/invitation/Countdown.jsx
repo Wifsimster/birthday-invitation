@@ -14,14 +14,14 @@ export default function Countdown({ countdown }) {
       {single ? (
         <span
           className="t-badge t-display inline-block px-6 py-3 font-display text-[color:var(--theme-button-text,#fff)]"
-          style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }}
+          style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#d93a32,#a82019))' }}
         >
           {countdown.isToday ? "🎉 C'est aujourd'hui !" : '🎂 Joyeux anniversaire !'}
         </span>
       ) : (
         countdown.units.map((unit) => (
           <div key={unit.label} className="t-tile t-tile-countdown flex flex-col items-center justify-center px-2 py-3">
-            <span className="t-display font-display text-2xl leading-none text-[color:var(--theme-primary,#ff6b6b)] tabular-nums sm:text-[1.9rem]">
+            <span className="t-display font-display text-2xl leading-none text-[color:var(--theme-primary,#e8443c)] tabular-nums sm:text-[1.9rem]">
               {unit.value}
             </span>
             <span className="t-kicker mt-1.5 text-[0.68rem] opacity-70">{unit.label}</span>

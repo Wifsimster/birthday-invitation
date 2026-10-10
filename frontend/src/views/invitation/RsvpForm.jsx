@@ -79,7 +79,7 @@ export default function RsvpForm({ form, onChange, error, submitting, onSubmit, 
       <h2
         ref={headingRef}
         tabIndex={-1}
-        className="text-center text-xl font-bold text-[color:var(--theme-primary,#ff6b6b)] outline-none"
+        className="text-center text-xl font-bold text-[color:var(--theme-primary,#e8443c)] outline-none"
       >
         Réponds à l'invitation
       </h2>
@@ -98,8 +98,8 @@ export default function RsvpForm({ form, onChange, error, submitting, onSubmit, 
               key={opt.value}
               className={`flex items-center gap-3 rounded-xl border-2 bg-card p-3 transition-colors ${
                 form.attending === opt.value
-                  ? 'border-[color:var(--theme-primary,#ff6b6b)] bg-accent'
-                  : 'hover:border-[color:var(--theme-primary,#ff6b6b)]/50'
+                  ? 'border-[color:var(--theme-primary,#e8443c)] bg-accent'
+                  : 'hover:border-[color:var(--theme-primary,#e8443c)]/50'
               }`}
             >
               <RadioGroupItem id={`attending-${opt.value}`} value={opt.value} />

@@ -34,7 +34,7 @@ export default function EventDetails({ details }) {
             >
               <span
                 className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-[color:var(--theme-button-text,#fff)]"
-                style={{ background: 'var(--theme-badge-gradient, var(--theme-primary,#ff6b6b))' }}
+                style={{ background: 'var(--theme-badge-gradient, var(--theme-primary,#e8443c))' }}
               >
                 <Icon className="size-3.5" aria-hidden="true" />
               </span>
@@ -46,7 +46,7 @@ export default function EventDetails({ details }) {
                       href={detail.href}
                       target="_blank"
                       rel="noopener"
-                      className="inline-flex min-h-8 items-center text-[color:var(--theme-primary,#ff6b6b)] underline underline-offset-2"
+                      className="inline-flex min-h-8 items-center text-[color:var(--theme-primary,#e8443c)] underline underline-offset-2"
                     >
                       {detail.value}
                     </a>

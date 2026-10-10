@@ -6,7 +6,7 @@ export function InvitationHeader({ theme }) {
   return (
     <header
       className="t-header relative overflow-hidden px-5 py-6 text-center text-[color:var(--theme-header-text,#fff)] sm:px-8 sm:py-8"
-      style={{ background: 'var(--theme-header-gradient, linear-gradient(135deg,#ff6b6b,#ff8e8e))' }}
+      style={{ background: 'var(--theme-header-gradient, linear-gradient(135deg,#d93a32,#a82019))' }}
     >
       <div className="relative z-2 flex justify-center gap-3.5" aria-hidden="true">
         {theme.heroEmojis.map((e, i) => (
@@ -66,11 +66,11 @@ export function EventHero({ person, age, formattedDate, time }) {
   return (
     <>
       <div className="text-center">
-        <p className="t-display font-display text-[1.7rem] text-[color:var(--theme-primary,#ff6b6b)]">{person}</p>
+        <p className="t-display font-display text-[1.7rem] text-[color:var(--theme-primary,#e8443c)]">{person}</p>
         {age && (
           <p
-            className="t-badge mt-3 inline-block px-5 py-2.5 text-lg font-bold text-[color:var(--theme-badge-text,#fff)]"
-            style={{ background: 'var(--theme-badge-gradient, linear-gradient(135deg,#ffd93d,#ff6b6b))' }}
+            className="t-badge mt-3 inline-block px-5 py-2.5 text-lg font-bold text-[color:var(--theme-badge-text,#21243d)]"
+            style={{ background: 'var(--theme-badge-gradient, linear-gradient(135deg,#ffd75e,#ff9f1c))' }}
           >
             {age} ans
           </p>
@@ -147,7 +147,7 @@ export function ShareActions({ icsUrl, googleCalUrl, onShare }) {
 export function NoticeCard({ title, children }) {
   return (
     <div className="rounded-2xl border-2 border-dashed bg-muted px-5 py-8 text-center" role="status">
-      <h2 className="text-lg font-bold text-[color:var(--theme-primary-dark,#c9184a)]">{title}</h2>
+      <h2 className="text-lg font-bold text-[color:var(--theme-primary-dark,#a82019)]">{title}</h2>
       <p className="mt-2 text-muted-foreground">{children}</p>
     </div>
   );
