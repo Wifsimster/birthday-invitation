@@ -211,7 +211,7 @@ export default function Invitation() {
               ) : (
                 <>
                   {deadlineLabel && (
-                    <p className="mb-4 text-center font-semibold text-[color:var(--theme-primary-dark,#c9184a)]">
+                    <p className="mb-4 text-center font-semibold text-[color:var(--theme-primary-dark,#a82019)]">
                       ⏳ Merci de répondre avant le {deadlineLabel}
                     </p>
                   )}
@@ -225,14 +225,14 @@ export default function Invitation() {
                       <Button
                         size="lg"
                         className="t-cta t-display h-auto w-full animate-rsvp-pulse py-5 font-display text-xl text-[color:var(--theme-button-text,#fff)] hover:animate-none"
-                        style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }}
+                        style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#d93a32,#a82019))' }}
                         onClick={() => rsvp.open('rsvp')}
                       >
                         🎈 Je réponds
                       </Button>
                       <Button
                         variant="ghost"
-                        className="rounded-full font-medium text-[color:var(--theme-primary-dark,#c9184a)]"
+                        className="rounded-full font-medium text-[color:var(--theme-primary-dark,#a82019)]"
                         onClick={() => rsvp.open('lookup')}
                       >
                         ✏️ Déjà répondu ? Modifier
@@ -307,7 +307,7 @@ export default function Invitation() {
           <Button
             size="lg"
             className="t-cta t-display h-12 w-full font-display text-base text-[color:var(--theme-button-text,#fff)]"
-            style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#4ecdc4,#44a08d))' }}
+            style={{ background: 'var(--theme-button-gradient, linear-gradient(135deg,#d93a32,#a82019))' }}
             onClick={() => rsvp.open('rsvp')}
           >
             🎈 Je réponds

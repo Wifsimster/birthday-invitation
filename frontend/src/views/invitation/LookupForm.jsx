@@ -9,7 +9,7 @@ export default function LookupForm({ phone, onPhoneChange, error, busy, onSubmit
       <h2
         ref={headingRef}
         tabIndex={-1}
-        className="text-center text-xl font-bold text-[color:var(--theme-primary,#ff6b6b)] outline-none"
+        className="text-center text-xl font-bold text-[color:var(--theme-primary,#e8443c)] outline-none"
       >
         Retrouver ma réponse
       </h2>

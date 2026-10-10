@@ -4,7 +4,7 @@ source:
   tokens: frontend/src/assets/index.css
   theme-structure: frontend/src/assets/themes.css
   theme-catalog: frontend/src/themes.js
-mode: "two layers: neutral tool surfaces (admin, sign-in) + 7 party themes inside .theme-surface; .dark defined but never applied"
+mode: "two layers: neutral tool surfaces (admin, sign-in) + 7 party themes inside .theme-surface; no dark mode"
 colors:
   light:
     background: "oklch(0.984 0.003 247.858)"
@@ -28,28 +28,6 @@ colors:
     border: "oklch(0.929 0.013 255.508)"
     input: "oklch(0.929 0.013 255.508)"
     ring: "oklch(0.511 0.262 276.966)"
-  dark:
-    background: "oklch(0.129 0.042 264.695)"
-    foreground: "oklch(0.984 0.003 247.858)"
-    card: "oklch(0.208 0.042 265.755)"
-    card-foreground: "oklch(0.984 0.003 247.858)"
-    popover: "oklch(0.208 0.042 265.755)"
-    popover-foreground: "oklch(0.984 0.003 247.858)"
-    primary: "oklch(0.585 0.233 277.117)"
-    primary-foreground: "oklch(0.984 0.003 247.858)"
-    secondary: "oklch(0.279 0.041 260.031)"
-    secondary-foreground: "oklch(0.984 0.003 247.858)"
-    muted: "oklch(0.279 0.041 260.031)"
-    muted-foreground: "oklch(0.704 0.04 256.788)"
-    accent: "oklch(0.279 0.041 260.031)"
-    accent-foreground: "oklch(0.984 0.003 247.858)"
-    destructive: "oklch(0.704 0.191 22.216)"
-    destructive-foreground: "oklch(0.984 0.003 247.858)"
-    success: "oklch(0.696 0.17 162.48)"
-    success-foreground: "oklch(0.129 0.042 264.695)"
-    border: "oklch(1 0 0 / 10%)"
-    input: "oklch(1 0 0 / 15%)"
-    ring: "oklch(0.551 0.027 264.364)"
   party-themes:
     kid: { primary: "#E8443C", primaryDark: "#A82019", cardBg: "#FFFFFF", cardText: "#21243D", bg: ["#FFD166", "#EF476F", "#6C63FF"], radius: 1.1rem }
     floral: { primary: "#A8446B", primaryDark: "#7C2B4C", cardBg: "#FFFCF8", cardText: "#3A2E2A", bg: ["#F6E7DC", "#E0BFB8", "#9DAE8E"], radius: 1rem }
@@ -103,7 +81,7 @@ The page backdrop is the theme's animated gradient (`theme-gradient-shift`,
 
 ## Colors
 
-### Tool surfaces (`index.css` `:root` l. 23–50)
+### Tool surfaces (`index.css` `:root`)
 
 | Token | Value | Role |
 | --- | --- | --- |
@@ -120,9 +98,12 @@ The page backdrop is the theme's animated gradient (`theme-gradient-shift`,
 | `--border` / `--input` | `oklch(0.929 0.013 255.508)` | |
 | `--ring` | `oklch(0.511 0.262 276.966)` | Focus |
 
-A `.dark` block (l. 52–74, values in the frontmatter) exists; see Known Gaps.
+There is no dark mode. `@custom-variant dark (&:is(.dark *))` stays in
+`index.css` so the stock shadcn `dark:` utilities never fire: nothing sets a
+`.dark` class, and without the variant Tailwind would apply them on
+`prefers-color-scheme: dark`.
 
-### Invitation surface (`index.css` `.theme-surface` l. 121–147)
+### Invitation surface (`index.css` `.theme-surface`)
 
 | shadcn token | Mapped to |
 | --- | --- |
@@ -160,7 +141,9 @@ ids must match `server/src/themes.ts` `THEME_IDS` (tested).
 ## Typography
 
 `--font-sans` = `var(--theme-font-body, 'Poppins', …)`, `--font-display` =
-`var(--theme-font-display, 'Fredoka', …)`. Google Fonts: `index.html` loads
+`var(--theme-font-display, 'Fredoka', …)`. The Poppins body fallback is the
+tool-surface font (sign-in screens, before any theme is applied), not drift.
+Google Fonts: `index.html` loads
 Fredoka, Nunito and Poppins up front; the other theme families (Bungee,
 Cormorant Garamond, Dancing Script, Orbitron, Outfit, Quicksand, Rajdhani)
 load lazily on first use (`ensureFonts` in `themes.js`); the admin picker
@@ -235,8 +218,8 @@ switch is instant.
 
 ## Known Gaps
 
-Found in the code, not fixed here.
+None open. Resolved 2026-10-10:
 
-1. **`.dark` palette never applied**: `index.css` defines a full `.dark` block and the shadcn primitives carry `dark:` classes, but nothing in `src/` adds the `dark` class.
-2. **CSS fallbacks don't match the default theme**: `.theme-surface` falls back to `#e4265a` / `#a80b3d` / `#1f2333` and `#ffffff`, the body to `linear-gradient(135deg, #ff5c8a, #7b5bff, #21d4fd)`, `rsvp-pulse` to `rgb(255 107 107 / 0.2)`, `--t-badge-shadow` to `#ff6b6b55`, `--t-header-texture` to `#ffb703`, `--font-sans` to Poppins — none of which is the default `kid` theme (`#E8443C`, `#A82019`, `#21243D`, `#FFD166 → #EF476F → #6C63FF`, Nunito).
-3. **Comment drift**: `themes.css` says `.theme-surface` "in index.css" declares the `--t-*` defaults; they are declared in `themes.css` itself.
+1. **`.dark` palette never applied**: the unused `.dark` token block is gone. The app has no dark mode; the `dark` custom variant is kept so shadcn's `dark:` utilities stay inert (see Colors).
+2. **CSS fallbacks didn't match the default theme**: every generic `var(--theme-*, …)` fallback in `index.css`, `themes.css` and the invitation views now uses the default `kid` palette (`#E8443C`, `#A82019`, `#21243D`, `#FFFFFF`, accent `#FFC93C`, backdrop `#FFD166 → #EF476F → #6C63FF`, header/button `#D93A32 → #A82019`, badge `#FFD75E → #FF9F1C` with `#21243D` text). Visible change: the sign-in screens, which never apply a theme, now show the `kid` backdrop. The fallback text pairs clear AA: `#A82019` on white 7.28:1 (was `#C9184A` 5.66:1), `#E8443C` on white 3.94:1 for display text and borders (was `#FF6B6B` 2.78:1), white on `#D93A32` 4.56:1 (was `#4ECDC4` 1.93:1), `#21243D` on the badge stops 10.93:1 / 7.39:1 (was white on `#FFD93D` 1.38:1). The Poppins body fallback is intentional (see Typography).
+3. **Comment drift**: `themes.css` now says the `--t-*` defaults are declared in that file.

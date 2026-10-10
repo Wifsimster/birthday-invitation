@@ -4,6 +4,11 @@
    Loaded after the token definitions below so its `[data-theme]` blocks win. */
 @import './themes.css';
 
+/* The app has no dark mode: the tool surfaces are light and the invitation
+   takes its colours from the event's party theme. Nothing sets a `.dark`
+   class, so this keeps the stock shadcn `dark:` utilities inert. Without it
+   Tailwind would fire them on `prefers-color-scheme: dark` and half-darken
+   the light components. */
 @custom-variant dark (&:is(.dark *));
 
 /*
@@ -49,29 +54,6 @@
   --ring: oklch(0.511 0.262 276.966);
 }
 
-.dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.585 0.233 277.117);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --success: oklch(0.696 0.17 162.48);
-  --success-foreground: oklch(0.129 0.042 264.695);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-}
 
 @theme inline {
   --color-background: var(--background);
@@ -124,26 +106,26 @@
      came out as white slabs in the dark-surface themes. */
   --background: var(--theme-card-bg, #ffffff);
   --card: var(--theme-card-bg, #ffffff);
-  --card-foreground: var(--theme-card-text, #1f2333);
+  --card-foreground: var(--theme-card-text, #21243d);
   --popover: var(--theme-card-bg, #ffffff);
-  --popover-foreground: var(--theme-card-text, #1f2333);
-  --foreground: var(--theme-card-text, #1f2333);
-  --primary: var(--theme-primary, #e4265a);
+  --popover-foreground: var(--theme-card-text, #21243d);
+  --foreground: var(--theme-card-text, #21243d);
+  --primary: var(--theme-primary, #e8443c);
   --primary-foreground: var(--theme-button-text, #ffffff);
   /* Tints are mixed into the card's own background rather than into white, so
      the dark-surface themes (Néon, Gaming, Y2K) lighten their fills instead of
      bleaching a hole through the panel. */
-  --secondary: color-mix(in srgb, var(--theme-primary, #e4265a) 10%, var(--theme-card-bg, #ffffff));
-  --secondary-foreground: var(--theme-primary-dark, #a80b3d);
-  --accent: color-mix(in srgb, var(--theme-primary, #e4265a) 12%, var(--theme-card-bg, #ffffff));
-  --accent-foreground: var(--theme-primary-dark, #a80b3d);
-  --muted: color-mix(in srgb, var(--theme-card-text, #1f2333) 6%, var(--theme-card-bg, #ffffff));
+  --secondary: color-mix(in srgb, var(--theme-primary, #e8443c) 10%, var(--theme-card-bg, #ffffff));
+  --secondary-foreground: var(--theme-primary-dark, #a82019);
+  --accent: color-mix(in srgb, var(--theme-primary, #e8443c) 12%, var(--theme-card-bg, #ffffff));
+  --accent-foreground: var(--theme-primary-dark, #a82019);
+  --muted: color-mix(in srgb, var(--theme-card-text, #21243d) 6%, var(--theme-card-bg, #ffffff));
   /* 72%, not less: at 62% the secondary copy fell just under AA on the lighter
      card backgrounds. Kept in step with scripts/check-themes.mjs. */
-  --muted-foreground: color-mix(in srgb, var(--theme-card-text, #1f2333) 72%, transparent);
-  --border: color-mix(in srgb, var(--theme-card-text, #1f2333) 14%, transparent);
-  --input: color-mix(in srgb, var(--theme-card-text, #1f2333) 20%, transparent);
-  --ring: var(--theme-primary, #e4265a);
+  --muted-foreground: color-mix(in srgb, var(--theme-card-text, #21243d) 72%, transparent);
+  --border: color-mix(in srgb, var(--theme-card-text, #21243d) 14%, transparent);
+  --input: color-mix(in srgb, var(--theme-card-text, #21243d) 20%, transparent);
+  --ring: var(--theme-primary, #e8443c);
 }
 
 @layer base {
@@ -194,7 +176,7 @@
     @apply text-foreground font-sans antialiased;
     /* The animated party gradient is the app's backdrop; the admin console
        paints its own flat surface over it. */
-    background: var(--theme-bg-gradient, linear-gradient(135deg, #ff5c8a, #7b5bff, #21d4fd));
+    background: var(--theme-bg-gradient, linear-gradient(135deg, #ffd166, #ef476f, #6c63ff));
     background-size: 200% 200%;
     animation: theme-gradient-shift 12s ease infinite;
     min-height: 100vh;
@@ -251,7 +233,7 @@
 
 @keyframes rsvp-pulse {
   0%, 100% { box-shadow: 0 4px 15px rgb(0 0 0 / 0.2); }
-  50% { box-shadow: 0 4px 15px rgb(0 0 0 / 0.2), 0 0 0 8px var(--theme-primary-soft, rgb(255 107 107 / 0.2)); }
+  50% { box-shadow: 0 4px 15px rgb(0 0 0 / 0.2), 0 0 0 8px var(--theme-primary-soft, rgb(232 68 60 / 0.22)); }
 }
 
 @keyframes card-in {

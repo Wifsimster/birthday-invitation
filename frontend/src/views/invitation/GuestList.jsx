@@ -35,7 +35,7 @@ export default function GuestList({ state, list, onRetry }) {
     <section className="t-tile mt-6 p-4 sm:p-5" aria-labelledby="guest-list-heading">
       <h2
         id="guest-list-heading"
-        className="flex items-center gap-2 text-lg font-bold text-[color:var(--theme-primary,#ff6b6b)]"
+        className="flex items-center gap-2 text-lg font-bold text-[color:var(--theme-primary,#e8443c)]"
       >
         <UsersIcon className="size-4.5" aria-hidden="true" />
         Qui vient ?

@@ -9,7 +9,7 @@
  *
  * How it fits together
  * --------------------
- * `.theme-surface` (in index.css) declares neutral defaults for every `--t-*`
+ * `.theme-surface` (below, in this file) declares neutral defaults for every `--t-*`
  * token below, so an unknown or half-written theme still renders a sane card.
  * Each `[data-theme="…"] .theme-surface` block then overrides the tokens it
  * cares about, and adds rules for anything a token can't express — a scalloped
@@ -46,7 +46,7 @@
   --t-panel-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
   --t-panel-texture: none;
 
-  --t-header-texture: radial-gradient(circle at 50% 0%, var(--theme-accent, #ffb703) 0%, transparent 60%);
+  --t-header-texture: radial-gradient(circle at 50% 0%, var(--theme-accent, #ffc93c) 0%, transparent 60%);
   --t-header-texture-opacity: 0.18;
   --t-page-texture: none;
 
@@ -57,7 +57,7 @@
   --t-tile-shadow: none;
 
   --t-badge-radius: 999px;
-  --t-badge-shadow: 0 0 0 4px var(--theme-primary-soft, #ff6b6b55), 0 4px 15px rgba(0, 0, 0, 0.18);
+  --t-badge-shadow: 0 0 0 4px var(--theme-primary-soft, #e8443c38), 0 4px 15px rgba(0, 0, 0, 0.18);
 
   --t-cta-radius: 999px;
   --t-cta-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
