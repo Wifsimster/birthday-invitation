@@ -30,7 +30,7 @@ jobs:
       - run: npm run test:run
 
   frontend:
-    name: Frontend (theme contrast + build)
+    name: Frontend (lint + theme contrast + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -45,6 +45,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
+
+      - run: npm run lint
 
       # A theme is only finished when its text is readable on it. This audits
       # every palette in the catalog against WCAG AA.
