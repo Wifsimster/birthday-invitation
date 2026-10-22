@@ -12,7 +12,7 @@
         "test": "vitest",
         "test:run": "vitest run",
         "test:watch": "vitest --watch",
-        "typecheck": "tsc --noEmit",
+        "typecheck": "tsrs --noEmit",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "clean": "rm -rf node_modules *.db"
@@ -43,6 +43,7 @@
         "eslint": "^10.5.0",
         "globals": "^17.6.0",
         "supertest": "^7.2.2",
+        "tsrs": "0.18.0-ts7.1.0-dev.20260929",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.61.0",
         "vitest": "^4.1.8"
