@@ -1,7 +1,5 @@
 import type { MailMessage } from './mailer.ts';
 
-// Emails are plain, inline-styled HTML: mail clients strip <style> blocks and
-// external CSS, and the app's own theming has no meaning in an inbox.
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')

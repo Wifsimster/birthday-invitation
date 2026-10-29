@@ -7,33 +7,17 @@ import Admin from './views/Admin.jsx';
 import Auth from './views/Auth.jsx';
 import { ensureSession, refresh } from './session.js';
 
-/**
- * Route guard. The server is the authority — every API call is checked again
- * there — but resolving the session up front avoids rendering a dashboard that
- * would only fill with 401s.
- *
- * Any session gets through, whatever its role: every registered account owns
- * the invitations it creates, so the dashboard is not an admin-only place any
- * more. The role only decides whether the account-management tab shows, and the
- * server scopes each event route to the caller's own invitations. Nothing
- * renders until the session resolves, so no view sees a half-known session.
- */
 function Guard({ children }) {
   const location = useLocation();
   const [resolved, setResolved] = useState(false);
   const [redirect, setRedirect] = useState(null);
 
-  // The admin console mirrors its selected event and tab into the query string,
-  // so the guard keys off the pathname only — re-running it on every tab change
-  // would be pointless work. The ref keeps the redirect target current anyway.
   const locationRef = useRef(location);
   locationRef.current = location;
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Google sign-in lands back on /admin as a full page load; re-read rather
-      // than trust a session resolved before the redirect.
       let user = await ensureSession();
       if (!user) user = await refresh();
       if (cancelled) return;
@@ -75,14 +59,9 @@ export default function App() {
         <Route path="/register" element={<Auth mode="signup" />} />
         <Route path="/forgot-password" element={<Auth mode="forgot" />} />
         <Route path="/reset-password" element={<Auth mode="reset" />} />
-        {/* Registering used to land here and wait for an admin to grant access.
-            Every account can now run its own invitations, so the screen is gone
-            and the old links (emails, bookmarks) forward to the dashboard. */}
         <Route path="/pending" element={<Navigate to="/admin" replace />} />
       </Routes>
       <BuildFooter />
-      {/* One toaster for the whole app: views raise feedback with `toast()`
-          from sonner instead of owning a bespoke stack. */}
       <Toaster position="bottom-center" offset={8} richColors closeButton />
     </BrowserRouter>
   );

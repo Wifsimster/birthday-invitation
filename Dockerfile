@@ -1,23 +1,12 @@
-# Birthday Invitation — runtime image
-#
-# A single Node process serves the SPA (built from frontend/ source) and the API
-# on one port — no reverse proxy or process manager. See infra/ for runtime env
-# injection.
-
-# --- Stage 1: build the Vite SPA from source ---------------------------------
 FROM node:24-alpine AS frontend
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-# Outputs to /build/dist (vite.config.js outDir: ../dist)
 RUN npm run build
 
-# --- Stage 2: runtime --------------------------------------------------------
 FROM node:24-alpine
 
-# Build metadata stamped by the Release workflow (see .github/workflows/
-# release.yml). Defaults keep plain `docker build` working without --build-arg.
 ARG VERSION=dev
 ARG BUILD_DATE
 ARG VCS_REF
@@ -29,9 +18,6 @@ LABEL org.opencontainers.image.title="birthday-invitation" \
 
 WORKDIR /app
 
-# Backend (Express + SQLite) — install production deps only.
-# better-sqlite3 compiles a native binding, so build tooling is installed in a
-# virtual package and removed again to keep the runtime image small.
 COPY server/package.json server/package-lock.json ./server/
 RUN apk add --no-cache --virtual .build-deps python3 make g++ \
  && (cd server && npm ci --omit=dev) \
@@ -39,28 +25,18 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
 
 COPY server/ ./server/
 
-# Built frontend SPA from stage 1 (served by the Node process from /app/dist)
 COPY --from=frontend /build/dist ./dist
 
-# Runtime env injection (writes dist/env.js from environment at start)
 COPY infra/inject-env.sh /inject-env.sh
 COPY infra/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /inject-env.sh /docker-entrypoint.sh
 
-# The alpine image ships an unprivileged `node` user. Create the DB directory and
-# hand /app to that user so env injection (dist/) and SQLite writes (data/) work
-# without root. `su-exec` lets the entrypoint drop to `node` after reconciling the
-# ownership of the persisted data volume — which may pre-date this non-root image
-# and still be owned by root. The container therefore starts as root, but the
-# server process itself runs as the unprivileged `node` user.
 RUN apk add --no-cache su-exec \
  && mkdir -p /app/data && chown -R node:node /app
 
-# Node serves SPA + API on port 3000
 ENV PORT=3000
 EXPOSE 3000
 
-# Report container health from the API (busybox wget ships with the image).
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD wget -qO- http://localhost:3000/api/health || exit 1
 

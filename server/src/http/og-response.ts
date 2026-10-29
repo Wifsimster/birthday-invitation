@@ -1,9 +1,3 @@
-// Sending a rendered share card.
-//
-// Scrapers refetch these links constantly, so the response carries an ETag and
-// honours the conditional GET that follows — the rasteriser is the expensive
-// part and a 304 skips the bytes entirely.
-
 import type { Response } from 'express';
 import type { OgCard } from '../services/og-card.service.ts';
 

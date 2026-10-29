@@ -15,14 +15,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 
-/** A required-field marker, so the asterisk is never read out as content. */
 const Required = () => (
   <span className="text-destructive" aria-hidden="true">
     *
   </span>
 );
 
-/** Adding a reply taken by phone, or correcting one already stored. */
 export default function RsvpDialog({ open, onOpenChange, mode, form, onChange, saving, onSubmit }) {
   const nameRef = useRef(null);
   const creating = mode === 'create';
@@ -120,10 +118,6 @@ export default function RsvpDialog({ open, onOpenChange, mode, form, onChange, s
             />
           </div>
           {form.attending === 'yes' && (
-            /* The guest ticks this themselves on the invitation; it is here so a
-               response taken by phone can carry the same consent, and so an
-               admin can honour a "retire-moi de la liste" asked for out of
-               band. */
             <div className="flex items-start gap-3">
               <Checkbox
                 id="edit-share"

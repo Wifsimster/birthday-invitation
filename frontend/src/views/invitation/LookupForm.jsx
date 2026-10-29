@@ -2,7 +2,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { FormActions, FormError } from './RsvpForm.jsx';
 
-/** Retrieving an answer already given, by the number it was given with. */
 export default function LookupForm({ phone, onPhoneChange, error, busy, onSubmit, onCancel, panelRef, headingRef }) {
   return (
     <form ref={panelRef} className="t-tile mt-5 scroll-mt-4 space-y-5 p-4 sm:p-6" onSubmit={onSubmit}>

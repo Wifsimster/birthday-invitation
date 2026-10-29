@@ -1,15 +1,8 @@
-// How long until the party, refreshed every minute.
-
 import { useEffect, useMemo, useState } from 'react';
 
 const MINUTE_MS = 60000;
 const DAY_MS = 86400000;
 
-/**
- * Returns null when there is no date, and otherwise one of three shapes:
- * `{ isToday }`, `{ isPast }`, or the remaining days/hours/minutes — plus the
- * units and the screen-reader sentence the banner renders.
- */
 export function useCountdown(eventStart) {
   const [now, setNow] = useState(() => Date.now());
 
@@ -33,7 +26,6 @@ export function useCountdown(eventStart) {
       days,
       hours,
       minutes,
-      // The countdown as three labelled figures, so the markup stays flat.
       units: [
         { value: days, label: 'jours' },
         { value: hours, label: 'heures' },

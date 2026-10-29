@@ -1,6 +1,3 @@
-// Assemble the SQLite implementations of every storage port. The composition
-// root calls this once; nothing below it sees the database handle.
-
 import type { Db } from '../db.ts';
 import { createEventRepository } from './event.repository.ts';
 import { createRsvpRepository } from './rsvp.repository.ts';

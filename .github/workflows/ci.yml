@@ -48,8 +48,6 @@ jobs:
 
       - run: npm run lint
 
-      # A theme is only finished when its text is readable on it. This audits
-      # every palette in the catalog against WCAG AA.
       - run: npm run check:themes
 
       - run: npm run build
@@ -60,6 +58,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Validates the runtime image — including the better-sqlite3 native
-      # compile on Alpine — on every PR, not just at release time.
       - run: docker build -t birthday-invitation:ci .

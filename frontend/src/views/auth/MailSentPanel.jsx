@@ -4,7 +4,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { CardContent } from '@/components/ui/card';
 
-/** The way back, shared by both of the card's dead-end states. */
 function BackToSignIn() {
   return (
     <Link
@@ -16,7 +15,6 @@ function BackToSignIn() {
   );
 }
 
-/** "We sent you a confirmation link", with a way to ask for another one. */
 export function CheckEmailPanel({ email, busy, notice, onResend }) {
   return (
     <CardContent className="grid gap-3">
@@ -44,7 +42,6 @@ export function CheckEmailPanel({ email, busy, notice, onResend }) {
   );
 }
 
-/** "If that address has an account, its reset link is on its way." */
 export function ResetSentPanel({ email }) {
   return (
     <CardContent className="grid gap-3">

@@ -1,5 +1,3 @@
-// The deployment's accounts, and the two writes an admin may make to them.
-
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { usersApi } from '../api/index.js';
@@ -8,7 +6,6 @@ export function useUsers(onAccessError) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  // The account a write is in flight for, so only its own row goes disabled.
   const [busyId, setBusyId] = useState(null);
 
   const load = useCallback(async () => {
@@ -24,9 +21,6 @@ export function useUsers(onAccessError) {
     }
   }, [onAccessError]);
 
-  // Both writes follow the same shape: mark the row busy, call, reload the list
-  // (the server may have refused for a reason the local copy cannot know, like
-  // "il doit rester au moins un administrateur"), then report.
   const run = useCallback(
     async (userId, action, onSuccess) => {
       setBusyId(userId);

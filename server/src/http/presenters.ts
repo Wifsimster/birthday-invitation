@@ -1,19 +1,8 @@
-// Wire formats.
-//
-// What the API hands back is a decision of its own: a stored row carries
-// internal ids, timestamps and a guest's ip address, and only some of that is
-// anyone else's business. Keeping the shaping here means a new column is not
-// published by accident just because a route selected `*`.
-
 import { eventConfigFromRow, isRsvpClosed } from '../domain/event.ts';
 import { DEFAULT_ROLE, isRole, type SessionUser } from '../auth.ts';
 import type { EventRow } from '../db.ts';
 import type { UserRow } from '../repositories/types.ts';
 
-/**
- * Safe event fields for the public invitation route (no internal ids or
- * timestamps), plus a computed `rsvp_closed` flag.
- */
 export function publicEvent(row: EventRow): Record<string, unknown> {
   return {
     slug: row.slug,
@@ -30,10 +19,6 @@ export function publicEvent(row: EventRow): Record<string, unknown> {
   };
 }
 
-/**
- * A user row for the admin UI. An unknown/NULL role reads as the default,
- * matching how the session guard interprets it.
- */
 export function publicUser(row: UserRow): Record<string, unknown> {
   return {
     id: row.id,
@@ -46,7 +31,6 @@ export function publicUser(row: UserRow): Record<string, unknown> {
   };
 }
 
-/** The signed-in account, as GET /api/me reports it. */
 export function currentAccount(user: SessionUser): Record<string, unknown> {
   return {
     id: user.id,

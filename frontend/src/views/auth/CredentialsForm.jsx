@@ -8,10 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import GoogleButton from './GoogleButton.jsx';
 
-/**
- * Typing a password blind on a phone keyboard is the single most common reason
- * a sign-in fails twice, so it can be revealed.
- */
 function PasswordField({ value, onChange, settings }) {
   const [visible, setVisible] = useState(false);
   return (
@@ -55,7 +51,6 @@ function PasswordField({ value, onChange, settings }) {
   );
 }
 
-/** The link under the button, which differs per flow. */
 function Footer({ kind }) {
   if (kind === 'register') {
     return (
@@ -84,11 +79,6 @@ function Footer({ kind }) {
   );
 }
 
-/**
- * The card's form. Which fields it carries, what the button says and what sits
- * under it all come from the mode descriptor (see modes.js) rather than from a
- * conditional per flow.
- */
 export default function CredentialsForm({
   mode,
   form,

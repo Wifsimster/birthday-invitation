@@ -23,8 +23,6 @@ process.env.BETTER_AUTH_URL = 'http://localhost:3000';
 const ADMIN = { email: 'admin@example.com', password: 'secret-password' };
 const ORIGIN = 'http://localhost:3000';
 
-// A minimal stand-in for the built shell, carrying the same markers as
-// frontend/index.html so the injection path under test is the real one.
 const SHELL = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -111,8 +109,6 @@ describe('SEO metadata (unit)', () => {
     });
 
     it('emits JSON-LD that actually parses, with no HTML entities', () => {
-        // A <script> element's content is raw text: HTML-escaping the payload
-        // would leave crawlers with &quot; instead of a quote, i.e. broken JSON.
         const html = renderIndexHtml(SHELL, buildEventMeta(eventRow(), ORIGIN));
         const payload = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)?.[1];
         expect(payload).toBeTruthy();
@@ -271,7 +267,6 @@ describe('SEO metadata (served pages)', () => {
     });
 
     it('answers a HEAD probe on an invitation', async () => {
-        // Some chat link scrapers probe with HEAD before fetching the page.
         await request(app).head('/').expect(200);
     });
 

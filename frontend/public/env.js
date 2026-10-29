@@ -1,4 +1,3 @@
-// Dev defaults — overwritten at container start by infra/inject-env.sh.
 window.ENV = {
   VITE_BIRTHDAY_PERSON: "L\u00e9o",
   VITE_BIRTHDAY_AGE: "5",

@@ -1,12 +1,5 @@
-// A single-key shortcut that stays out of the way of typing.
-
 import { useEffect, useRef } from 'react';
 
-/**
- * Call `handler` when `key` is pressed outside a text field and without a
- * modifier. `enabled` is read through a ref so the listener is installed once,
- * rather than re-bound on every render of a busy view.
- */
 export function useHotkey(key, handler, enabled = true) {
   const state = useRef({ handler, enabled });
   state.current = { handler, enabled };

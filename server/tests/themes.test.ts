@@ -1,14 +1,3 @@
-/*
- * The theme catalog is deliberately duplicated: the browser reads
- * frontend/src/themes.js, and the share-card rasteriser — which never loads the
- * SPA — reads server/src/themes.ts. Duplication that nothing checks drifts, and
- * the failure mode is silent: an event keeps rendering, its Open Graph card
- * just quietly shows the wrong colours (or 404s on an id the server rejects).
- *
- * So this reads the frontend catalog directly and asserts the mirror matches,
- * then checks that every id the previous catalog could have stored still
- * resolves to something deliberate.
- */
 import { describe, it, expect } from 'vitest';
 import {
   THEME_IDS, THEME_PALETTES, DEFAULT_THEME, LEGACY_THEME_ALIASES,
@@ -33,7 +22,6 @@ const MIRRORED_KEYS = [
   'bgFrom', 'bgVia', 'bgTo', 'cardBg', 'cardText', 'primary', 'badgeFrom', 'badgeTo', 'badgeText'
 ] as const;
 
-// Every id the retired catalog could have written into an `event` row.
 const RETIRED_IDS = [
   'fiesta', 'spiderman', 'ironman', 'pawpatrol', 'mickey', 'princess', 'dino', 'space',
   'unicorn', 'y2k', 'gaming', 'foot', 'mermaid', 'jungle', 'manga', 'boho', 'skate'
@@ -67,8 +55,6 @@ describe('theme catalog', () => {
       expect(theme.fonts.display, `${id} fonts.display`).toBeTruthy();
       expect(theme.fonts.body, `${id} fonts.body`).toBeTruthy();
       expect(theme.heroEmojis.length, `${id} heroEmojis`).toBeGreaterThan(0);
-      // The invitation scatters decorations over six fixed slots; fewer is a
-      // deliberate choice (Modern uses three), more would never be shown.
       expect(theme.decorations.length, `${id} decorations`).toBeGreaterThan(0);
       expect(theme.decorations.length, `${id} decorations`).toBeLessThanOrEqual(6);
       expect(theme.copy.title, `${id} copy.title`).toBeTruthy();
@@ -91,7 +77,6 @@ describe('retired theme ids', () => {
   it('every alias points at a theme that still exists', () => {
     for (const [legacy, current] of Object.entries(LEGACY_THEME_ALIASES)) {
       expect(isThemeId(current), `${legacy} -> ${current}`).toBe(true);
-      // An alias for a live id would shadow the theme itself.
       expect(isThemeId(legacy), `${legacy} is retired`).toBe(false);
     }
   });
@@ -110,35 +95,26 @@ describe('theme migration', () => {
     const db = openDb(':memory:');
     initSchema(db);
 
-    // Reproduce what a pre-v5 database holds, straight past the API's
-    // validation the way the old schema did.
     const rows = [...RETIRED_IDS, 'kid', 'hand-edited-nonsense'];
     for (const theme of rows) {
       db.run('INSERT INTO event (slug, person, theme) VALUES (?, ?, ?)', [slugFor(theme), theme, theme]);
     }
     db.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['theme', 'pawpatrol']);
 
-    // Re-run the migrations from scratch, as a boot on an old database does.
     db.run('PRAGMA user_version = 4');
     initSchema(db);
 
     const stored = db.all<{ slug: string; theme: string }>('SELECT slug, theme FROM event');
     const themeOf = (legacy: string) => stored.find((r) => r.slug === slugFor(legacy))?.theme;
 
-    // Nothing is left holding an id the app no longer knows — the default event
-    // the v3 migration seeds included.
     for (const row of stored) {
       expect(isThemeId(row.theme), `${row.slug} -> ${row.theme}`).toBe(true);
     }
-    // Mapped, not merely defaulted: Spider-Man's ink-and-outline look lands on
-    // Retro, not on the default.
     expect(themeOf('spiderman')).toBe('retro');
     expect(themeOf('princess')).toBe('floral');
     expect(themeOf('gaming')).toBe('robotic');
     expect(themeOf('kid')).toBe('kid');
-    // A value from neither catalog falls back rather than blocking the boot.
     expect(themeOf('hand-edited-nonsense')).toBe(DEFAULT_THEME);
-    // The pre-v3 settings row would otherwise reintroduce a retired id.
     expect(db.get('SELECT value FROM settings WHERE key = ?', ['theme'])).toBeUndefined();
   });
 });

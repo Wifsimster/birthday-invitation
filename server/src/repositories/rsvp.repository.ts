@@ -1,10 +1,6 @@
-// SQLite-backed RSVP storage. The only module that writes the `rsvp` table.
-
 import type { Db, RsvpRow } from '../db.ts';
 import type { RsvpCounts, RsvpRecord, RsvpRepository, RsvpSummary, SharedParticipant } from './types.ts';
 
-// The columns the guest's own form reads back — never the stored ip_address or
-// the internal timestamps.
 const SUMMARY_COLUMNS =
   'id, attending, name, email, phone, guests, dietary_restrictions, message, share_response';
 
@@ -37,8 +33,6 @@ export function createRsvpRepository(db: Db): RsvpRepository {
           SUM(CASE WHEN attending = 'yes' THEN guests ELSE 0 END) AS total_guests
         FROM rsvp WHERE event_id = ?
       `, [eventId]);
-      // SUM over no rows is NULL, and COUNT can only be a number: coalesce both
-      // so the API always answers with four integers.
       return {
         total_responses: stats?.total_responses || 0,
         confirmations: stats?.confirmations || 0,
@@ -94,9 +88,6 @@ export function createRsvpRepository(db: Db): RsvpRepository {
       `, [...writeValues(record), rsvpId, eventId]).changes;
     },
 
-    // The guest path already resolved the row by (event, phone) and never moves
-    // a response onto another number, so the phone column is left alone and the
-    // submitting client's ip is refreshed.
     updateById(rsvpId, record) {
       return db.run(`
         UPDATE rsvp

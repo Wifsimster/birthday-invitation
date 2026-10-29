@@ -1,12 +1,5 @@
 name: Release
 
-# Semantic-release pipeline (wawptn-style). On every push to main the bump type
-# is derived from the triggering commit (conventional commits); non-releasable
-# pushes short-circuit. A release bumps server/package.json, tags the repo,
-# builds the runtime image from the committed Dockerfile, publishes it to GHCR
-# with semver + sha tags, and cuts a GitHub Release. The homelab deploy is
-# handled separately by deploy.yml (fires on this workflow's success).
-
 on:
   push:
     branches: [main]
@@ -22,17 +15,10 @@ on:
           - major
         default: "patch"
 
-# Serialize whole runs. cancel-in-progress is false on purpose: each release
-# pushes a `chore: bump version` commit back to main, and cancelling an
-# in-flight release mid-way (between the git push and the GitHub Release) would
-# leave a dangling tag/image. The bump-commit run short-circuits in seconds via
-# detect-release, so queuing barely adds latency.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-# Least-privilege default. The release job elevates per-job to the
-# contents:write / packages:write it actually needs.
 permissions:
   contents: read
 
@@ -40,8 +26,6 @@ jobs:
   detect-release:
     name: Detect release type
     runs-on: ubuntu-latest
-    # Skip the workflow's own `chore: bump version` commits. GITHUB_TOKEN pushes
-    # don't re-trigger workflows, so this is belt-and-suspenders.
     if: >-
       github.event_name == 'workflow_dispatch'
       || (
@@ -54,8 +38,6 @@ jobs:
     steps:
       - name: Analyze commit for release type
         id: check
-        # Workflow expressions are passed through env vars so bash always
-        # treats them as data, never as code to parse.
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           EVENT_NAME: ${{ github.event_name }}
@@ -151,9 +133,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # Rebase onto the latest origin/main BEFORE bumping so a previous
-      # release's bump commit (queued ahead of us by cancel-in-progress: false)
-      # is picked up and our later push isn't rejected as non-fast-forward.
       - name: Sync with latest origin/main
         run: |
           git fetch origin main
@@ -187,8 +166,6 @@ jobs:
           echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Generate changelog
-        # Built from PREVIOUS_TAG..HEAD before the bump commit, so the
-        # `chore: bump version` commit doesn't pollute its own changelog.
         run: |
           set -euo pipefail
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -209,18 +186,12 @@ jobs:
         working-directory: server
         run: npm version "$NEW_VERSION" --no-git-tag-version
 
-      # The build stamp in the app's footer is compiled from *this* file (see
-      # frontend/vite.config.js), so leaving it behind pinned every deployed
-      # build to the version the frontend was scaffolded at. --allow-same-version
-      # keeps a re-run from failing once the two are already in step.
       - name: Bump version in frontend/package.json
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
         working-directory: frontend
         run: npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version
 
-      # Diff-guard: if the bump left the worktree clean (e.g. a re-run), skip
-      # the commit so `git commit` doesn't exit 1 and kill the job.
       - name: Commit version bump
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
@@ -237,10 +208,6 @@ jobs:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
         run: git tag -fa "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"
 
-      # Push git BEFORE Docker so git stays the source of truth: if the push
-      # fails we abort before polluting GHCR with an untagged image. Retry loop
-      # handles the expected race where a sibling release's bump commit lands
-      # between our rebase and our push.
       - name: Push git changes (retry on non-fast-forward)
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
@@ -293,7 +260,6 @@ jobs:
             VCS_REF=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max,ignore-error=true
-          # amd64-only: production target is x86_64. Re-add arm64 with native runners if needed.
           platforms: linux/amd64
 
       - name: Create GitHub Release

@@ -25,11 +25,6 @@ const STATUS_FILTERS = [
   { id: 'no', label: 'Déclinées' }
 ];
 
-/**
- * The responses tab: the counters, the list, and the search/filter/sort controls
- * over it. Filtering is client-side over the already loaded list, so narrowing
- * it never costs a request.
- */
 export default function ResponsesPanel({
   event,
   stats,
@@ -50,12 +45,8 @@ export default function ResponsesPanel({
   const { query, status, sort } = filters;
   const set = (patch) => onFiltersChange({ ...filters, ...patch });
 
-  // "/" jumps to the response search, the way every list view on the web does.
-  // Ignored while a dialog is up: the focus belongs to it, not to the list
-  // behind it.
   useHotkey('/', () => searchInputRef.current?.focus(), shortcutsEnabled && rsvps.length > 0);
 
-  // Counts behind the filter buttons, so each one shows its own size.
   const statusCounts = useMemo(
     () => ({
       all: rsvps.length,
@@ -72,8 +63,6 @@ export default function ResponsesPanel({
       if (!q) return true;
       return [r.name, r.email, r.phone].some((v) => (v || '').toLowerCase().includes(q));
     });
-    // Sort a copy: `rsvps` is the fetched order and the auto-refresh replaces it
-    // wholesale.
     if (sort === 'name') return [...rows].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr'));
     if (sort === 'guests') return [...rows].sort((a, b) => (b.guests || 0) - (a.guests || 0));
     return rows;
@@ -81,8 +70,6 @@ export default function ResponsesPanel({
 
   return (
     <>
-      {/* Hidden on a phone: the folded event summary directly above already
-          names the fête and offers the way out of it. */}
       <div className="hidden flex-wrap items-center justify-between gap-2 sm:flex">
         <h2 className="text-lg font-semibold">
           Gestion : <span className="text-primary">{event.person || 'Sans nom'}</span>

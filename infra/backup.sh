@@ -1,9 +1,4 @@
 #!/bin/sh
-# Periodic online backup of the SQLite database to the backup volume.
-#
-# `sqlite3 .backup` takes a consistent snapshot while the app keeps running
-# (safe thanks to WAL mode), so this needs no coordination with the server.
-# Old snapshots beyond BACKUP_KEEP are pruned.
 set -e
 
 DB="${DB_PATH:-/app/data/rsvp.db}"
@@ -22,7 +17,6 @@ while true; do
     else
       echo "backup: FAILED at $ts" >&2
     fi
-    # Prune all but the newest $KEEP snapshots.
     ls -1t "$DEST"/rsvp-*.db 2>/dev/null | tail -n +"$((KEEP + 1))" | xargs -r rm -f
   else
     echo "backup: $DB not present yet, skipping"

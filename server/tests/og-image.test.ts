@@ -40,7 +40,6 @@ const eventRow = (overrides: Partial<EventRow> = {}): EventRow => ({
     ...overrides
 });
 
-// The 8-byte PNG signature, then the IHDR chunk carrying the dimensions.
 function pngSize(buf: Buffer): { width: number; height: number } {
     expect(buf.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
     return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
@@ -126,7 +125,6 @@ describe('Open Graph card (metadata)', () => {
     });
 
     it('omits the image entirely when no origin is known', () => {
-        // A relative og:image is ignored by every scraper, so emit none at all.
         const meta = buildEventMeta(eventRow(), '');
         expect(meta.ogImage).toBeUndefined();
         const html = renderIndexHtml(SHELL, meta);
@@ -196,7 +194,6 @@ describe('Open Graph card (served)', () => {
         expect(etag).toBeTruthy();
         await request(app).get('/api/og.png').set('If-None-Match', etag).expect(304);
 
-        // updated_at is part of the cache key, so an edit must mint a new tag.
         db.run("UPDATE event SET person = 'Léa', updated_at = '2030-01-01 00:00:00' WHERE is_default = 1");
         const after = await request(app).get('/api/og.png').expect(200);
         expect(after.headers.etag).not.toBe(etag);

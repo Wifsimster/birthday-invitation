@@ -3,7 +3,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDate } from './format.js';
 
-/** One stored response, with the two actions an admin has on it. */
 export default function ResponseCard({ rsvp, onEdit, onDelete }) {
   const attending = rsvp.attending === 'yes';
   return (
@@ -18,9 +17,6 @@ export default function ResponseCard({ rsvp, onEdit, onDelete }) {
             <span aria-hidden="true">{attending ? '✅' : '❌'}</span>
             <span className="truncate">{rsvp.name}</span>
           </h3>
-          {/* The status was a row of its own in the list below, where "Statut"
-              and its value took the full width of a phone for one word. It reads
-              as part of the identity, so it sits here as a badge. */}
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge className={attending ? 'bg-success text-success-foreground' : 'bg-destructive text-white'}>
               {attending ? 'Confirmé' : 'Décliné'}
@@ -58,9 +54,6 @@ export default function ResponseCard({ rsvp, onEdit, onDelete }) {
         </div>
       </div>
 
-      {/* Label and value share two real grid columns rather than a flex row
-          each: at 390px the flex version let "Mis à jour" break across two lines
-          and squeezed the email down to an ellipsis. */}
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm sm:grid-cols-[auto_1fr_auto_1fr] sm:gap-x-6">
         {rsvp.email && (
           <>

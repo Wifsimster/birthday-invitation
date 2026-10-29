@@ -1,9 +1,4 @@
 #!/bin/sh
-# Inject runtime configuration into the built SPA as dist/env.js.
-#
-# Values are JSON-encoded with Node so any quote, backslash, newline or
-# "</script>" in operator-supplied text (e.g. EVENT_LOCATION, DRESS_CODE) stays
-# valid JS instead of producing a broken — or injectable — env.js.
 set -e
 
 node -e '

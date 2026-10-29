@@ -1,5 +1,3 @@
-// SQLite-backed event storage. The only module that writes the `event` table.
-
 import type { Db, EventRow } from '../db.ts';
 import type { EventCounts, EventFields, EventRepository, NewEvent } from './types.ts';
 
@@ -14,9 +12,6 @@ export function createEventRepository(db: Db): EventRepository {
       return db.get<EventRow>('SELECT * FROM event WHERE slug = ?', [slug]);
     },
 
-    // Prefer the flagged row; fall back to the lowest id if (somehow) none is
-    // flagged. Should never happen once initSchema has run, but the legacy
-    // routes all resolve through here, so stay defensive rather than throwing.
     findDefault() {
       const row =
         db.get<EventRow>('SELECT * FROM event WHERE is_default = 1 ORDER BY id LIMIT 1') ??
