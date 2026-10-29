@@ -1,10 +1,3 @@
-// The other guests, as one of them may see them.
-//
-// The phone number is the guest's identity here exactly as it is on the RSVP
-// form: the server answers 403 to anyone who has not confirmed their own
-// attendance, which is the normal case for a decline — the panel then simply
-// stays hidden rather than reporting an error nobody can act on.
-
 import { useCallback, useState } from 'react';
 import { ApiError, rsvpsApi } from '../api/index.js';
 

@@ -8,18 +8,13 @@ import { createApp } from '../src/app.ts';
 import { createAuth, migrateAuth, seedAdminUser } from '../src/auth.ts';
 import { openDb, initSchema, type Db } from '../src/db.ts';
 
-// Fixed signing config so every Better Auth instance in the suite (the explicit
-// one and any built internally by createApp) shares the same secret/origin.
 process.env.BETTER_AUTH_SECRET = 'test-secret-0123456789-abcdefghijklmnop';
 process.env.BETTER_AUTH_URL = 'http://localhost:3000';
 
 const ADMIN = { email: 'admin@example.com', password: 'secret-password' };
 
-// Browsers send an Origin header on POSTs; Better Auth's CSRF guard requires it
-// on state-changing auth routes (sign-in/sign-out). Mirror that in tests.
 const ORIGIN = 'http://localhost:3000';
 
-// Sign in over HTTP and return the session cookie(s) for use on admin routes.
 async function adminLogin(app: Express): Promise<string> {
     const res = await request(app)
         .post('/api/auth/sign-in/email')
@@ -30,7 +25,6 @@ async function adminLogin(app: Express): Promise<string> {
     return (raw ?? []).map((c) => c.split(';')[0]).join('; ');
 }
 
-// A complete, valid RSVP payload. Tests override individual fields as needed.
 const validRsvp = (overrides: Record<string, unknown> = {}) => ({
     attending: 'yes',
     name: 'John Doe',
@@ -46,16 +40,13 @@ describe('RSVP API', () => {
     let authCookie: string;
 
     beforeEach(async () => {
-        // A fresh in-memory database per test, wired to the *real* app factory.
         db = await openDb(':memory:');
         await initSchema(db);
-        // Email/password auth: create the tables and seed the single admin.
         const auth = createAuth(db.raw);
         await migrateAuth(auth);
         await seedAdminUser(auth, ADMIN.email, ADMIN.password);
         app = createApp(db, {
             auth,
-            // Generous limits so tests don't trip the rate limiter.
             rateLimits: { globalMax: 10000, rsvpMax: 10000 }
         });
         authCookie = await adminLogin(app);
@@ -273,13 +264,12 @@ describe('RSVP API', () => {
 
             expect(res.headers['content-type']).toMatch(/text\/csv/);
             expect(res.headers['content-disposition']).toMatch(/rsvps\.csv/);
-            expect(res.text.charCodeAt(0)).toBe(0xfeff); // BOM
+            expect(res.text.charCodeAt(0)).toBe(0xfeff);
             const lines = res.text.replace(/^\uFEFF/, '').trim().split('\r\n');
             expect(lines[0]).toBe(
                 'id,name,attending,email,phone,guests,dietary_restrictions,message,share_response,created_at,updated_at'
             );
             expect(lines).toHaveLength(3);
-            // The quote/comma-bearing message must be RFC 4180 escaped.
             expect(res.text).toContain('"a, b ""c"""');
         });
 
@@ -291,7 +281,6 @@ describe('RSVP API', () => {
                 .get('/api/rsvps/export.csv')
                 .set('Cookie', authCookie)
                 .expect(200);
-            // The leading = is prefixed with a quote so spreadsheets treat it as text.
             expect(res.text).toContain("'=HYPERLINK");
         });
     });
@@ -308,8 +297,6 @@ describe('RSVP API', () => {
     });
 
     describe('Shared responses (share_response)', () => {
-        // Everyone below answers on the default event, reachable through both the
-        // legacy routes and /api/events/default/*.
         const accept = (phone: string, name: string, share: boolean, guests = 2) =>
             request(app)
                 .post('/api/rsvp')
@@ -356,7 +343,6 @@ describe('RSVP API', () => {
                 .expect(201);
 
             const res = await request(app).get('/api/participants/+33144000012').expect(200);
-            // Alphabetical, name + party size only — nothing else of the row.
             expect(res.body.participants).toEqual([
                 { name: 'Alice', guests: 1 },
                 { name: 'Zoé', guests: 2 }
@@ -386,7 +372,6 @@ describe('RSVP API', () => {
 
             const declined = await request(app).get('/api/participants/+33144000031').expect(403);
             expect(declined.body.code).toBe('not_attending');
-            // An unknown number gets the exact same answer: no membership oracle.
             const unknown = await request(app).get('/api/participants/+33199999999').expect(403);
             expect(unknown.body).toEqual(declined.body);
         });
@@ -433,9 +418,6 @@ describe('RSVP API', () => {
             expect(res.body.error).toMatch(/closes/);
         });
 
-        // The legacy route and /api/events/default/rsvp are the same event, so a
-        // deadline the host set from the admin UI has to close both — the env
-        // config it was seeded from is stale the moment that edit lands.
         it('honours a deadline stored on the default event over the env config', async () => {
             db.run(
                 "UPDATE event SET person = 'Léo', rsvp_deadline = '2000-01-01' WHERE is_default = 1"
@@ -492,8 +474,6 @@ describe('RSVP API', () => {
             expect(list.body.rsvps[0]).toMatchObject({ attending: 'no', guests: 0 });
         });
 
-        // (event_id, phone) is UNIQUE, so this used to raise a constraint error
-        // and reach the client as a generic 500.
         it('rejects an edit onto a number another response already holds (409)', async () => {
             await request(app).post('/api/rsvp').send(validRsvp({ phone: '+33155000010' })).expect(201);
             const second = await request(app)
@@ -509,8 +489,6 @@ describe('RSVP API', () => {
             expect(res.body.error).toMatch(/existe déjà/);
         });
 
-        // The legacy routes all read the default event; the id in the path must
-        // not reach a response filed under a different party.
         it('404s for an rsvp that belongs to another event', async () => {
             const ev = await request(app)
                 .post('/api/events')
@@ -533,7 +511,6 @@ describe('RSVP API', () => {
                 .set('Cookie', authCookie)
                 .expect(404);
 
-            // Untouched on its own event.
             const list = await request(app)
                 .get(`/api/events/${ev.body.id}/rsvps`)
                 .set('Cookie', authCookie)
@@ -573,8 +550,6 @@ describe('RSVP API', () => {
             await request(noEvent).get('/api/event.ics').expect(404);
         });
 
-        // An evening party ran DTEND before DTSTART on the same date, which
-        // calendars refuse to import.
         it('rolls the end time to the next day when the party crosses midnight', async () => {
             const lateEvent = createApp(db, {
                 event: { person: 'Léo', age: '', date: '2025-09-06', time: '20h00 - 00h30', town: '', location: '' }
@@ -585,9 +560,6 @@ describe('RSVP API', () => {
             expect(res.text).toContain('DTEND:20250907T003000');
         });
 
-        // Same event as /api/events/default/event.ics: once the host has edited
-        // the default event, the invite has to carry those details, not the
-        // values the row was seeded from at first boot.
         it('builds the invite from the stored default event once it has details', async () => {
             const withEnv = createApp(db, {
                 event: { person: 'Ancien', age: '4', date: '2025-01-01', time: '10h00', town: '', location: '' }
@@ -706,8 +678,6 @@ describe('RSVP API', () => {
                 .set('Origin', ORIGIN)
                 .send({ email: 'newcomer@example.com', password: 'another-strong-password', name: 'Newcomer' })
                 .expect(200);
-            // The new account exists on the default role — see tests/auth.test.ts
-            // for the full role/verification matrix.
             const row = db.get<{ role: string }>('SELECT role FROM "user" WHERE email = ?', [
                 'newcomer@example.com'
             ]);
@@ -725,7 +695,6 @@ describe('RSVP API', () => {
                 .set('Origin', ORIGIN)
                 .set('Cookie', authCookie)
                 .expect(200);
-            // The cookie is revoked server-side, so the protected route now 401s.
             await request(app).get('/api/rsvps').set('Cookie', authCookie).expect(401);
         });
     });

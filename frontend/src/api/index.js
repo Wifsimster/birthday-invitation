@@ -1,8 +1,3 @@
-// The API as the views see it: named operations, not URLs.
-//
-// Nothing above this layer knows a path, a verb or a status code. Renaming an
-// endpoint, versioning it, or putting a retry in front of one is a change here.
-
 import { apiBaseUrl } from '../env.js';
 import { request } from './client.js';
 
@@ -10,10 +5,7 @@ export { ApiError } from './client.js';
 
 const url = (path) => `${apiBaseUrl}${path}`;
 
-// --- Events -----------------------------------------------------------------
-
 export const eventsApi = {
-  /** The invitations this account may manage, with their RSVP counters. */
   async list() {
     const data = await request(url('/events'), {
       fallback: 'Erreur lors de la récupération des événements'
@@ -52,21 +44,17 @@ export const eventsApi = {
     });
   },
 
-  /** Absolute URL of an event's Open Graph share card (a <meta>, not a fetch). */
   ogImageUrl(slug) {
     const path = slug ? `/events/${encodeURIComponent(slug)}/og.png` : '/og.png';
     return new URL(url(path), window.location.origin).href;
   },
 
-  /** The public invitation payload for a slug ('default' for the main one). */
   publicEvent(slug) {
     return request(url(`/events/${encodeURIComponent(slug)}`), {
       fallback: "Erreur lors du chargement de l'invitation"
     });
   }
 };
-
-// --- RSVPs ------------------------------------------------------------------
 
 export const rsvpsApi = {
   async listFor(eventId) {
@@ -82,7 +70,6 @@ export const rsvpsApi = {
     });
   },
 
-  /** The CSV export is a browser navigation, so this is a URL by design. */
   exportUrl(eventId) {
     return url(`/events/${eventId}/rsvps/export.csv`);
   },
@@ -110,7 +97,6 @@ export const rsvpsApi = {
     });
   },
 
-  /** A guest submitting (or updating) their own answer. */
   submit(slug, payload) {
     return request(url(`/events/${encodeURIComponent(slug)}/rsvp`), {
       method: 'POST',
@@ -119,7 +105,6 @@ export const rsvpsApi = {
     });
   },
 
-  /** A guest retrieving the answer they already gave, by phone number. */
   lookup(slug, phone) {
     return request(
       url(`/events/${encodeURIComponent(slug)}/rsvp/lookup/${encodeURIComponent(phone)}`),
@@ -127,7 +112,6 @@ export const rsvpsApi = {
     );
   },
 
-  /** Who else is coming, as answered to a confirmed guest. */
   participants(slug, phone) {
     return request(
       url(`/events/${encodeURIComponent(slug)}/participants/${encodeURIComponent(phone)}`),
@@ -135,13 +119,10 @@ export const rsvpsApi = {
     );
   },
 
-  /** The event's calendar invite — a download link, not a fetch. */
   icsUrl(slug) {
     return url(`/events/${encodeURIComponent(slug)}/event.ics`);
   }
 };
-
-// --- Accounts ---------------------------------------------------------------
 
 export const usersApi = {
   async list() {
@@ -165,16 +146,12 @@ export const usersApi = {
   }
 };
 
-// --- The signed-in account ---------------------------------------------------
-
 export const accountApi = {
-  /** The current account and its granted role, or null when signed out. */
   async me() {
     const data = await request(url('/me'), { fallback: 'Session indisponible' });
     return data.user ?? null;
   },
 
-  /** Which sign-in methods this deployment offers. */
   providers() {
     return request(url('/auth-providers'), { fallback: 'Configuration indisponible' });
   }

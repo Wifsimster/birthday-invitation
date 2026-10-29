@@ -59,36 +59,11 @@ function DialogContent({ className, children, showCloseButton = true, ...props }
   );
 }
 
-/**
- * A dialog that scrolls the *overlay* rather than clipping its own body.
- *
- * The centred DialogContent above is capped to the viewport, so on a phone the
- * on-screen keyboard shrinks the visual viewport and buries the lower half of a
- * long form. Here the overlay owns the scrolling and the panel keeps its natural
- * height, so every field stays reachable. Used by the admin's event and RSVP
- * forms.
- *
- * Below `sm` the panel is a full-screen page rather than a floating card — the
- * pattern every mobile OS uses for a form — so the fields get the whole width
- * and DialogFooter can pin the actions to the bottom of the screen. From `sm`
- * up it goes back to a centred, rounded panel.
- */
 function DialogScrollContent({ className, children, ...props }) {
   return (
     <DialogPortal>
       <DialogPrimitive.Overlay
         data-slot="dialog-overlay"
-        /* `place-items-center` in a scroll container puts the top of an
-           over-tall panel above scroll position 0, where it can never be
-           reached. Centring with an auto margin on a flex item does not: the
-           panel simply starts at the top once it outgrows the viewport.
-
-           `items-start` matters as much: the overlay's height is the viewport,
-           so the default `stretch` pinned the panel to exactly that and let a
-           taller form spill past its own background — the bottom of a long
-           edit form sat on the black overlay instead of on the panel. Starting
-           the item at the top lets it take its content height, and the panel's
-           own `min-h-dvh` still fills the screen when the form is short. */
         className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 sm:py-8 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
       >
         <DialogPrimitive.Content
@@ -99,8 +74,6 @@ function DialogScrollContent({ className, children, ...props }) {
             className
           )}
           onPointerDownOutside={(event) => {
-            // The overlay is the scroll container, so a click on its scrollbar
-            // registers as "outside" and would close the dialog mid-edit.
             const originalEvent = event.detail.originalEvent;
             const target = originalEvent.target;
             if (
@@ -132,12 +105,6 @@ function DialogHeader({ className, ...props }) {
   );
 }
 
-/**
- * Actions stick to the bottom of the phone screen. A long form (the admin's
- * event editor runs to ten fields) otherwise pushes "Enregistrer" past the
- * fold, and the visitor has to scroll back down to submit. From `sm` up the
- * panel is short enough that the footer can go back to sitting in the flow.
- */
 function DialogFooter({ className, ...props }) {
   return (
     <div

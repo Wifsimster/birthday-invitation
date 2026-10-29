@@ -1,5 +1,3 @@
-// The selected event's responses and their counters.
-
 import { useCallback, useRef, useState } from 'react';
 import { rsvpsApi } from '../api/index.js';
 
@@ -10,8 +8,6 @@ export function useEventRsvps(onAccessError) {
   const [stats, setStats] = useState(NO_STATS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  // The event the newest request was made for, so a slow answer for an event
-  // the admin has since navigated away from cannot overwrite the one on screen.
   const requestedFor = useRef(null);
 
   const load = useCallback(

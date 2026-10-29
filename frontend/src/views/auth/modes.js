@@ -1,15 +1,3 @@
-// Every screen the sign-in card can show, as data.
-//
-// The view used to ask `mode === 'signup'` in nine places to decide which field
-// to render, which autocomplete to set and which footer link to offer. A fifth
-// flow meant touching all nine. Here a flow is one entry: its copy, its fields
-// and what it offers besides them.
-//
-// `check-email` and `reset-sent` are transient states the view enters after a
-// successful submit; they have no route of their own so a refresh returns the
-// visitor to a form rather than a dead end. Every other mode comes in as a prop
-// from the route (see App.jsx).
-
 const PASSWORD = {
   existing: {
     label: 'Mot de passe',

@@ -1,14 +1,5 @@
 import { Progress } from '@/components/ui/progress';
 
-/**
- * The five figures at the top of the responses tab.
- *
- * Four boxed figures at two across, each with its own emoji row, filled a phone
- * screen before the first response was visible. Below `sm` they become one strip
- * of plain figures — the emoji were decoration and the border was repeated four
- * times — so the whole summary reads at a glance and the list starts above the
- * fold. The cards come back from `sm` up.
- */
 function Figure({ emoji, value, label, shortLabel, tone = '' }) {
   return (
     <div className="px-1 py-3 text-center sm:rounded-xl sm:border sm:bg-card sm:p-4 sm:text-left">
@@ -31,8 +22,6 @@ function Figure({ emoji, value, label, shortLabel, tone = '' }) {
 }
 
 export default function ResponseStats({ stats }) {
-  // Share of answers that are a yes. 0 when nobody has replied, rather than NaN
-  // from dividing by zero.
   const acceptanceRate = stats.total_responses
     ? Math.round((stats.confirmations / stats.total_responses) * 100)
     : 0;

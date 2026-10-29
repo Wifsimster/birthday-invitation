@@ -1,30 +1,9 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-/* Per-theme structure — shapes, borders, depth, texture, type treatment.
-   Loaded after the token definitions below so its `[data-theme]` blocks win. */
 @import './themes.css';
 
-/* The app has no dark mode: the tool surfaces are light and the invitation
-   takes its colours from the event's party theme. Nothing sets a `.dark`
-   class, so this keeps the stock shadcn `dark:` utilities inert. Without it
-   Tailwind would fire them on `prefers-color-scheme: dark` and half-darken
-   the light components. */
 @custom-variant dark (&:is(.dark *));
 
-/*
- * shadcn design tokens.
- *
- * Two palettes live here on purpose:
- *
- *  - The neutral slate/indigo set below dresses the *tool* surfaces — the admin
- *    console and the sign-in screens. They read as an application regardless of
- *    which party theme an event happens to use.
- *  - `.theme-surface` (further down) re-points the same tokens at the live
- *    `--theme-*` custom properties that themes.js writes on <html>. Any shadcn
- *    component rendered inside it re-skins itself with the event's palette, so
- *    the public invitation keeps its festive identity without a second set of
- *    components.
- */
 :root {
   --radius: 0.625rem;
 
@@ -44,9 +23,6 @@
   --accent-foreground: oklch(0.208 0.042 265.755);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
-  /* Not part of stock shadcn: the RSVP domain has a genuine "accepted" state
-     that reads as a peer of `destructive`, so it gets a token rather than a
-     hard-coded green scattered across the views. */
   --success: oklch(0.596 0.145 163.225);
   --success-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(0.929 0.013 255.508);
@@ -83,9 +59,6 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* The invitation's festive motion, exposed as utilities so the view keeps
-     its character without a scoped stylesheet. All of it is disabled by the
-     reduced-motion block at the end of this file. */
   --animate-float: float 6s ease-in-out infinite;
   --animate-hero-float: hero-float 6s ease-in-out infinite;
   --animate-rsvp-pulse: rsvp-pulse 2.5s ease-in-out infinite;
@@ -95,15 +68,7 @@
   --font-display: var(--theme-font-display, 'Fredoka', ui-sans-serif, system-ui, sans-serif);
 }
 
-/*
- * Party-themed scope. themes.js writes the `--theme-*` properties on <html>;
- * this remaps the shadcn tokens onto them so <Button>, <Input>, <Card> and the
- * rest inherit the event's palette inside the invitation.
- */
 .theme-surface {
-  /* `--background` too, not just `--card`: shadcn's outline button and the
-     popovers paint themselves on it, and left at the neutral app value they
-     came out as white slabs in the dark-surface themes. */
   --background: var(--theme-card-bg, #ffffff);
   --card: var(--theme-card-bg, #ffffff);
   --card-foreground: var(--theme-card-text, #21243d);
@@ -112,16 +77,11 @@
   --foreground: var(--theme-card-text, #21243d);
   --primary: var(--theme-primary, #e8443c);
   --primary-foreground: var(--theme-button-text, #ffffff);
-  /* Tints are mixed into the card's own background rather than into white, so
-     the dark-surface themes (Néon, Gaming, Y2K) lighten their fills instead of
-     bleaching a hole through the panel. */
   --secondary: color-mix(in srgb, var(--theme-primary, #e8443c) 10%, var(--theme-card-bg, #ffffff));
   --secondary-foreground: var(--theme-primary-dark, #a82019);
   --accent: color-mix(in srgb, var(--theme-primary, #e8443c) 12%, var(--theme-card-bg, #ffffff));
   --accent-foreground: var(--theme-primary-dark, #a82019);
   --muted: color-mix(in srgb, var(--theme-card-text, #21243d) 6%, var(--theme-card-bg, #ffffff));
-  /* 72%, not less: at 62% the secondary copy fell just under AA on the lighter
-     card backgrounds. Kept in step with scripts/check-themes.mjs. */
   --muted-foreground: color-mix(in srgb, var(--theme-card-text, #21243d) 72%, transparent);
   --border: color-mix(in srgb, var(--theme-card-text, #21243d) 14%, transparent);
   --input: color-mix(in srgb, var(--theme-card-text, #21243d) 20%, transparent);
@@ -135,35 +95,24 @@
 
   html {
     -webkit-text-size-adjust: 100%;
-    /* iOS keeps the previous section under the finger for a beat when a tab or
-       an anchor moves the page; smooth scrolling makes the jump readable. The
-       reduced-motion block at the end of this file turns it back off. */
     scroll-behavior: smooth;
   }
 
-  /* The grey flash Android paints over any tapped element fights the components'
-     own :active and focus styles, and it bleeds outside rounded corners. */
   html,
   body {
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Anything the page scrolls to (a tab panel, the RSVP form) has to clear the
-     sticky admin bar, or it lands underneath it. */
   :target,
   [data-scroll-margin] {
     scroll-margin-top: calc(3.5rem + 0.75rem);
   }
 
-  /* The app column owns the page height so the build stamp can sit at the end
-     of the flow and still be pushed to the bottom on short pages. */
   #app {
     display: flex;
     min-height: 100vh;
     min-height: 100dvh;
     flex-direction: column;
-    /* A phone held sideways puts the notch and the rounded corners over the
-       page's left or right edge; the insets are 0 everywhere else. */
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
@@ -174,8 +123,6 @@
 
   body {
     @apply text-foreground font-sans antialiased;
-    /* The animated party gradient is the app's backdrop; the admin console
-       paints its own flat surface over it. */
     background: var(--theme-bg-gradient, linear-gradient(135deg, #ffd166, #ef476f, #6c63ff));
     background-size: 200% 200%;
     animation: theme-gradient-shift 12s ease infinite;
@@ -185,8 +132,6 @@
     transition: background 0.4s ease;
   }
 
-  /* Buttons and form controls should never be the reason a phone zooms in.
-     16px is the iOS Safari threshold for auto-zoom on focus. */
   input,
   select,
   textarea {
@@ -202,11 +147,6 @@
   }
 }
 
-/*
- * shadcn's CardHeader puts a card action in a second column. On a phone that
- * squeezed "Événements" and its description into a ~150px gutter beside the
- * "Nouvel événement" button, so below `sm` the action drops onto its own row.
- */
 @media (width < 40rem) {
   [data-slot='card-header']:has([data-slot='card-action']) {
     grid-template-columns: 1fr;
@@ -247,8 +187,6 @@
   100% { background-position: 0% 50%; }
 }
 
-/* Respect users who ask for less motion: freeze the looping animations and the
-   moving background gradient site-wide (WCAG 2.3.3). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

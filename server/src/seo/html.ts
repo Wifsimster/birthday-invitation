@@ -1,10 +1,7 @@
-// Putting the metadata into the built shell.
-
 import { OG_WIDTH, OG_HEIGHT } from '../og-image.ts';
 import { escapeHtml, escapeJsonLd } from './escape.ts';
 import { SITE_NAME, type SeoMeta } from './meta.ts';
 
-/** The <meta>/<link>/<script> block that replaces the shell's placeholders. */
 function renderHead(meta: SeoMeta): string {
   const tags = [
     `<meta name="description" content="${escapeHtml(meta.description)}" />`,
@@ -21,8 +18,6 @@ function renderHead(meta: SeoMeta): string {
     meta.ogImage && `<meta property="og:image:width" content="${OG_WIDTH}" />`,
     meta.ogImage && `<meta property="og:image:height" content="${OG_HEIGHT}" />`,
     meta.ogImage && `<meta property="og:image:alt" content="${escapeHtml(meta.ogImage.alt)}" />`,
-    // A card carrying an image earns the large layout; without one, the small
-    // layout avoids reserving a blank thumbnail slot.
     `<meta name="twitter:card" content="${meta.ogImage ? 'summary_large_image' : 'summary'}" />`,
     `<meta name="twitter:title" content="${escapeHtml(meta.title)}" />`,
     `<meta name="twitter:description" content="${escapeHtml(meta.description)}" />`,
@@ -39,12 +34,6 @@ function renderHead(meta: SeoMeta): string {
   return tags.join('\n    ');
 }
 
-/**
- * Rewrite the built shell with this request's metadata: the <title> is replaced,
- * and everything between the `<!--seo-->` / `<!--/seo-->` markers — the build's
- * generic defaults — is swapped out for this event's tags. The block is
- * appended just before </head> when the markers are absent.
- */
 export function renderIndexHtml(html: string, meta: SeoMeta): string {
   let out = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtml(meta.title)}</title>`);
   const block = renderHead(meta);

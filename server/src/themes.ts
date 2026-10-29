@@ -1,9 +1,3 @@
-// The set of theme ids the API will accept for the selectable UI theme.
-// The rich visual definition of each theme (palette, fonts, emojis, copy, and
-// the structural CSS in frontend/src/assets/themes.css) lives in the frontend;
-// this list is the server-side allow-list used for validation and MUST stay in
-// sync with it — tests/themes.test.ts reads the frontend catalog and fails when
-// the two drift apart.
 export const THEME_IDS = [
   'kid',
   'floral',
@@ -16,28 +10,12 @@ export const THEME_IDS = [
 
 export type ThemeId = (typeof THEME_IDS)[number];
 
-// Default theme used when the admin has never chosen one. Keep in sync with the
-// frontend DEFAULT_THEME.
 export const DEFAULT_THEME: ThemeId = 'kid';
 
 export function isThemeId(value: unknown): value is ThemeId {
   return typeof value === 'string' && (THEME_IDS as readonly string[]).includes(value);
 }
 
-/*
- * Where the retired catalog went.
- *
- * The themes up to v1.11 were palette-and-emoji skins of one layout: a licensed
- * character or a motif, all rendered as the same white card. They were replaced
- * by seven themes that each carry their own structure. This maps every retired
- * id onto the survivor closest to how it actually looked, so events created
- * under the old catalog keep a deliberate appearance instead of silently
- * falling back to the default.
- *
- * Applied by the v5 migration in db.ts. Kept here, beside the allow-list, so a
- * stored value that predates it can still be recognised — a database restored
- * from an old backup arrives through the same door.
- */
 export const LEGACY_THEME_ALIASES: Record<string, ThemeId> = {
   fiesta: 'kid',
   pawpatrol: 'kid',
@@ -58,20 +36,12 @@ export const LEGACY_THEME_ALIASES: Record<string, ThemeId> = {
   foot: 'modern'
 };
 
-// The theme to render `value` with: itself when current, its replacement when
-// retired, the default otherwise.
 export function resolveThemeId(value: unknown): ThemeId {
   if (isThemeId(value)) return value;
   if (typeof value === 'string' && LEGACY_THEME_ALIASES[value]) return LEGACY_THEME_ALIASES[value];
   return DEFAULT_THEME;
 }
 
-// Colours each theme paints the Open Graph share card with (see og-image.ts).
-//
-// The browser gets its palette from frontend/src/themes.js; the card is
-// rasterised here, in a process that never loads the SPA, so it needs its own
-// copy. Only the handful of colours the card actually draws with are mirrored,
-// and they MUST stay in sync with the matching `palette` entries there.
 export interface ThemePalette {
   bgFrom: string;
   bgVia: string;

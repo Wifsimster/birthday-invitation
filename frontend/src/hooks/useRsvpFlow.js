@@ -1,9 +1,3 @@
-// The guest's answer, from the first tap to the confirmation panel.
-//
-// Opening the form, retrieving an earlier answer, submitting, and the
-// "modifier ma réponse" way back are one flow with one piece of state between
-// them — kept together here rather than as nine `useState`s in the view.
-
 import { useCallback, useState } from 'react';
 import { rsvpsApi } from '../api/index.js';
 
@@ -15,18 +9,12 @@ export const EMPTY_FORM = {
   guests: 1,
   dietary_restrictions: '',
   message: '',
-  // Opt-in, never pre-ticked: sharing has to be a deliberate gesture.
   share_response: false
 };
 
-/**
- * `onAnswered(phone, attending)` fires once the guest has proved who they are —
- * by answering or by retrieving their answer — which is what unlocks the guest
- * list.
- */
 export function useRsvpFlow(slug, onAnswered) {
   const [form, setForm] = useState(EMPTY_FORM);
-  const [panel, setPanel] = useState(null); // null | 'rsvp' | 'lookup'
+  const [panel, setPanel] = useState(null);
   const [lookupPhone, setLookupPhone] = useState('');
   const [confirmed, setConfirmed] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -43,7 +31,6 @@ export function useRsvpFlow(slug, onAnswered) {
     setErrorMessage('');
   }, []);
 
-  /** Back to the start, keeping the guest's answer available to edit. */
   const reset = useCallback(() => {
     setConfirmed(null);
     setPanel(null);
@@ -109,8 +96,6 @@ export function useRsvpFlow(slug, onAnswered) {
         });
         setPanel('rsvp');
         setLookupPhone('');
-        // Retrieving one's own response proves the same thing a submission
-        // does, so a guest coming back gets the list without answering again.
         onAnswered(data.phone, data.attending === 'yes');
       } catch (err) {
         setErrorMessage(err.message);

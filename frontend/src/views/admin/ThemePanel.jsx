@@ -3,14 +3,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { themeList, themeVars } from '../../themes.js';
 
-/**
- * A live miniature of one theme — not a drawing of one.
- *
- * It runs on the same `data-theme` attribute and `--theme-*` tokens the
- * invitation does, so the preview picks up the real corner radius, border,
- * shadow and texture from assets/themes.css. A hand-approximated swatch would
- * drift from the theme the first time one changed.
- */
 function ThemePreview({ theme }) {
   return (
     <span
@@ -20,10 +12,6 @@ function ThemePreview({ theme }) {
       aria-hidden="true"
     >
       <span className="absolute inset-0" style={{ background: 'var(--theme-bg-gradient)' }} />
-      {/* Drawn at the invitation's own size and scaled down as a whole, so
-          corner radii, border weights and offset shadows shrink with it. Sized
-          down directly they would read as one rounded rectangle for every theme
-          — which is the thing these themes fixed. */}
       <span className="relative w-[420px] origin-center scale-[0.32]">
         <span className="t-panel flex flex-col overflow-hidden bg-card">
           <span
@@ -47,7 +35,6 @@ function ThemePreview({ theme }) {
   );
 }
 
-/** The theme picker for the selected event. */
 export default function ThemePanel({ currentTheme, saving, onSelect }) {
   return (
     <Card>

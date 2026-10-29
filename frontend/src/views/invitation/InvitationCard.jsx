@@ -1,7 +1,6 @@
 import { CalendarDaysIcon, CalendarPlusIcon, DownloadIcon, Share2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-/** The themed header: the emoji row and the theme's own copy. */
 export function InvitationHeader({ theme }) {
   return (
     <header
@@ -27,8 +26,6 @@ export function InvitationHeader({ theme }) {
   );
 }
 
-// Where the floating emoji sit. Indexed by position in the theme's list, so a
-// theme with more or fewer decorations still scatters evenly.
 const DECORATION_POSITIONS = [
   'top-[10%] left-[15%]',
   'top-[20%] right-[20%]',
@@ -38,7 +35,6 @@ const DECORATION_POSITIONS = [
   'bottom-[10%] right-[25%]'
 ];
 
-/** The theme's floating emoji, scattered behind the card. */
 export function Decorations({ theme, themeId }) {
   return theme.decorations.map((emoji, i) => (
     <div
@@ -54,14 +50,6 @@ export function Decorations({ theme, themeId }) {
   ));
 }
 
-/**
- * Who the party is for, and when.
- *
- * The hero answers "who" and "when" before it asks for anything: name, age,
- * then the date on one line. The full grid of practical details moves below the
- * call to action, where it is reference material rather than a hurdle in front
- * of the button.
- */
 export function EventHero({ person, age, formattedDate, time }) {
   return (
     <>
@@ -85,8 +73,6 @@ export function EventHero({ person, age, formattedDate, time }) {
           </span>
           {time && (
             <span className="inline-flex items-center gap-2">
-              {/* The separator only makes sense while the two sit on one line;
-                  stacked on a phone it would dangle. */}
               {formattedDate && (
                 <span className="hidden opacity-40 sm:inline" aria-hidden="true">
                   •
@@ -101,20 +87,6 @@ export function EventHero({ person, age, formattedDate, time }) {
   );
 }
 
-/**
- * Calendar downloads and the share sheet.
- *
- * An even row rather than a wrapped one: three pills of different widths broke
- * 2 + 1 across two lines on a phone and read as two unrelated groups. Stacking
- * the icon over the label below `sm` buys each label the full width of its
- * third, so "Calendrier" still fits on a 360px screen.
- *
- * The row carries its own top margin rather than leaning on the details list
- * above it: that list is dropped whenever the event has no town, venue or dress
- * code, and the row was then left touching the RSVP panel with nothing between
- * them. It collapses against the list's `my-5` when the list is there, so the
- * gap is the same either way.
- */
 const PILL =
   'h-auto flex-col gap-0.5 rounded-2xl px-1.5 py-2 text-[0.72rem] sm:h-8 sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-3 sm:py-0 sm:text-sm';
 
@@ -143,7 +115,6 @@ export function ShareActions({ icsUrl, googleCalUrl, onShare }) {
   );
 }
 
-/** A slug nobody recognises, and the closed-RSVP notice, share one shape. */
 export function NoticeCard({ title, children }) {
   return (
     <div className="rounded-2xl border-2 border-dashed bg-muted px-5 py-8 text-center" role="status">

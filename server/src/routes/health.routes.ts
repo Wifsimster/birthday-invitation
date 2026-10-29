@@ -2,14 +2,9 @@ import { Router } from 'express';
 import { asyncHandler } from '../http/async-handler.ts';
 
 export interface HealthDeps {
-  /** Throws when the database is unreachable. */
   checkDatabase(): void;
 }
 
-/**
- * Health check. Also verifies the database is reachable/writable-ish so the
- * probe fails when SQLite is unusable, not just when the process is up.
- */
 export function createHealthRoutes({ checkDatabase }: HealthDeps): Router {
   const router = Router();
 

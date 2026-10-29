@@ -10,14 +10,6 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 
-/**
- * The console's top bar.
- *
- * The actions used to sit side by side and simply ran out of room on a phone,
- * squeezing the brand down to a bare emoji. The invitation link and sign-out now
- * collapse into a menu below `sm`, so the bar keeps its title and every control
- * keeps a 44px touch target.
- */
 export default function AdminTopbar({ isAdmin, email, refreshing, onRefresh, invitationPath, onLogout }) {
   return (
     <header className="sticky top-0 z-40 border-b bg-card/95 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-card/80">
@@ -26,8 +18,6 @@ export default function AdminTopbar({ isAdmin, email, refreshing, onRefresh, inv
           🎉
         </span>
         <div className="min-w-0 flex-1">
-          {/* An admin oversees the whole deployment; everyone else is looking at
-              the invitations they created themselves. */}
           <p className="truncate text-sm leading-tight font-semibold">
             {isAdmin ? 'Administration' : 'Mes invitations'}
           </p>

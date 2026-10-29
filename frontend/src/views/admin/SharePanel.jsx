@@ -6,13 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { eventUrl, slugForFile } from './format.js';
 
-/** The invitation's link, its QR code and the ways to send both. */
 export default function SharePanel({ event, onCopyLink, linkCopied }) {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const invitationUrl = eventUrl(event);
 
-  // The QR code belongs to this panel alone, so it is drawn when the panel is on
-  // screen rather than kept in the console's state for every tab.
   useEffect(() => {
     let cancelled = false;
     QRCode.toDataURL(invitationUrl, { width: 512, margin: 1 })

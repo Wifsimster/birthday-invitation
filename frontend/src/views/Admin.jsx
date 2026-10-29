@@ -24,9 +24,6 @@ import ThemePanel from './admin/ThemePanel.jsx';
 import { EmptyState } from './admin/PanelState.jsx';
 import { eventUrl } from './admin/format.js';
 
-// Section tabs. `needsEvent` marks the ones that operate on the selected event;
-// "Accès" is account-level and works without one, and manages *every* account of
-// the deployment — so it is the one tab reserved to admins.
 const TABS = [
   { id: 'responses', label: 'Réponses', icon: '📋', needsEvent: true },
   { id: 'theme', label: 'Thème', icon: '🎨', needsEvent: true },
@@ -45,7 +42,6 @@ const EMPTY_RSVP_FORM = {
   guests: 1,
   dietary_restrictions: '',
   message: '',
-  // The guest's own consent to appear in the list the other guests see.
   share_response: false
 };
 
@@ -65,34 +61,18 @@ const EMPTY_EVENT_FORM = {
 
 const NO_FILTERS = { query: '', status: 'all', sort: 'recent' };
 
-/**
- * The console.
- *
- * What is left here is orchestration: which event is selected, which tab is
- * open, which dialog is up, and the writes that tie the panels together. The
- * data lives in hooks (useEvents, useEventRsvps, useUsers), the requests behind
- * api/, and every screenful of markup in its own component under admin/.
- */
 export default function Admin() {
   const navigate = useNavigate();
   const session = useSession();
   const [, setSearchParams] = useSearchParams();
 
-  // The tab comes from the URL before the events land, so a reload does not
-  // flash the default tab first.
   const [activeTab, setActiveTab] = useState(() => {
     const wanted = new URLSearchParams(window.location.search).get('tab');
     return TABS.some((t) => t.id === wanted) ? wanted : 'responses';
   });
-  // The event asked for by the URL, captured at mount — the query string is
-  // rewritten as soon as a selection is made, so it can't be read back later.
   const wantedEventRef = useRef(new URLSearchParams(window.location.search).get('event'));
 
   const [selectedEventId, setSelectedEventId] = useState(null);
-  // Phones only: the event grid is roughly a screenful, and it sat above every
-  // tab on every visit — including "Accès", which has nothing to do with an
-  // event. Once a fête is picked the grid folds into a one-line summary and the
-  // work is at the top of the page. `sm` and up has the room, so it stays open.
   const [eventPickerOpen, setEventPickerOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [filters, setFilters] = useState(NO_FILTERS);
@@ -100,8 +80,6 @@ export default function Admin() {
   const [themeSaving, setThemeSaving] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
-  // Dialog state: what is open, what it is editing, and whether its write is in
-  // flight.
   const [rsvpDialog, setRsvpDialog] = useState({ open: false, mode: 'edit', form: EMPTY_RSVP_FORM, saving: false });
   const [eventDialog, setEventDialog] = useState({
     open: false, mode: 'create', isDefault: false, form: EMPTY_EVENT_FORM, saving: false, error: null
@@ -109,9 +87,6 @@ export default function Admin() {
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // Losing the session ends the polling — a dashboard sitting on an error and
-  // still polling only spends the rate limit — and hands the visitor back to the
-  // sign-in form.
   const pollRef = useRef(null);
   const onSessionLost = useCallback(() => {
     pollRef.current?.stop();
@@ -128,28 +103,15 @@ export default function Admin() {
     [events.events, selectedEventId]
   );
 
-  // The signed-in account, so the users table can mark "vous" and disable the
-  // actions the server would refuse anyway (self-demotion, self-deletion).
   const currentUserId = session.user?.id ?? null;
-  // Every account manages its own invitations; only an admin also manages the
-  // deployment's accounts (and sees every invitation, not just its own).
   const isAdmin = session.user?.role === 'admin';
   const visibleTabs = useMemo(() => TABS.filter((t) => !t.adminOnly || isAdmin), [isAdmin]);
 
-  // Any open dialog pauses the poll: replacing the list under an admin who is
-  // mid-edit was how a half-typed response got wiped.
   const anyDialogOpen = rsvpDialog.open || eventDialog.open || !!confirm;
 
-  // The poll fires from a listener that outlives a render, so it reads the live
-  // values through a ref rather than a stale closure.
   const live = useRef({});
   live.current = { selectedEventId, anyDialogOpen };
 
-  // ---- Loading -------------------------------------------------------------
-
-  // Reloading the list can retire the selected event (deleted here or in another
-  // tab), which has to clear the selection rather than leave the panels pointing
-  // at an id the server no longer knows.
   const loadEvents = useCallback(async () => {
     const list = await events.load();
     if (!list) return null;
@@ -162,10 +124,7 @@ export default function Admin() {
     [responses]
   );
 
-  // ---- Mount ---------------------------------------------------------------
-
   useEffect(() => {
-    // The console is behind a login and has nothing to offer a search engine.
     applySeo({
       title: "Administration | Invitation d'anniversaire",
       description: "Console d'administration des invitations et des réponses.",
@@ -182,40 +141,25 @@ export default function Admin() {
         setSelectedEventId(match.id);
         return;
       }
-      // Nothing asked for: open the default event straight away. Landing on a
-      // dashboard that shows nothing until you press "Gérer" was a wasted step,
-      // and most deployments only ever run one party at a time.
       setSelectedEventId((current) => {
         if (current !== null || !list.length) return current;
         return (list.find((e) => e.is_default) || list[0]).id;
       });
     });
-    // The account list backs the admin-only "Accès" tab; asking for it as a
-    // regular account would only collect a 403 the dashboard has to ignore.
     if (isAdmin) accounts.load();
-    // Mount only: the loaders are stable, and re-running this would fight the
-    // admin's own selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Poll only the data that actually moves: events and their RSVPs. The account
-  // list changes rarely and has its own refresh button, and every extra polled
-  // call eats into the admin rate limit.
   pollRef.current = usePoll(() => {
     if (live.current.anyDialogOpen) return;
     loadEvents();
     if (live.current.selectedEventId) loadResponses();
   }, POLL_INTERVAL_MS);
 
-  // A tab the account cannot open (?tab=access on a non-admin, or an admin
-  // demoted while the tab was open) would leave Tabs with a value no trigger
-  // carries, rendering an empty panel. Fall back to the responses list.
   useEffect(() => {
     if (!visibleTabs.some((t) => t.id === activeTab)) setActiveTab('responses');
   }, [visibleTabs, activeTab]);
 
-  // Keep the selected event and tab in the URL so a reload, a share, or the back
-  // button return to the same place instead of the empty dashboard.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const nextEvent = selectedEventId ? String(selectedEventId) : null;
@@ -226,21 +170,10 @@ export default function Admin() {
     setSearchParams(params, { replace: true });
   }, [selectedEventId, activeTab, setSearchParams]);
 
-  // The theme picker previews each label in that theme's own display font, so
-  // the panel needs the whole catalog's typefaces — fetched when it is opened,
-  // not before, and never on the guest-facing invitation.
   useEffect(() => {
     if (activeTab === 'theme') preloadThemeFonts();
   }, [activeTab]);
 
-  // A newly picked event starts unfiltered on its responses, rather than
-  // inheriting the search left over from the previous one.
-  //
-  // The tab is deliberately *not* touched here. This effect also runs for the
-  // selection made at mount (from ?event=, or the default event), so forcing a
-  // per-event tab here threw away the tab the URL asked for — reloading on
-  // ?tab=access always bounced back to the responses list. Moving to an event's
-  // own tab belongs to an explicit pick, so it lives in selectEvent() below.
   useEffect(() => {
     if (!selectedEventId) return;
     setFilters(NO_FILTERS);
@@ -249,30 +182,18 @@ export default function Admin() {
     setCurrentTheme(theme);
     applyTheme(theme);
     responses.load(selectedEventId);
-    // Re-running this on every `events` refresh would fight the admin's own
-    // filters, so it keys off the selection alone.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEventId]);
 
-  // ---- Actions -------------------------------------------------------------
-
-  // Picking a party from the list means "show me this one", so an account-level
-  // tab gives way to its responses. Only for a deliberate pick — the mount-time
-  // selection must leave the tab the URL restored alone.
   function selectEvent(id) {
     setSelectedEventId(id);
     setActiveTab((tab) => (TABS.find((t) => t.id === tab)?.needsEvent ? tab : 'responses'));
-    // On a phone the grid folds away once there is a fête to work on.
     setEventPickerOpen(false);
   }
 
-  // Topbar refresh: reload everything the console is showing.
   async function refreshAll() {
     setRefreshing(true);
     try {
-      // The account list is admin-only; asking for it as a regular account would
-      // answer 403 and surface as a "chargement impossible" error on a panel
-      // that account cannot even open.
       await Promise.all([
         loadEvents(),
         isAdmin ? accounts.load() : Promise.resolve(),
@@ -293,8 +214,6 @@ export default function Admin() {
       await navigator.clipboard.writeText(value);
       return true;
     } catch {
-      // Clipboard is unavailable outside a secure context; the link stays on
-      // screen to copy by hand, so say so rather than failing silently.
       toast.error('Copie impossible, sélectionne le lien à la main.');
       return false;
     }
@@ -310,12 +229,10 @@ export default function Admin() {
     if (await copyText(eventUrl(ev))) toast.success('Lien copié');
   }
 
-  // ---- Theme (scoped to the selected event) --------------------------------
   async function selectTheme(id) {
     if (!selectedEventId || id === currentTheme || themeSaving) return;
     setThemeSaving(true);
     const previous = currentTheme;
-    // Optimistically re-skin so the change is instant.
     setCurrentTheme(id);
     applyTheme(id);
     try {
@@ -333,8 +250,6 @@ export default function Admin() {
       setThemeSaving(false);
     }
   }
-
-  // ---- RSVP writes ---------------------------------------------------------
 
   function openRsvpDialog(mode, rsvp) {
     setRsvpDialog({
@@ -364,10 +279,6 @@ export default function Admin() {
     const creating = mode === 'create';
     setRsvpDialog((d) => ({ ...d, saving: true }));
     try {
-      // Clearing the number field leaves '' behind, and the API takes a number:
-      // posting the empty string failed the save with an untranslated schema
-      // error. The field is optional, so omit it and let the server apply its own
-      // default (and force 0 on a decline).
       const guests = Number(form.guests);
       const payload = {
         attending: form.attending,
@@ -392,8 +303,6 @@ export default function Admin() {
       toast.error(err.message);
     }
   }
-
-  // ---- Event writes --------------------------------------------------------
 
   function openEventDialog(mode, ev) {
     setEventDialog({
@@ -441,7 +350,6 @@ export default function Admin() {
         rsvp_deadline: form.rsvp_deadline,
         theme: form.theme
       };
-      // Slug is only sent for non-default events when provided.
       if (!isDefault && form.slug && form.slug.trim()) payload.slug = form.slug.trim();
 
       const saved = creating
@@ -449,7 +357,6 @@ export default function Admin() {
         : await eventsApi.update(form.id, payload);
 
       await loadEvents();
-      // Keep the selected event's theme preview in sync when editing it.
       if (!creating && saved && saved.id === selectedEventId) {
         const nextTheme = saved.theme || currentTheme;
         setCurrentTheme(nextTheme);
@@ -457,7 +364,6 @@ export default function Admin() {
       }
       setEventDialog((d) => ({ ...d, open: false, saving: false }));
       toast.success(creating ? `Événement « ${saved.person} » créé.` : 'Événement mis à jour.');
-      // A brand new event is almost always the one you want to work on next.
       if (creating && saved?.id) selectEvent(saved.id);
     } catch (err) {
       setEventDialog((d) => ({ ...d, saving: false }));
@@ -465,11 +371,6 @@ export default function Admin() {
       setEventDialog((d) => ({ ...d, error: err.message }));
     }
   }
-
-  // ---- Destructive confirmations -------------------------------------------
-  //
-  // One dialog for the three of them: what it says, and what it runs on
-  // confirmation, is all that differs.
 
   const askDeleteRsvp = (rsvp) =>
     setConfirm({
@@ -514,7 +415,6 @@ export default function Admin() {
           invitations seront supprimées avec leurs réponses. Cette action est irréversible.
         </>
       ),
-      // The accounts hook owns its own reload and toast.
       run: () => accounts.remove(user)
     });
 
@@ -532,13 +432,7 @@ export default function Admin() {
     }
   }
 
-  // ---- Render --------------------------------------------------------------
-
   const activeTabNeedsEvent = TABS.find((t) => t.id === activeTab)?.needsEvent;
-  // Where the topbar's "Voir l'invitation" shortcut goes. It used to be a fixed
-  // '/', which is the deployment's default party — the wrong page for anyone
-  // running invitations of their own. Follow the selected event instead, and
-  // only fall back to '/' when nothing is selected yet.
   const invitationPath = selectedEvent && !selectedEvent.is_default ? `/e/${selectedEvent.slug}` : '/';
 
   return (
@@ -571,16 +465,8 @@ export default function Admin() {
         />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-4">
-          {/* Pinned under the topbar on a phone: the sections are the console's
-              main navigation and scrolling back up to reach them turned every
-              switch into a round trip. The wrapper is what sticks, so the strip
-              is opaque edge to edge instead of letting the list scroll past the
-              pill's rounded corners. */}
           <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-30 -mx-3 bg-background px-3 py-2 sm:static sm:mx-0 sm:bg-transparent sm:p-0">
             <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
-              {/* Four labels plus their emoji overflow a 390px strip and the last
-                  one gets clipped mid-word; the emoji are decoration, so they are
-                  the part that goes. */}
               {visibleTabs.map((tab) => (
                 <TabsTrigger key={tab.id} value={tab.id} className="text-xs sm:text-sm">
                   <span className="hidden sm:inline" aria-hidden="true">
@@ -596,7 +482,6 @@ export default function Admin() {
             </TabsList>
           </div>
 
-          {/* Shared "no event picked yet" state for the per-event tabs. */}
           {activeTabNeedsEvent && !selectedEvent && (
             <TabsContent value={activeTab}>
               <EmptyState icon="👆" title="Choisis un événement">
@@ -666,8 +551,6 @@ export default function Admin() {
       <EventDialog
         open={eventDialog.open}
         onOpenChange={(open) =>
-          // Closing by any route (button, overlay, Escape) has to clear the error
-          // it may be showing.
           setEventDialog((d) => ({ ...d, open, error: open ? d.error : null }))
         }
         mode={eventDialog.mode}

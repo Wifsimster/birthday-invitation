@@ -6,7 +6,6 @@ import { createAuth, migrateAuth, seedAdminUser, type Auth } from '../src/auth.t
 import { openDb, initSchema, type Db } from '../src/db.ts';
 import type { Mailer, MailMessage } from '../src/mailer.ts';
 
-// Same fixed signing config as the other suites so cookies validate.
 process.env.BETTER_AUTH_SECRET = 'test-secret-0123456789-abcdefghijklmnop';
 process.env.BETTER_AUTH_URL = 'http://localhost:3000';
 
@@ -37,12 +36,6 @@ function cookiesFrom(res: request.Response): string {
   return (raw ?? []).map((c) => c.split(';')[0]).join('; ');
 }
 
-/**
- * Every registered account may run as many invitations as it likes. This suite
- * pins the boundary that makes that safe: an account reaches exactly the
- * invitations it created, an admin reaches all of them, and someone else's
- * invitation is indistinguishable from one that does not exist.
- */
 describe('Per-account invitations', () => {
   let app: Express;
   let db: Db;
@@ -50,7 +43,6 @@ describe('Per-account invitations', () => {
   let mailer: ReturnType<typeof createTestMailer>;
   let adminCookie: string;
 
-  // Register an account, follow the emailed verification link, and sign in.
   async function register(credentials: typeof ALICE): Promise<{ cookie: string; id: string }> {
     await request(app)
       .post('/api/auth/sign-up/email')
@@ -72,7 +64,6 @@ describe('Per-account invitations', () => {
     return { cookie: cookiesFrom(signIn), id: row!.id };
   }
 
-  // Create an invitation as the given account and return the stored row.
   async function createEvent(cookie: string, body: Record<string, unknown>) {
     const res = await request(app).post('/api/events').set('Cookie', cookie).send(body).expect(201);
     return res.body;
@@ -163,7 +154,6 @@ describe('Per-account invitations', () => {
         .send({ attending: 'yes', name: 'Intrus', phone: '+1234567890' })
         .expect(404);
 
-      // Untouched by the refused writes.
       expect(db.get<{ person: string }>('SELECT person FROM event WHERE id = ?', [hers.id])?.person).toBe('Léo');
     });
 
@@ -249,7 +239,6 @@ describe('Per-account invitations', () => {
       await request(app).delete(`/api/users/${id}`).set('Cookie', adminCookie).expect(200);
 
       expect(db.all('SELECT id FROM event WHERE owner_id = ?', [id])).toHaveLength(0);
-      // The invitation is gone from the public side too, and its RSVPs cascaded.
       await request(app).get(`/api/events/${first.slug}`).expect(404);
       expect(db.all('SELECT id FROM rsvp WHERE event_id = ?', [first.id])).toHaveLength(0);
     });

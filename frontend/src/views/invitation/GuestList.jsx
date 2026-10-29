@@ -1,13 +1,6 @@
 import { Loader2Icon, UsersIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-/**
- * Who else is coming.
- *
- * Only ever rendered once the server has answered the guest's own phone number
- * with a list, i.e. once it has established that this reader is a confirmed
- * guest. A visitor who has not answered, or who declined, never sees this block.
- */
 export default function GuestList({ state, list, onRetry }) {
   if (state === 'loading') {
     return (

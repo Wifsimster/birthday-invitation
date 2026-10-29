@@ -1,19 +1,13 @@
-# Dependencies
 node_modules/
 
-# Runtime data (SQLite RSVP database)
 *.db
 data/
 
-# Built frontend (Vite output — built from frontend/ source, see Dockerfile)
 /dist/
 
-# Local env
 .env
 .env.local
 
-# Logs
 *.log
 
-# OS / editor
 .DS_Store

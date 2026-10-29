@@ -1,12 +1,6 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-/*
- * Gutters are narrower below `sm` than stock shadcn: 24px on each side of a
- * 390px phone spends an eighth of the screen on padding, which is what pushed
- * the admin's search field and response rows into wrapping.
- */
-
 function Card({ className, ...props }) {
   return (
     <div

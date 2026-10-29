@@ -13,8 +13,6 @@ import { logger } from './src/logger.ts';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
 
-// The built SPA lives next to the server (../dist). When present, this single
-// process serves it alongside the API — no Caddy / supervisord needed.
 function resolveStaticDir(): string | undefined {
   if (process.env.STATIC_DIR) return process.env.STATIC_DIR;
   const dist = path.join(__dirname, '..', 'dist');
@@ -25,8 +23,6 @@ async function main(): Promise<void> {
   const dbPath = defaultDbPath();
   const db = openDb(dbPath);
   initSchema(db);
-  // Seed/repair the default event from the env config so env-configured
-  // deployments flow their configuration into the default event row.
   const repos = createRepositories(db);
   const config = eventConfig();
   createEventService({
@@ -36,20 +32,12 @@ async function main(): Promise<void> {
   }).seedDefault(config);
   logger.info({ dbPath }, 'connected to SQLite database');
 
-  // Authentication (Better Auth): email/password with a verification round-trip,
-  // plus Google when credentials are configured.
   const isProduction = process.env.NODE_ENV === 'production';
 
-  // Fail fast in production if the session signing secret is missing —
-  // otherwise Better Auth falls back to a low-entropy default that would
-  // invalidate sessions across restarts.
   if (isProduction && !process.env.BETTER_AUTH_SECRET) {
     throw new Error('BETTER_AUTH_SECRET must be set in production');
   }
 
-  // Sign-up is gated on a verification email, so an unconfigured mailer would
-  // leave every new account permanently unable to sign in — with the link only
-  // in the container logs. Refuse to start rather than ship that silently.
   const mailConfig = mailerConfigFromEnv();
   if (isProduction && !mailConfig) {
     throw new Error(
@@ -73,8 +61,6 @@ async function main(): Promise<void> {
     'authentication configured'
   );
 
-  // Seed the bootstrap admin from the environment (idempotent). Every other
-  // account registers itself and starts with no access until promoted.
   const adminEmail = process.env.ADMIN_EMAIL;
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (adminEmail && adminPassword) {
@@ -92,8 +78,6 @@ async function main(): Promise<void> {
 
   const shutdown = (signal: string): void => {
     logger.info({ signal }, 'shutting down');
-    // Force-exit if connections don't drain in time so the container doesn't
-    // hang until Docker's SIGKILL (and db.close never runs).
     const forced = setTimeout(() => {
       logger.warn('graceful shutdown timed out, forcing exit');
       process.exit(1);

@@ -1,12 +1,5 @@
 import { Button } from '@/components/ui/button';
 
-/**
- * The answer, read back to the guest who just gave it.
- *
- * Deliberately outside the theme palette: "je viens" and "je ne viens pas" have
- * to read as an answer at a glance, in any theme. The stops are dark enough to
- * carry white text at WCAG AA — the pastel pair they replaced sat at 2:1.
- */
 export default function ConfirmationCard({ confirmed, onEdit }) {
   return (
     <div

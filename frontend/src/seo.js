@@ -1,12 +1,3 @@
-// Client-side <head> upkeep.
-//
-// The server already injects the right title/description/Open Graph tags into
-// the HTML shell for the first load (server/src/seo.ts) — that is what crawlers
-// and chat link scrapers read. These helpers keep the head correct afterwards,
-// once the event data has been fetched and across client-side navigation, so
-// the browser tab, bookmarks and the native share sheet show the party rather
-// than a generic title. Keep the copy in sync with server/src/seo.ts.
-
 const SITE_NAME = "Invitation d'anniversaire";
 
 function setMeta(selector, attr, value) {
@@ -38,10 +29,6 @@ function setLink(rel, href) {
   el.setAttribute('href', href);
 }
 
-/**
- * Apply a page's metadata. `url` defaults to the current location, minus any
- * query string, so the canonical stays a single clean address per invitation.
- */
 export function applySeo({ title, description, robots = 'index, follow', url, image }) {
   const canonical = url || `${window.location.origin}${window.location.pathname}`;
   document.title = title;
@@ -53,10 +40,6 @@ export function applySeo({ title, description, robots = 'index, follow', url, im
   setMeta('meta[property="og:url"]', ['property', 'og:url'], canonical);
   setMeta('meta[name="twitter:title"]', ['name', 'twitter:title'], title);
   setMeta('meta[name="twitter:description"]', ['name', 'twitter:description'], description);
-  // Passing no image clears the share card the server injected — otherwise a
-  // route without one (the admin console) would keep advertising the previous
-  // page's card. Scrapers never see these updates; this only keeps the live
-  // document honest.
   setMeta('meta[property="og:image"]', ['property', 'og:image'], image);
   setMeta('meta[name="twitter:image"]', ['name', 'twitter:image'], image);
   setMeta('meta[name="twitter:card"]', ['name', 'twitter:card'],
@@ -64,7 +47,6 @@ export function applySeo({ title, description, robots = 'index, follow', url, im
   setLink('canonical', canonical);
 }
 
-/** Title + description for one event. Mirrors buildEventMeta on the server. */
 export function eventSeo({ person, age, formattedDate, time, town, location, rsvpClosed }) {
   if (!person) {
     return { title: SITE_NAME, description: 'Invitation d\'anniversaire en ligne avec réponse (RSVP) en un clic.' };

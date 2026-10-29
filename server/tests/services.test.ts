@@ -1,11 +1,3 @@
-/*
- * The service layer, driven without Express and without SQLite.
- *
- * These tests exist as much to prove the seams as to check the rules: every
- * dependency below is a hand-written stand-in for a repository interface, so if
- * a use-case ever reaches past its port for a database handle, it stops
- * compiling here rather than silently binding itself to SQLite again.
- */
 import { describe, it, expect, vi } from 'vitest';
 import { createEventService } from '../src/services/event.service.ts';
 import { createRsvpService } from '../src/services/rsvp.service.ts';
@@ -35,7 +27,6 @@ const eventRow = (over: Partial<EventRow> = {}): EventRow => ({
     ...over
 });
 
-/** An event repository backed by a plain array. */
 function fakeEvents(rows: EventRow[] = []): EventRepository & { rows: EventRow[] } {
     let nextId = Math.max(0, ...rows.map((r) => r.id)) + 1;
     return {
@@ -148,7 +139,6 @@ describe('event service', () => {
     });
 });
 
-/** An RSVP repository backed by a plain array. */
 function fakeRsvps(): RsvpRepository & { rows: (RsvpRecord & { id: number })[] } {
     const rows: (RsvpRecord & { id: number })[] = [];
     let nextId = 1;
@@ -223,7 +213,6 @@ describe('rsvp service', () => {
         const first = rsvps.submit(1, OPEN, guest(), null);
         const second = rsvps.submit(1, OPEN, guest({ phone: '+33612345678', name: 'Ana B' }), null);
         expect(first.created).toBe(true);
-        // A different number: the leading + is kept, so this is a new guest.
         expect(second.created).toBe(true);
         expect(rsvps.submit(1, OPEN, guest({ phone: '0612-34-56-78' }), null))
             .toEqual({ id: first.id, created: false });
@@ -291,11 +280,9 @@ describe('og card service', () => {
         cards.cardFor(row);
         expect(render).toHaveBeenCalledTimes(1);
 
-        // An edit changes updated_at, so the stored card is no longer reused.
         cards.cardFor({ ...row, updated_at: '2030-02-02 00:00:00' });
         expect(render).toHaveBeenCalledTimes(2);
 
-        // A third distinct card evicts the first, which then has to re-render.
         cards.cardFor({ ...row, id: 2 });
         cards.cardFor(row);
         expect(render).toHaveBeenCalledTimes(4);

@@ -1,4 +1,3 @@
-/** How long until the party, as three figures — or as one line once it is here. */
 export default function Countdown({ countdown }) {
   if (!countdown) return null;
   const single = countdown.isToday || countdown.isPast;

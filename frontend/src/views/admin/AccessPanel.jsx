@@ -5,7 +5,6 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { LoadError, LoadingRows } from './PanelState.jsx';
 
-/** The role badge, and the "email not confirmed" marker beside it. */
 function RoleBadge({ role }) {
   return (
     <Badge variant={role === 'admin' ? 'default' : 'outline'}>
@@ -14,11 +13,6 @@ function RoleBadge({ role }) {
   );
 }
 
-/**
- * The grant/revoke pair, plus deletion. The server refuses self-demotion and
- * self-deletion anyway; disabling them here keeps the UI from offering an action
- * that can only fail.
- */
 function UserActions({ user, isSelf, busy, onSetRole, onDelete, className = '' }) {
   return (
     <>
@@ -44,12 +38,6 @@ function UserActions({ user, isSelf, busy, onSetRole, onDelete, className = '' }
   );
 }
 
-/**
- * Account administration.
- *
- * A table below `sm` turned into stacked cells with no headers, so small screens
- * get purpose-built rows instead and the table starts at `sm`.
- */
 export default function AccessPanel({ users, loading, error, busyId, currentUserId, onRefresh, onSetRole, onDelete }) {
   return (
     <Card>

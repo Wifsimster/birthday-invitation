@@ -19,7 +19,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState, LoadError } from './PanelState.jsx';
 import { formatEventDate, themeIcon, themeLabel } from './format.js';
 
-/** One party in the grid. The whole card selects it; the menu acts on it. */
 function EventCard({ event: ev, selected, onSelect, onEdit, onCopyLink, onDelete }) {
   return (
     <div
@@ -64,9 +63,6 @@ function EventCard({ event: ev, selected, onSelect, onEdit, onCopyLink, onDelete
 
       <div className="min-w-0">
         <h3 className="truncate font-semibold">
-          {/* The title button carries a stretched hit area, so the card has
-              exactly one focusable control for selecting it and the menu above
-              still receives its own clicks. */}
           <button
             type="button"
             className="text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
@@ -108,15 +104,6 @@ function EventCard({ event: ev, selected, onSelect, onEdit, onCopyLink, onDelete
   );
 }
 
-/**
- * The events overview: which parties exist and which one the console is working
- * on.
- *
- * "Accès" is account-level, so on a phone — where every row costs a slice of the
- * only screen there is — the picker gets out of its way entirely, and once a
- * fête is picked the grid folds into a one-line summary. `sm` and up has the
- * room, so it stays open.
- */
 export default function EventPicker({
   events,
   loading,
@@ -156,8 +143,6 @@ export default function EventPicker({
         </CardAction>
       </CardHeader>
 
-      {/* The folded state: which fête is being worked on, and the way back to
-          the list. Replaced by the grid itself from `sm` up. */}
       {folded && (
         <div className="flex items-center gap-3 px-4 sm:hidden">
           <span className="text-2xl" aria-hidden="true">
@@ -165,9 +150,6 @@ export default function EventPicker({
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate font-semibold">{selectedEvent.person || 'Sans nom'}</p>
-            {/* Just the date: the response count is already on the "Réponses"
-                tab a few pixels below, and squeezing both in truncated
-                whichever came second. */}
             <p className="truncate text-xs text-muted-foreground">
               {selectedEvent.date ? formatEventDate(selectedEvent.date) : 'Détails à compléter'}
               {selectedEvent.town ? ` · ${selectedEvent.town}` : ''}

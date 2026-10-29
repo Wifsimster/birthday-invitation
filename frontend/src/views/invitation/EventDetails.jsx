@@ -1,23 +1,8 @@
-/**
- * The practical details, below the call to action.
- *
- * One grouped list rather than five floating tiles. Five separate cards each
- * with their own padding and shadow ran to roughly 450px on a 390px-wide phone
- * and pushed the RSVP button off the bottom of a second screenful; the divided
- * list says the same thing in a little over half the height, and reads as the
- * grouped detail lists both mobile platforms use.
- *
- * The fill and the rules are theme tokens, not black at a low alpha: on the
- * dark-surface themes a black wash is invisible, and `--muted` / `--border` are
- * derived from the card's own colours so the list separates itself on either.
- */
 export default function EventDetails({ details }) {
   if (!details.length) return null;
 
   return (
     <>
-      {/* A rule that marks what follows as reference rather than something to
-          read before answering. */}
       <div className="mt-8 flex items-center gap-3" aria-hidden="true">
         <span className="h-px flex-1 bg-border" />
         <span className="text-[0.68rem] tracking-[0.18em] uppercase opacity-50">Infos pratiques</span>

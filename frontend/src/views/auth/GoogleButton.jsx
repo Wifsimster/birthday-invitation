@@ -19,7 +19,6 @@ const GOOGLE_ICON = (
   </svg>
 );
 
-/** The social alternative, only rendered when the server reports it configured. */
 export default function GoogleButton({ disabled, onClick }) {
   return (
     <>

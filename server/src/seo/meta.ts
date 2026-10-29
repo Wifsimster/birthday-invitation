@@ -1,8 +1,3 @@
-// The metadata model: what one invitation page claims to be.
-//
-// Rendering it is html.ts's job; this module only decides the title, the
-// description, the canonical URL, the share card and the JSON-LD payload.
-
 import type { EventRow } from '../db.ts';
 import { isRsvpClosed, eventConfigFromRow } from '../domain/event.ts';
 import { ogImageAlt } from '../og-image.ts';
@@ -12,18 +7,12 @@ export interface SeoMeta {
   description: string;
   canonical: string;
   robots: string;
-  // Absolute URL of the share card, and its alt text. Absent when no origin is
-  // known (a relative og:image is ignored by every scraper) or for a page with
-  // no event behind it.
   ogImage?: { url: string; alt: string };
-  // JSON-LD payload (schema.org Event), omitted when the event has no date.
   jsonLd?: Record<string, unknown>;
 }
 
 export const SITE_NAME = 'Invitation d\'anniversaire';
 
-// Generic copy used for the /admin route and for a slug that matches no event —
-// neither should ever be the target of a search result or a link preview.
 export const FALLBACK_META: SeoMeta = {
   title: SITE_NAME,
   description: 'Invitation d\'anniversaire en ligne avec réponse (RSVP) en un clic.',
@@ -44,18 +33,10 @@ function formatDate(date: string): string {
   return Number.isNaN(d.getTime()) ? '' : dateFormatter.format(d);
 }
 
-/** Path of an event's invitation, "/" for the default event. */
 export function eventPath(row: EventRow): string {
   return row.is_default ? '/' : `/e/${encodeURIComponent(row.slug)}`;
 }
 
-/**
- * Metadata describing one event's invitation page.
- *
- * The description is what a guest actually sees under the link in a search
- * result or a chat preview, so it leads with the facts that decide whether they
- * tap: who, how old, when and where.
- */
 export function buildEventMeta(row: EventRow, origin: string, allowIndex = true): SeoMeta {
   const person = row.person?.trim();
   if (!person) return { ...FALLBACK_META, canonical: origin ? `${origin}${eventPath(row)}` : '' };

@@ -1,8 +1,3 @@
-// What a guest holding an invitation link can reach: the event itself, the RSVP
-// form's submit and lookup, the shared guest list, the share card and the
-// calendar invite. No session anywhere — the phone number the guest answered
-// with is the only identity these routes know.
-
 import { Router } from 'express';
 import { asyncHandler } from '../http/async-handler.ts';
 import { buildIcs, eventConfigFromRow } from '../domain/event.ts';
@@ -17,12 +12,10 @@ export function createPublicEventRoutes(
 ): Router {
   const router = Router();
 
-  // Public invitation payload (safe fields only) + computed rsvp_closed.
   router.get('/api/events/:slug', asyncHandler((req, res) => {
     res.json(publicEvent(events.requireBySlug(String(req.params.slug))));
   }));
 
-  // Submit (or update) an RSVP scoped to this event. One row per (event, phone).
   router.post('/api/events/:slug/rsvp', limiters.rsvp, asyncHandler((req, res) => {
     const event = events.requireBySlug(String(req.params.slug));
     const body = parseBody(rsvpSchema({ requireAttending: true, minGuests: 1 }), req.body);
@@ -33,14 +26,11 @@ export function createPublicEventRoutes(
     res.status(201).json({ message: 'Réponse soumise avec succès !', id: result.id });
   }));
 
-  // Look up a guest's existing RSVP for this event (rate-limited).
   router.get('/api/events/:slug/rsvp/lookup/:phone', limiters.lookup, asyncHandler((req, res) => {
     const event = events.requireBySlug(String(req.params.slug));
     res.json(rsvps.lookup(event.id, String(req.params.phone ?? '')));
   }));
 
-  // Who else is coming. Rate-limited with the phone-lookup limiter: the phone
-  // parameter makes it the same enumeration oracle.
   router.get('/api/events/:slug/participants/:phone', limiters.lookup, asyncHandler((req, res) => {
     const event = events.requireBySlug(String(req.params.slug));
     res.json(rsvps.sharedGuests(event.id, String(req.params.phone ?? '')));

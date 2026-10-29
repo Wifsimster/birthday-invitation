@@ -6,7 +6,6 @@ import { createAuth, migrateAuth, seedAdminUser, type Auth } from '../src/auth.t
 import { openDb, initSchema, type Db } from '../src/db.ts';
 import type { Mailer, MailMessage } from '../src/mailer.ts';
 
-// Same fixed signing config as the RSVP suite so cookies validate.
 process.env.BETTER_AUTH_SECRET = 'test-secret-0123456789-abcdefghijklmnop';
 process.env.BETTER_AUTH_URL = 'http://localhost:3000';
 
@@ -14,8 +13,6 @@ const ORIGIN = 'http://localhost:3000';
 const ADMIN = { email: 'admin@example.com', password: 'secret-password' };
 const MEMBER = { email: 'member@example.com', password: 'member-password', name: 'Member' };
 
-// Collects every email instead of sending it, so tests can pull the
-// verification / reset link straight out of the message body.
 function createTestMailer(): Mailer & { sent: MailMessage[] } {
   const sent: MailMessage[] = [];
   return {
@@ -27,7 +24,6 @@ function createTestMailer(): Mailer & { sent: MailMessage[] } {
   };
 }
 
-// Better Auth puts the callback URL in the text body; pull the first http link.
 function linkFrom(message: MailMessage): string {
   const match = message.text.match(/https?:\/\/\S+/);
   if (!match) throw new Error(`no link in email: ${message.text}`);
@@ -46,8 +42,6 @@ describe('Authentication, registration and roles', () => {
   let mailer: ReturnType<typeof createTestMailer>;
   let adminCookie: string;
 
-  // Register MEMBER, click the emailed verification link, and return the
-  // resulting session cookie plus the account id.
   async function registerAndVerify(
     credentials = MEMBER
   ): Promise<{ cookie: string; id: string }> {
@@ -58,7 +52,6 @@ describe('Authentication, registration and roles', () => {
       .expect(200);
 
     const email = mailer.sent.at(-1)!;
-    // The verification link is a GET the browser follows; it redirects on success.
     const verify = await request(app).get(new URL(linkFrom(email)).pathname + new URL(linkFrom(email)).search);
     expect(verify.status).toBeLessThan(400);
 
@@ -175,7 +168,6 @@ describe('Authentication, registration and roles', () => {
       expect(mailer.sent).toHaveLength(1);
       expect(mailer.sent[0].subject).toBe('Réinitialisez votre mot de passe');
 
-      // The emailed URL carries the token; Better Auth accepts it on reset.
       const token = new URL(linkFrom(mailer.sent[0])).pathname.split('/').pop()!;
       await request(app)
         .post('/api/auth/reset-password')
@@ -246,7 +238,6 @@ describe('Authentication, registration and roles', () => {
         .expect(200);
       expect(res.body.user).toMatchObject({ id, role: 'admin' });
 
-      // The existing session picks the new role up on its next request.
       await request(app).get('/api/rsvps').set('Cookie', cookie).expect(200);
     });
 
@@ -264,7 +255,6 @@ describe('Authentication, registration and roles', () => {
         .set('Cookie', adminCookie)
         .send({ role: 'user' })
         .expect(200);
-      // Session dropped server-side, so this is a 401 rather than a 403.
       await request(app).get('/api/rsvps').set('Cookie', cookie).expect(401);
     });
 
@@ -320,9 +310,6 @@ describe('Authentication, registration and roles', () => {
     });
 
     it('refuses to remove the last remaining admin', async () => {
-      // Promote a member, sign in as them, then try to delete the seeded admin
-      // after demoting... instead: delete is guarded by the admin count, so
-      // deleting the only *other* admin must fail once they are the last one.
       const { cookie, id } = await registerAndVerify();
       await request(app)
         .put(`/api/users/${id}/role`)
@@ -339,12 +326,9 @@ describe('Authentication, registration and roles', () => {
       const cookieHeader = memberCookie.map((c) => c.split(';')[0]).join('; ');
       void cookie;
 
-      // Two admins now: the member may delete the seeded admin.
       const seeded = db.get<{ id: string }>('SELECT id FROM "user" WHERE email = ?', [ADMIN.email]);
       await request(app).delete(`/api/users/${seeded!.id}`).set('Cookie', cookieHeader).expect(200);
 
-      // One admin left (the member). Deleting themselves is already refused;
-      // and no other admin exists to be removed.
       expect(db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM "user" WHERE role = 'admin'`)?.n).toBe(1);
     });
 

@@ -14,9 +14,6 @@ export interface RsvpRow {
   guests: number;
   dietary_restrictions: string | null;
   message: string | null;
-  // 1 when the guest ticked "partager ma réponse" on the invitation form: their
-  // first name and party size may then be listed to the other confirmed guests.
-  // Always 0 for a decline — see `shareFlag` in app.ts.
   share_response: number;
   ip_address: string | null;
   created_at: string;
@@ -42,9 +39,6 @@ export interface EventRow {
   theme: string;
   rsvp_deadline: string;
   is_default: number;
-  // Better Auth user id of the account that created the invitation, or NULL for
-  // the env-seeded default event (and any event predating ownership), which
-  // belongs to the deployment rather than to one account.
   owner_id: string | null;
   created_at: string;
   updated_at: string;
@@ -55,8 +49,6 @@ export interface RunResult {
   changes: number;
 }
 
-// Thin synchronous adapter over a better-sqlite3 handle, exposing the run/get/all
-// shape the routes use. `run` normalises the result to { lastID, changes }.
 export interface Db {
   raw: Database.Database;
   run(sql: string, params?: unknown[]): RunResult;
@@ -65,8 +57,6 @@ export interface Db {
   close(): void;
 }
 
-// Default on-disk location. In the container this is overridden by DB_PATH
-// (see compose.yml -> /app/data/rsvp.db).
 export function defaultDbPath(): string {
   return process.env.DB_PATH || path.join(__dirname, '../..', 'data', 'rsvp.db');
 }
@@ -90,9 +80,6 @@ export function wrapDb(handle: Database.Database): Db {
   };
 }
 
-// Open (and create if missing) the SQLite database, returning the wrapped handle.
-// WAL + a busy timeout make the single-file store resilient to unclean restarts
-// and concurrent readers (e.g. an online `.backup`).
 export function openDb(dbPath: string = defaultDbPath()): Db {
   const handle = new Database(dbPath);
   handle.pragma('journal_mode = WAL');
@@ -102,8 +89,6 @@ export function openDb(dbPath: string = defaultDbPath()): Db {
   return wrapDb(handle);
 }
 
-// Create the schema and apply pending migrations. Idempotent — safe on every
-// boot. The migration list itself lives in migrations.ts.
 export function initSchema(db: Db): Db {
   runMigrations(db);
   return db;

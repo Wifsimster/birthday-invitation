@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { themeList } from '../../themes.js';
 
-/** Creating a party, or editing the details of one. */
 export default function EventDialog({
   open,
   onOpenChange,
@@ -82,10 +81,6 @@ export default function EventDialog({
             <Label htmlFor="event-location">Lieu</Label>
             <Textarea id="event-location" value={form.location} onChange={field('location')} />
           </div>
-          {/* A dress code is a sentence, not a word — "Tenue de rechange ou
-              maillot de bain ! Il y aura des jeux d'eau" ran off the end of a
-              single-line input with no way to see what was already saved. It
-              gets the same full-width textarea as the address above it. */}
           <div className="grid gap-2">
             <Label htmlFor="event-dress">Dress code</Label>
             <Textarea id="event-dress" value={form.dress_code} onChange={field('dress_code')} />

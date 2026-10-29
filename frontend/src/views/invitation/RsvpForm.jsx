@@ -20,17 +20,6 @@ const Required = () => (
   </span>
 );
 
-/**
- * Stacked, the primary action goes on top: it is the one the thumb reaches
- * first and the one nearly everyone wants. Side by side from `sm` up it goes
- * back to the right, as a desktop dialog expects.
- *
- * `flex-1` is held back to `sm` on purpose: in the stacked column it resolves
- * to `flex-basis: 0` on the *height*, which beat the `h-12` these buttons get
- * from `size="lg"` and squashed them to their text — a 20px tap target on the
- * one control the page exists for. Column stretch already makes them full
- * width.
- */
 export function FormActions({ busy, busyLabel, submitLabel, onCancel }) {
   return (
     <div className="flex flex-col-reverse gap-3 sm:flex-row">
@@ -55,14 +44,10 @@ export function FormError({ message }) {
   );
 }
 
-/** The invitation's own RSVP form. */
 export default function RsvpForm({ form, onChange, error, submitting, onSubmit, onCancel, panelRef, headingRef }) {
   const field = (key) => (e) => onChange({ ...form, [key]: e.target.value });
   const attending = form.attending === 'yes';
 
-  // The three usual answers, plus the recorded value when a response the host
-  // entered by hand carries more people than the form normally offers — the
-  // select would otherwise render blank and silently drop the guest's count.
   const guestOptions = useMemo(() => {
     const options = [
       { value: 1, label: "1 personne (juste l'enfant)" },
@@ -193,10 +178,6 @@ export default function RsvpForm({ form, onChange, error, submitting, onSubmit, 
       )}
 
       {attending && (
-        /* Consent, so: opt-in, never pre-ticked, and the label says exactly what
-           leaves the row — the prénom and the party size, nothing else.
-           Téléphone, email, allergies and message are never shown to another
-           guest. */
         <div className="flex items-start gap-3 rounded-xl border-2 bg-card p-3">
           <Checkbox
             id="rsvp-share"
